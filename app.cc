@@ -101,6 +101,7 @@ class HelloTriangleApplication {
         pickPhysicalDevice();
         createLogicalDevice();
         createSwapChain();
+        createImageViews();
     }
 
     // creates an instance. the instance is the object that stores the
@@ -554,6 +555,12 @@ class HelloTriangleApplication {
         swapChainImageFormat = surfaceFormat.format;
         swapChainImageExtent = extent;
     }
+    void createImageViews() {
+        swapChainImageViews.resize(swapChainImages.size());
+        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+
+        }
+    }
     void mainLoop() {
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -587,6 +594,7 @@ class HelloTriangleApplication {
     std::vector<VkImage> swapChainImages;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainImageExtent;
+    std::vector<VkImageView> swapChainImageViews;
 };
 
 int main() {
