@@ -1,13 +1,12 @@
-#include <iterator>
-
-#include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <glm/glm.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -17,8 +16,11 @@
 #include <string>
 #include <vector>
 
+#include "Logger.h"
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
+const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation",
@@ -33,18 +35,6 @@ const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
-
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-    bool isComplete() { return graphicsFamily.has_value() && presentFamily.has_value(); }
-};
-
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
                                       const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
@@ -73,6 +63,58 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
     }
 }
 
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphicsFamily;
+    std::optional<uint32_t> presentFamily;
+    std::optional<uint32_t> transferFamily;
+    bool isComplete() {
+        return graphicsFamily.has_value() and presentFamily.has_value() and
+               transferFamily.has_value();
+    }
+};
+
+struct SwapChainSupportDetails {
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
+};
+
+struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription description{};
+        description.binding = 0;
+        description.stride = sizeof(Vertex);
+        description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return description;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].offset = offsetof(Vertex, pos);
+
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Vertex, color);
+        LOG(offsetof(Vertex, color))
+
+        return attributeDescriptions;
+    }
+};
+
+const std::vector<Vertex> vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+                                      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+                                      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
+
+const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+
 class HelloTriangleApplication {
    public:
     void run() {
@@ -87,9 +129,14 @@ class HelloTriangleApplication {
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Hello Triangle", nullptr, nullptr);
+        glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+        glfwSetWindowUserPointer(window, this);
+    }
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+        auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->frameBufferResized = true;
     }
 
     void initVulkan() {
@@ -103,7 +150,9 @@ class HelloTriangleApplication {
         createRenderPass();
         createGraphicsPipeline();
         createFrameBuffers();
-        createCommandPool();
+        createCommandPools();
+        createVertexBuffer();
+        createIndexBuffer();
         createCommandBuffer();
         createSyncObjects();
     }
@@ -129,6 +178,7 @@ class HelloTriangleApplication {
         createInfo.pApplicationInfo = &appInfo;
 
         auto extensions = getRequiredExtensions();
+        LOG(extensions)
 
         createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
         createInfo.ppEnabledExtensionNames = extensions.data();
@@ -326,10 +376,13 @@ class HelloTriangleApplication {
         // will create the queues for us
 
         QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        LOG(indices.graphicsFamily.value())
+        LOG(indices.presentFamily.value())
 
         std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
         std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(),
-                                                  indices.presentFamily.value()};
+                                                  indices.presentFamily.value(),
+                                                  indices.transferFamily.value()};
 
         float queuePriority = 1.0f;
         for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -365,6 +418,7 @@ class HelloTriangleApplication {
 
         vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
         vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+        vkGetDeviceQueue(device, indices.transferFamily.value(), 0, &transferQueue);
     }
 
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
@@ -385,6 +439,11 @@ class HelloTriangleApplication {
             if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 indices.graphicsFamily = i;
             }
+
+            if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+                indices.transferFamily = i;
+            }
+
             if (indices.isComplete()) break;
             i++;
         }
@@ -515,6 +574,7 @@ class HelloTriangleApplication {
         swapChainImageFormat = surfaceFormat.format;
         swapChainImageExtent = extent;
     }
+
     void createImageViews() {
         swapChainImageViews.resize(swapChainImages.size());
         for (size_t i = 0; i < swapChainImages.size(); i++) {
@@ -603,6 +663,17 @@ class HelloTriangleApplication {
         passInfo.subpassCount = 1;
         passInfo.pSubpasses = &subpass;
 
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+        passInfo.dependencyCount = 1;
+        passInfo.pDependencies = &dependency;
+
         if (vkCreateRenderPass(device, &passInfo, nullptr, &renderPass) != VK_SUCCESS) {
             throw std::runtime_error("failed to create render pass");
         }
@@ -637,12 +708,16 @@ class HelloTriangleApplication {
         dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+        auto bindingDescription = Vertex::getBindingDescription();
+        auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
         VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
         vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vertexInputInfo.vertexBindingDescriptionCount = 0;
-        vertexInputInfo.pVertexBindingDescriptions = nullptr;
-        vertexInputInfo.vertexAttributeDescriptionCount = 0;
-        vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.vertexAttributeDescriptionCount =
+            static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
         VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
         inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -788,27 +863,164 @@ class HelloTriangleApplication {
         }
     }
 
-    void createCommandPool() {
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags flags) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+            if (typeFilter & (1 << i) and
+                (memProperties.memoryTypes[i].propertyFlags & flags) == flags) {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("failed to find suitable memory type");
+    }
+
+    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+                      VkBuffer& buffer, VkDeviceMemory& memory) {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        bufferInfo.flags = 0;
+
+        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create buffer!");
+        }
+
+        VkMemoryRequirements memRequirements{};
+        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+
+        VkMemoryAllocateInfo allocateInfo{};
+        allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocateInfo.allocationSize = memRequirements.size;
+        allocateInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocateInfo, nullptr, &memory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate buffer memory!");
+        }
+
+        vkBindBufferMemory(device, buffer, memory, 0);
+    }
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = transferCmdPool;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer cpyCmdBuffer;
+
+        if (vkAllocateCommandBuffers(device, &allocInfo, &cpyCmdBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate copy command buffer!");
+        }
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+        vkBeginCommandBuffer(cpyCmdBuffer, &beginInfo);
+
+        VkBufferCopy cpyRegion{};
+        cpyRegion.srcOffset = 0;
+        cpyRegion.dstOffset = 0;
+        cpyRegion.size = size;
+
+        vkCmdCopyBuffer(cpyCmdBuffer, srcBuffer, dstBuffer, 1, &cpyRegion);
+        vkEndCommandBuffer(cpyCmdBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &cpyCmdBuffer;
+
+        vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(transferQueue);
+
+        vkFreeCommandBuffers(device, transferCmdPool, 1, &cpyCmdBuffer);
+    }
+
+    void createVertexBuffer() {
+        VkDeviceSize size = vertices.size() * sizeof(vertices[0]);
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+        createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     stagingBuffer, stagingBufferMemory);
+
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, size, 0, &data);
+        memcpy(data, vertices.data(), size);
+        vkUnmapMemory(device, stagingBufferMemory);
+
+        createBuffer(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+        copyBuffer(stagingBuffer, vertexBuffer, size);
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
+    }
+
+    void createIndexBuffer() {
+        VkDeviceSize size = indices.size() * sizeof(indices[0]);
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+        createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     stagingBuffer, stagingBufferMemory);
+
+        void* data;
+        vkMapMemory(device, stagingBufferMemory, 0, size, 0, &data);
+        memcpy(data, indices.data(), size);
+        vkUnmapMemory(device, stagingBufferMemory);
+
+        createBuffer(size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+        copyBuffer(stagingBuffer, indexBuffer, size);
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingBufferMemory, nullptr);
+    }
+
+    void createCommandPools() {
         QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+        // This command pool is to allocate reseteable command buffers
+        VkCommandPoolCreateInfo graphicsPoolInfo{};
+        graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        graphicsPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        graphicsPoolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-        if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create command pool!");
+        if (vkCreateCommandPool(device, &graphicsPoolInfo, nullptr, &graphicsCmdPool) !=
+            VK_SUCCESS) {
+            throw std::runtime_error("failed to create graphics command pool!");
+        }
+
+        // This command pool is to allocate command buffers that will be short lived
+        VkCommandPoolCreateInfo transferPoolInfo{};
+        transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+        transferPoolInfo.queueFamilyIndex = queueFamilyIndices.transferFamily.value();
+
+        if (vkCreateCommandPool(device, &transferPoolInfo, nullptr, &transferCmdPool) !=
+            VK_SUCCESS) {
+            throw std::runtime_error("failed to create transfer command pool!");
         }
     }
 
     void createCommandBuffer() {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = commandPool;
+        allocInfo.commandPool = graphicsCmdPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
+        allocInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
 
-        if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+        commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate command buffer!");
         }
     }
@@ -837,6 +1049,12 @@ class HelloTriangleApplication {
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -851,7 +1069,7 @@ class HelloTriangleApplication {
         scissor.extent = swapChainImageExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdDrawIndexed(commandBuffer, indices.size(), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -861,52 +1079,153 @@ class HelloTriangleApplication {
     }
 
     void createSyncObjects() {
+        imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
         VkSemaphoreCreateInfo semaphoreInfo{};
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) !=
-                VK_SUCCESS or
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) !=
-                VK_SUCCESS or
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create semaphores!");
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) !=
+                    VK_SUCCESS or
+                vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) !=
+                    VK_SUCCESS or
+                vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create semaphores!");
+            }
         }
     }
 
     void drawFrame() {
-        vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &inFlightFence);
-    }
+        vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
-
-    void mainLoop() {
-        while (!glfwWindowShouldClose(window)) {
-            glfwPollEvents();
-            drawFrame();
+        uint32_t imageIndex;
+        VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX,
+                                                imageAvailableSemaphores[currentFrame],
+                                                VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
+            return;
+        } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("failed to recreate swapchain image!");
         }
+
+        // Only reset fence if we know that work is going to be submitted
+        vkResetFences(device, 1, &inFlightFences[currentFrame]);
+
+        vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+        recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+
+        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) !=
+            VK_SUCCESS) {
+            throw std::runtime_error("failed to submit draw command buffer!");
+        }
+
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+        VkSwapchainKHR swapChains[] = {swapChain};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+        presentInfo.pResults = nullptr;
+
+        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ||
+            frameBufferResized) {
+            frameBufferResized = false;
+            recreateSwapChain();
+        } else if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to present swap chain image!");
+        }
+
+        currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    void cleanup() {
-        vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-        vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-        vkDestroyFence(device, inFlightFence, nullptr);
+    void recreateSwapChain() {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(window, &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(window, &width, &height);
+            glfwWaitEvents();
+        }
 
-        vkDestroyCommandPool(device, commandPool, nullptr);
+        vkDeviceWaitIdle(device);
+
+        cleanupSwapChain();
+
+        createSwapChain();
+        createImageViews();
+        createFrameBuffers();
+    }
+
+    void cleanupSwapChain() {
         for (auto framebuffer : swapChainFramebuffers) {
             vkDestroyFramebuffer(device, framebuffer, nullptr);
         }
-        vkDestroyPipeline(device, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-        vkDestroyRenderPass(device, renderPass, nullptr);
 
         for (auto imageView : swapChainImageViews) {
             vkDestroyImageView(device, imageView, nullptr);
         }
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
+    }
+
+    void mainLoop() {
+        while (!glfwWindowShouldClose(window)) {
+            glfwPollEvents();
+            drawFrame();
+        }
+
+        vkDeviceWaitIdle(device);
+    }
+
+    void cleanup() {
+        cleanupSwapChain();
+
+        vkDestroyBuffer(device, vertexBuffer, nullptr);
+        vkFreeMemory(device, vertexBufferMemory, nullptr);
+
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        vkFreeMemory(device, indexBufferMemory, nullptr);
+
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+            vkDestroyFence(device, inFlightFences[i], nullptr);
+        }
+
+        vkDestroyCommandPool(device, graphicsCmdPool, nullptr);
+        vkDestroyCommandPool(device, transferCmdPool, nullptr);
+
+        vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyRenderPass(device, renderPass, nullptr);
+
         vkDestroyDevice(device, nullptr);
 
         if (enableValidationLayers) {
@@ -929,6 +1248,7 @@ class HelloTriangleApplication {
     VkDevice device;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
+    VkQueue transferQueue;
     VkSwapchainKHR swapChain;
     std::vector<VkImage> swapChainImages;
     VkFormat swapChainImageFormat;
@@ -938,11 +1258,18 @@ class HelloTriangleApplication {
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
     std::vector<VkFramebuffer> swapChainFramebuffers;
-    VkCommandPool commandPool;
-    VkCommandBuffer commandBuffer;
-    VkSemaphore imageAvailableSemaphore;
-    VkSemaphore renderFinishedSemaphore;
-    VkFence inFlightFence;
+    VkCommandPool graphicsCmdPool;
+    VkCommandPool transferCmdPool;
+    std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkFence> inFlightFences;
+    uint32_t currentFrame = 0;
+    bool frameBufferResized = false;
+    VkBuffer vertexBuffer;
+    VkBuffer indexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    VkDeviceMemory indexBufferMemory;
 };
 
 int main() {
