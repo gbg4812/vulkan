@@ -1,6 +1,8 @@
 #include <iostream>
 #include <vector>
 
+#pragma once
+
 #ifndef NDEBUG
 #define LOG(x) std::cout << #x << " = " << x << std::endl;
 #else
