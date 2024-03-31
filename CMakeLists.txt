@@ -11,14 +11,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
+set(SRC src/27_depth_buffering.cpp)
+# set(SRC src/app.cpp)
+
 add_executable(${PROJECT_NAME}
-    src/app.cc
-)
+    src/app.cpp)
 
-
-target_include_directories(playfului PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_link_directories(playfului PUBLIC ${CMAKE_SOURCE_DIR}/lib)
-
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/lib)
 
 set(LIBS glfw3 vulkan Xi Xrandr Xcursor Xinerama)
 
