@@ -1,3 +1,6 @@
+#include "ext/matrix_transform.hpp"
+#include "ext/vector_float3.hpp"
+#include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -5,6 +8,7 @@
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -13,6 +17,7 @@
 #include <fstream>
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
+#include <gtx/hash.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -20,16 +25,24 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
 
 #include "Logger.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
+const std::string TEXTURE_PATH =
+    "models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation",
@@ -122,7 +135,24 @@ struct Vertex {
 
         return attributeDescriptions;
     }
+
+    bool operator==(const Vertex& other) const {
+        return pos == other.pos && color == other.color &&
+               texCoord == other.texCoord;
+    }
 };
+
+namespace std {
+template <>
+struct hash<Vertex> {
+    size_t operator()(Vertex const& vertex) const {
+        return ((hash<glm::vec3>()(vertex.pos) ^
+                 (hash<glm::vec3>()(vertex.color) << 1)) >>
+                1) ^
+               (hash<glm::vec2>()(vertex.texCoord) << 1);
+    }
+};
+}  // namespace std
 
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
@@ -132,20 +162,6 @@ struct UniformBufferObjects {
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
-
-const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
-
-    {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-    {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-    {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}};
-
-const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
-
 class HelloTriangleApplication {
    public:
     void run() {
@@ -204,6 +220,10 @@ class HelloTriangleApplication {
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+
+   private:
     void setupGlfwCallbacks() {
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
@@ -250,6 +270,8 @@ class HelloTriangleApplication {
         createCommandPools();
         createDepthResources();
         createFrameBuffers();
+
+        loadModel();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
@@ -1264,10 +1286,50 @@ class HelloTriangleApplication {
          */
     }
 
+    void loadModel() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
+
+        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
+                              MODEL_PATH.c_str())) {
+            throw std::runtime_error(warn + err);
+        }
+
+        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+
+        for (const auto& shape : shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                Vertex vertex{};
+                vertex.pos = {
+                    attrib.vertices[3 * index.vertex_index + 0],
+                    attrib.vertices[3 * index.vertex_index + 1],
+                    attrib.vertices[3 * index.vertex_index + 2],
+                };
+
+                vertex.texCoord = {
+
+                    attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1],
+                };
+
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                if (uniqueVertices.count(vertex) == 0) {
+                    uniqueVertices[vertex] =
+                        static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(uniqueVertices[vertex]);
+            }
+        }
+    }
+
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load("textures/texture.jpg", &texWidth,
-                                    &texHeight, &texChannels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight,
+                                    &texChannels, STBI_rgb_alpha);
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
@@ -1777,7 +1839,7 @@ class HelloTriangleApplication {
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0,
-                             VK_INDEX_TYPE_UINT16);
+                             VK_INDEX_TYPE_UINT32);
 
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipelineLayout, 0, 1,
@@ -1825,15 +1887,18 @@ class HelloTriangleApplication {
                          .count();
 
         UniformBufferObjects ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f),
-                                glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f),
+        ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, 0.01f, 0.01f));
+        ubo.model = glm::rotate(ubo.model, glm::radians(90.0f),
+                                glm::vec3(1.0f, 0.0f, 0.0f));
+        ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),
+                                glm::vec3(0.0f, 1.0f, 0.0f));
+        ubo.view = glm::lookAt(glm::vec3(10.0f, 10.0f, 10.0f),
                                glm::vec3(0.0f, 0.0f, 0.0f),
                                glm::vec3(0.0f, 0.0f, 1.0f));
         ubo.proj = glm::perspective(
             glm::radians(45.0f),
             swapChainImageExtent.width / (float)swapChainImageExtent.height,
-            0.1f, 10.0f);
+            0.1f, 100.0f);
         ubo.proj[1][1] *= -1;
 
         memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -1910,7 +1975,6 @@ class HelloTriangleApplication {
 
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
-
 };
 
 int main() {

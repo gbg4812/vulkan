@@ -33,4 +33,5 @@ add_custom_command(
     POST_BUILD
     COMMAND [ -h ${CMAKE_BINARY_DIR}/textures ] || ln -s ${CMAKE_SOURCE_DIR}/data/textures ${CMAKE_BINARY_DIR}/ || exit 0
     COMMAND [ -h ${CMAKE_BINARY_DIR}/shaders ] || ln -s ${CMAKE_SOURCE_DIR}/data/shaders ${CMAKE_BINARY_DIR}/ || exit 0
+    COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ${CMAKE_SOURCE_DIR}/data/models ${CMAKE_BINARY_DIR}/ || exit 0
 )
