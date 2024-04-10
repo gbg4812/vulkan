@@ -1,5 +1,3 @@
-#include "ext/matrix_transform.hpp"
-#include "ext/vector_float3.hpp"
 #include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -211,6 +209,7 @@ class HelloTriangleApplication {
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSet> descriptorSets;
 
+    uint32_t mipLevels;
     VkImage textureImage;
     VkDeviceMemory textureImageMemory;
     VkImageView textureImageView;
@@ -841,7 +840,7 @@ class HelloTriangleApplication {
         for (size_t i = 0; i < swapChainImages.size(); i++) {
             swapChainImageViews[i] =
                 createImageView(swapChainImages[i], swapChainImageFormat,
-                                VK_IMAGE_ASPECT_COLOR_BIT);
+                                VK_IMAGE_ASPECT_COLOR_BIT, 1);
         }
     }
 
@@ -1226,7 +1225,7 @@ class HelloTriangleApplication {
     }
 
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
-        VkCommandBuffer cpyCmdBuffer = beginSingleTimeCommands();
+        VkCommandBuffer cpyCmdBuffer = beginSingleTimeCommands(transferCmdPool);
 
         VkBufferCopy cpyRegion{};
         cpyRegion.srcOffset = 0;
@@ -1235,7 +1234,7 @@ class HelloTriangleApplication {
 
         vkCmdCopyBuffer(cpyCmdBuffer, srcBuffer, dstBuffer, 1, &cpyRegion);
 
-        endSingleTimeCommands(cpyCmdBuffer);
+        endSingleTimeCommands(cpyCmdBuffer, transferCmdPool, transferQueue);
     }
 
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
@@ -1272,18 +1271,17 @@ class HelloTriangleApplication {
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
 
-        createImage(swapChainImageExtent.width, swapChainImageExtent.height,
+        createImage(swapChainImageExtent.width, swapChainImageExtent.height, 1,
                     depthFormat, VK_IMAGE_TILING_OPTIMAL,
                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage,
                     depthImageMemory);
-        depthImageView =
-            createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+        depthImageView = createImageView(depthImage, depthFormat,
+                                         VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
-        /* transitionImageLayout(depthImage, depthFormat,
-           VK_IMAGE_LAYOUT_UNDEFINED,
-                              VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-         */
+        transitionImageLayout(
+            depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
     }
 
     void loadModel() {
@@ -1330,6 +1328,9 @@ class HelloTriangleApplication {
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight,
                                     &texChannels, STBI_rgb_alpha);
+        mipLevels = static_cast<uint32_t>(
+                        std::floor(std::log2(std::max(texWidth, texHeight)))) +
+                    1;
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
@@ -1350,31 +1351,120 @@ class HelloTriangleApplication {
         vkUnmapMemory(device, stagingBufferMemory);
         stbi_image_free(pixels);
 
-        createImage(
-            texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage,
-            textureImageMemory);
+        createImage(texWidth, texHeight, mipLevels, VK_FORMAT_R8G8B8A8_SRGB,
+                    VK_IMAGE_TILING_OPTIMAL,
+                    VK_IMAGE_USAGE_SAMPLED_BIT |
+                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage,
+                    textureImageMemory);
 
         transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                               VK_IMAGE_LAYOUT_UNDEFINED,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
         copyBufferToImage(stagingBuffer, textureImage,
                           static_cast<uint32_t>(texWidth),
                           static_cast<uint32_t>(texHeight));
-        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth,
+                        texHeight, mipLevels);
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
     }
 
-    void createImage(uint32_t width, uint32_t height, VkFormat format,
-                     VkImageTiling tiling, VkImageUsageFlags usage,
-                     VkMemoryPropertyFlags properties, VkImage& image,
-                     VkDeviceMemory& memory) {
+    void generateMipmaps(VkImage image, VkFormat format, int32_t texWidth,
+                         int32_t texHeight, uint32_t mipLevels) {
+        VkFormatProperties formatProperties;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format,
+                                            &formatProperties);
+        if (!(formatProperties.optimalTilingFeatures &
+              VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
+            throw std::runtime_error(
+                "texture image format does not support linear blitting!");
+        }
+
+        VkCommandBuffer commandBuffer =
+            beginSingleTimeCommands(graphicsCmdPool);
+
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.image = image;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.subresourceRange.levelCount = 1;
+
+        int32_t mipWidth = texWidth;
+        int32_t mipHeight = texHeight;
+
+        for (uint32_t i = 1; i < mipLevels; i++) {
+            barrier.subresourceRange.baseMipLevel = i - 1;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
+                                 0, nullptr, 1, &barrier);
+
+            VkImageBlit blit{};
+            blit.srcOffsets[0] = {0, 0, 0};
+            blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
+            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.srcSubresource.mipLevel = i - 1;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount = 1;
+            blit.dstOffsets[0] = {0, 0, 0};
+            blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1,
+                                  mipHeight > 1 ? mipHeight / 2 : 1, 1};
+
+            blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            blit.dstSubresource.mipLevel = i;
+            blit.dstSubresource.baseArrayLayer = 0;
+            blit.dstSubresource.layerCount = 1;
+
+            vkCmdBlitImage(commandBuffer, image,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
+                           VK_FILTER_LINEAR);
+
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+                                 nullptr, 0, nullptr, 1, &barrier);
+            if (mipWidth > 1) {
+                mipWidth /= 2;
+            }
+            if (mipHeight > 1) {
+                mipHeight /= 2;
+            }
+        }
+
+        barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &barrier);
+
+        endSingleTimeCommands(commandBuffer, graphicsCmdPool, graphicsQueue);
+    }
+
+    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels,
+                     VkFormat format, VkImageTiling tiling,
+                     VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
+                     VkImage& image, VkDeviceMemory& memory) {
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -1386,7 +1476,7 @@ class HelloTriangleApplication {
         imageInfo.extent.width = width;
         imageInfo.extent.height = height;
         imageInfo.extent.depth = 1;
-        imageInfo.mipLevels = 1;
+        imageInfo.mipLevels = mipLevels;
         imageInfo.arrayLayers = 1;
         imageInfo.tiling = tiling;
 
@@ -1411,11 +1501,11 @@ class HelloTriangleApplication {
         vkBindImageMemory(device, image, memory, 0);
     }
 
-    VkCommandBuffer beginSingleTimeCommands() {
+    VkCommandBuffer beginSingleTimeCommands(VkCommandPool commandPool) {
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandPool = transferCmdPool;
+        allocInfo.commandPool = commandPool;
         allocInfo.commandBufferCount = 1;
 
         VkCommandBuffer commandBuffer;
@@ -1434,7 +1524,8 @@ class HelloTriangleApplication {
         return commandBuffer;
     }
 
-    void endSingleTimeCommands(VkCommandBuffer commandBuffer) {
+    void endSingleTimeCommands(VkCommandBuffer commandBuffer,
+                               VkCommandPool commandPool, VkQueue queue) {
         vkEndCommandBuffer(commandBuffer);
 
         VkSubmitInfo submitInfo{};
@@ -1442,16 +1533,16 @@ class HelloTriangleApplication {
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffer;
 
-        vkQueueSubmit(transferQueue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(transferQueue);
+        vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(queue);
 
-        vkFreeCommandBuffers(device, transferCmdPool, 1, &commandBuffer);
+        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
     void transitionImageLayout(VkImage image, VkFormat format,
-                               VkImageLayout oldLayout,
-                               VkImageLayout newLayout) {
-        VkCommandBuffer transBuffer = beginSingleTimeCommands();
+                               VkImageLayout oldLayout, VkImageLayout newLayout,
+                               uint32_t mipLevels) {
+        VkCommandBuffer transBuffer = beginSingleTimeCommands(transferCmdPool);
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1471,7 +1562,7 @@ class HelloTriangleApplication {
             barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         }
         barrier.subresourceRange.layerCount = 1;
-        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.levelCount = mipLevels;
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.baseArrayLayer = 0;
 
@@ -1509,12 +1600,13 @@ class HelloTriangleApplication {
         vkCmdPipelineBarrier(transBuffer, srcStage, dstStage, 0, 0, nullptr, 0,
                              nullptr, 1, &barrier);
 
-        endSingleTimeCommands(transBuffer);
+        endSingleTimeCommands(transBuffer, transferCmdPool, transferQueue);
     }
 
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width,
                            uint32_t height) {
-        VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+        VkCommandBuffer commandBuffer =
+            beginSingleTimeCommands(transferCmdPool);
 
         VkBufferImageCopy copyInfo{};
         copyInfo.bufferOffset = 0;
@@ -1533,11 +1625,12 @@ class HelloTriangleApplication {
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &copyInfo);
 
-        endSingleTimeCommands(commandBuffer);
+        endSingleTimeCommands(commandBuffer, transferCmdPool, transferQueue);
     }
 
     VkImageView createImageView(VkImage image, VkFormat format,
-                                VkImageAspectFlags aspectFlags) {
+                                VkImageAspectFlags aspectFlags,
+                                uint32_t mipLevels) {
         VkImageViewCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         createInfo.image = image;
@@ -1546,7 +1639,7 @@ class HelloTriangleApplication {
         // image porpouse
         createInfo.subresourceRange.aspectMask = aspectFlags;
         createInfo.subresourceRange.baseMipLevel = 0;
-        createInfo.subresourceRange.levelCount = 1;
+        createInfo.subresourceRange.levelCount = mipLevels;
         // the layers are for example to create stereographic images with
         // an image for each eye
         createInfo.subresourceRange.baseArrayLayer = 0;
@@ -1562,8 +1655,9 @@ class HelloTriangleApplication {
     }
 
     void createTextureImageView() {
-        textureImageView = createImageView(
-            textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+        textureImageView =
+            createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB,
+                            VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
     }
 
     void createTextureSampler() {
@@ -1586,9 +1680,9 @@ class HelloTriangleApplication {
         createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
         createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-        createInfo.mipLodBias = 0.0f;
         createInfo.minLod = 0.0f;
-        createInfo.maxLod = 0.0f;
+        createInfo.maxLod = static_cast<float>(mipLevels);
+        createInfo.mipLodBias = 0.0f;
 
         if (vkCreateSampler(device, &createInfo, nullptr, &textureSampler) !=
             VK_SUCCESS) {
