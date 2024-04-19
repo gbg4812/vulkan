@@ -15,13 +15,15 @@ class Object {
    private:
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
+    glm::mat4 modelMat;
 
    public:
     Object(std::string modelPath);
 
-    void scale(glm::vec3 scale);
-    void translate(glm::vec3 offset);
+    void setTransform(glm::mat4 model);
+    void transform(glm::mat4 transform);
 
+    const glm::mat4* getModelMatrix() const;
     const Vertex* getVertexData() const;
     const uint32_t* getIndexData() const;
     uint32_t getVertexSize() const;

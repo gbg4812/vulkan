@@ -7,7 +7,7 @@
 
 #include <stdexcept>
 
-Object::Object(std::string modelPath) {
+Object::Object(std::string modelPath) : modelMat(1.0f) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -50,6 +50,8 @@ Object::Object(std::string modelPath) {
 const Vertex* Object::getVertexData() const { return vertices.data(); }
 const uint32_t* Object::getIndexData() const { return indices.data(); }
 
+const glm::mat4* Object::getModelMatrix() const { return &modelMat; }
+
 uint32_t Object::getVertexSize() const {
     return static_cast<uint32_t>(vertices.size());
 }
@@ -57,17 +59,5 @@ uint32_t Object::getIndexSize() const {
     return static_cast<uint32_t>(indices.size());
 }
 
-void Object::scale(glm::vec3 scale) {
-    for (auto& vertex : vertices) {
-        vertex.pos.x *= scale.x;
-        vertex.pos.y *= scale.y;
-        vertex.pos.z *= scale.z;
-    }
-}
-void Object::translate(glm::vec3 offset) {
-    for (auto& vertex : vertices) {
-        vertex.pos.x += offset.x;
-        vertex.pos.y += offset.y;
-        vertex.pos.z += offset.z;
-    }
-}
+void Object::setTransform(glm::mat4 model) { modelMat = model; }
+void Object::transform(glm::mat4 transform) { modelMat = transform * modelMat; }

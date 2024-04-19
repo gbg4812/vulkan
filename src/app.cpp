@@ -1,3 +1,5 @@
+#include "ext/matrix_transform.hpp"
+#include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -97,11 +99,10 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct UniformBufferObjects {
+struct ViewMatrixUBO {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
     // a vec4 to 4N. The alignas operator does this for us!
-    alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
@@ -192,11 +193,6 @@ class VulkanEngine {
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
-
-    /* std::vector<VkBuffer> vertexBuffers; */
-    /* std::vector<VkBuffer> indexBuffers; */
-    /* VkDeviceMemory vertexBufferMemory; */
-    /* VkDeviceMemory indexBufferMemory; */
 
     std::vector<vk_Buffer> vertexBuffers;
     std::vector<vk_Buffer> indexBuffers;
@@ -1101,12 +1097,17 @@ class VulkanEngine {
             static_cast<uint32_t>(dynamicStates.size());
         dynamicState.pDynamicStates = dynamicStates.data();
 
+        VkPushConstantRange range{};
+        range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        range.offset = 0;
+        range.size = sizeof(glm::mat4);
+
         VkPipelineLayoutCreateInfo layoutCreateInfo{};
         layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         layoutCreateInfo.setLayoutCount = 1;
         layoutCreateInfo.pSetLayouts = &descriptorSetLayout;
-        layoutCreateInfo.pushConstantRangeCount = 0;
-        layoutCreateInfo.pPushConstantRanges = nullptr;
+        layoutCreateInfo.pushConstantRangeCount = 1;
+        layoutCreateInfo.pPushConstantRanges = &range;
 
         if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr,
                                    &pipelineLayout) != VK_SUCCESS) {
@@ -1656,7 +1657,7 @@ class VulkanEngine {
     }
 
     void createUniformBuffers() {
-        VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
+        VkDeviceSize bufferSize = sizeof(ViewMatrixUBO);
 
         uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
         uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1746,7 +1747,7 @@ class VulkanEngine {
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = uniformBuffers[i].buffer;
-            bufferInfo.range = sizeof(UniformBufferObjects);
+            bufferInfo.range = sizeof(ViewMatrixUBO);
             bufferInfo.offset = 0;
 
             VkDescriptorImageInfo imageInfo{};
@@ -1854,6 +1855,9 @@ class VulkanEngine {
             vkCmdBindDescriptorSets(
                 commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
                 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+            vkCmdPushConstants(commandBuffer, pipelineLayout,
+                               VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4),
+                               objects[i]->getModelMatrix());
 
             vkCmdDrawIndexed(commandBuffer, objects[i]->getIndexSize(), 1, 0, 0,
                              0);
@@ -1921,14 +1925,10 @@ class VulkanEngine {
                          currentTime - startTime)
                          .count();
 
-        UniformBufferObjects ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f),
-                                glm::vec3(1.0f, 0.0f, 0.0f));
-        ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),
-                                glm::vec3(0.0f, 1.0f, 0.0f));
+        ViewMatrixUBO ubo{};
         ubo.view = glm::lookAt(glm::vec3(10.0f, 10.0f, 10.0f),
                                glm::vec3(0.0f, 0.0f, 0.0f),
-                               glm::vec3(0.0f, 0.0f, 1.0f));
+                               glm::vec3(0.0f, 1.0f, 0.0f));
         ubo.proj = glm::perspective(
             glm::radians(45.0f),
             swapChainImageExtent.width / (float)swapChainImageExtent.height,
@@ -2017,9 +2017,15 @@ int main() {
     Object car1 = Object(MODEL_PATH);
     Object car2 = Object(MODEL_PATH);
 
-    car1.scale({0.01, 0.01, 0.01});
-    car2.scale({0.01, 0.01, 0.01});
-    car2.translate({8, 0, 0});
+    glm::mat4 correct_cars(1.0f);
+    correct_cars = glm::scale(correct_cars, {0.01f, 0.01f, 0.01f});
+
+    car2.transform(correct_cars);
+    car1.transform(correct_cars);
+    car1.transform(
+        glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)));
+    car2.transform(
+        glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));
 
     try {
         engine.addObject(&car1);
