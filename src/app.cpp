@@ -1,4 +1,3 @@
-#include "vulkan/vulkan_core.h"
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -15,7 +14,6 @@
 #include <fstream>
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
-#include <gtx/hash.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -23,16 +21,15 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
 #include "Logger.h"
+#include "Object.h"
+#include "Vertex.h"
+#include "vk_Buffer.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -100,58 +97,6 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-    glm::vec2 texCoord;
-
-    static VkVertexInputBindingDescription getBindingDescription() {
-        VkVertexInputBindingDescription description{};
-        description.binding = 0;
-        description.stride = sizeof(Vertex);
-        description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        return description;
-    }
-
-    static std::array<VkVertexInputAttributeDescription, 3>
-    getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-        return attributeDescriptions;
-    }
-
-    bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color &&
-               texCoord == other.texCoord;
-    }
-};
-
-namespace std {
-template <>
-struct hash<Vertex> {
-    size_t operator()(Vertex const& vertex) const {
-        return ((hash<glm::vec3>()(vertex.pos) ^
-                 (hash<glm::vec3>()(vertex.color) << 1)) >>
-                1) ^
-               (hash<glm::vec2>()(vertex.texCoord) << 1);
-    }
-};
-}  // namespace std
-
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
@@ -160,13 +105,63 @@ struct UniformBufferObjects {
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
-class HelloTriangleApplication {
+class VulkanEngine {
    public:
+    void addObject(const Object* object) { objects.push_back(object); }
     void run() {
         initWindow();
         initVulkan();
         mainLoop();
-        cleanup();
+    }
+
+    ~VulkanEngine() {
+        cleanupSwapChain();
+
+        for (auto& vertexBuffer : vertexBuffers) {
+            vertexBuffer.destory();
+        }
+
+        for (auto& indexBuffer : indexBuffers) {
+            indexBuffer.destory();
+        }
+
+        for (auto& ubo : uniformBuffers) {
+            ubo.destory();
+        }
+
+        vkDestroySampler(device, textureSampler, nullptr);
+        vkDestroyImageView(device, textureImageView, nullptr);
+        vkDestroyImage(device, textureImage, nullptr);
+        vkFreeMemory(device, textureImageMemory, nullptr);
+
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+
+        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+            vkDestroyFence(device, inFlightFences[i], nullptr);
+        }
+
+        vkDestroyCommandPool(device, graphicsCmdPool, nullptr);
+        vkDestroyCommandPool(device, transferCmdPool, nullptr);
+
+        vkDestroyPipeline(device, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        vkDestroyRenderPass(device, renderPass, nullptr);
+
+        vkDestroyDevice(device, nullptr);
+
+        if (enableValidationLayers) {
+            DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        }
+
+        vkDestroySurfaceKHR(instance, surface, nullptr);
+        vkDestroyInstance(instance, nullptr);
+
+        glfwDestroyWindow(window);
+        glfwTerminate();
     }
 
    private:
@@ -197,13 +192,16 @@ class HelloTriangleApplication {
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
-    VkBuffer vertexBuffer;
-    VkBuffer indexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    VkDeviceMemory indexBufferMemory;
 
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    /* std::vector<VkBuffer> vertexBuffers; */
+    /* std::vector<VkBuffer> indexBuffers; */
+    /* VkDeviceMemory vertexBufferMemory; */
+    /* VkDeviceMemory indexBufferMemory; */
+
+    std::vector<vk_Buffer> vertexBuffers;
+    std::vector<vk_Buffer> indexBuffers;
+
+    std::vector<vk_Buffer> uniformBuffers;
     std::vector<void*> uniformBuffersMapped;
 
     VkDescriptorPool descriptorPool;
@@ -223,8 +221,7 @@ class HelloTriangleApplication {
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
+    std::vector<const Object*> objects;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -237,15 +234,15 @@ class HelloTriangleApplication {
 
     static void framebufferResizeCallback(GLFWwindow* window, int width,
                                           int height) {
-        auto app = reinterpret_cast<HelloTriangleApplication*>(
-            glfwGetWindowUserPointer(window));
-        app->frameBufferResized = true;
+        auto engine =
+            reinterpret_cast<VulkanEngine*>(glfwGetWindowUserPointer(window));
+        engine->frameBufferResized = true;
     }
 
     static void keyCallback(GLFWwindow* window, int key, int scancode,
                             int action, int mods) {
-        auto app = reinterpret_cast<HelloTriangleApplication*>(
-            glfwGetWindowUserPointer(window));
+        auto engine =
+            reinterpret_cast<VulkanEngine*>(glfwGetWindowUserPointer(window));
         if (key == GLFW_KEY_W && action == GLFW_PRESS) {
             std::cout << "W key pressed" << std::endl;
         }
@@ -277,12 +274,11 @@ class HelloTriangleApplication {
         createDepthResources();
         createFrameBuffers();
 
-        loadModel();
         createTextureImage();
         createTextureImageView();
         createTextureSampler();
-        createVertexBuffer();
-        createIndexBuffer();
+        createVertexBuffers();
+        createIndexBuffers();
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -317,55 +313,6 @@ class HelloTriangleApplication {
         }
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
-    }
-
-    void cleanup() {
-        cleanupSwapChain();
-
-        vkDestroySampler(device, textureSampler, nullptr);
-        vkDestroyImageView(device, textureImageView, nullptr);
-        vkDestroyImage(device, textureImage, nullptr);
-        vkFreeMemory(device, textureImageMemory, nullptr);
-
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-            vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
-        }
-
-        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-
-        vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
-
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        vkFreeMemory(device, indexBufferMemory, nullptr);
-
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-            vkDestroyFence(device, inFlightFences[i], nullptr);
-        }
-
-        vkDestroyCommandPool(device, graphicsCmdPool, nullptr);
-        vkDestroyCommandPool(device, transferCmdPool, nullptr);
-
-        vkDestroyPipeline(device, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-        vkDestroyRenderPass(device, renderPass, nullptr);
-
-        vkDestroyDevice(device, nullptr);
-
-        if (enableValidationLayers) {
-            DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        }
-
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-        vkDestroyInstance(instance, nullptr);
-
-        glfwDestroyWindow(window);
-        glfwTerminate();
     }
 
     void recreateSwapChain() {
@@ -1234,38 +1181,6 @@ class HelloTriangleApplication {
         throw std::runtime_error("failed to find suitable memory type");
     }
 
-    void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                      VkMemoryPropertyFlags properties, VkBuffer& buffer,
-                      VkDeviceMemory& memory) {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = size;
-        bufferInfo.usage = usage;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        bufferInfo.flags = 0;
-
-        if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) !=
-            VK_SUCCESS) {
-            throw std::runtime_error("failed to create buffer!");
-        }
-
-        VkMemoryRequirements memRequirements{};
-        vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocateInfo{};
-        allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocateInfo.allocationSize = memRequirements.size;
-        allocateInfo.memoryTypeIndex =
-            findMemoryType(memRequirements.memoryTypeBits, properties);
-
-        if (vkAllocateMemory(device, &allocateInfo, nullptr, &memory) !=
-            VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate buffer memory!");
-        }
-
-        vkBindBufferMemory(device, buffer, memory, 0);
-    }
-
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
         VkCommandBuffer cpyCmdBuffer = beginSingleTimeCommands(transferCmdPool);
 
@@ -1326,46 +1241,6 @@ class HelloTriangleApplication {
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
     }
 
-    void loadModel() {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
-
-        if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                              MODEL_PATH.c_str())) {
-            throw std::runtime_error(warn + err);
-        }
-
-        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-
-        for (const auto& shape : shapes) {
-            for (const auto& index : shape.mesh.indices) {
-                Vertex vertex{};
-                vertex.pos = {
-                    attrib.vertices[3 * index.vertex_index + 0],
-                    attrib.vertices[3 * index.vertex_index + 1],
-                    attrib.vertices[3 * index.vertex_index + 2],
-                };
-
-                vertex.texCoord = {
-
-                    attrib.texcoords[2 * index.texcoord_index + 0],
-                    1.0f - attrib.texcoords[2 * index.texcoord_index + 1],
-                };
-
-                vertex.color = {1.0f, 1.0f, 1.0f};
-
-                if (uniqueVertices.count(vertex) == 0) {
-                    uniqueVertices[vertex] =
-                        static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
-                indices.push_back(uniqueVertices[vertex]);
-            }
-        }
-    }
-
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight,
@@ -1379,18 +1254,15 @@ class HelloTriangleApplication {
             throw std::runtime_error("failed to load texture image!");
         }
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-
-        createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     stagingBuffer, stagingBufferMemory);
+        vk_Buffer stagingBuffer(device, physicalDevice, imageSize,
+                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
         void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+        vkMapMemory(device, stagingBuffer.memory, 0, imageSize, 0, &data);
         memcpy(data, pixels, static_cast<size_t>(imageSize));
-        vkUnmapMemory(device, stagingBufferMemory);
+        vkUnmapMemory(device, stagingBuffer.memory);
         stbi_image_free(pixels);
 
         createImage(texWidth, texHeight, mipLevels, VK_SAMPLE_COUNT_1_BIT,
@@ -1404,15 +1276,14 @@ class HelloTriangleApplication {
         transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB,
                               VK_IMAGE_LAYOUT_UNDEFINED,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, mipLevels);
-        copyBufferToImage(stagingBuffer, textureImage,
+        copyBufferToImage(stagingBuffer.buffer, textureImage,
                           static_cast<uint32_t>(texWidth),
                           static_cast<uint32_t>(texHeight));
 
         generateMipmaps(textureImage, VK_FORMAT_R8G8B8A8_SRGB, texWidth,
                         texHeight, mipLevels);
 
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+        stagingBuffer.destory();
     }
 
     void generateMipmaps(VkImage image, VkFormat format, int32_t texWidth,
@@ -1733,69 +1604,71 @@ class HelloTriangleApplication {
         }
     }
 
-    void createVertexBuffer() {
-        VkDeviceSize size = vertices.size() * sizeof(vertices[0]);
+    void createVertexBuffers() {
+        vertexBuffers.resize(objects.size());
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     stagingBuffer, stagingBufferMemory);
+        for (size_t i = 0; i < objects.size(); ++i) {
+            VkDeviceSize size = objects[i]->getVertexSize() * sizeof(Vertex);
 
-        void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, size, 0, &data);
-        memcpy(data, vertices.data(), size);
-        vkUnmapMemory(device, stagingBufferMemory);
+            vk_Buffer stagingBuffer(device, physicalDevice, size,
+                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        createBuffer(size,
-                     VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                         VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer,
-                     vertexBufferMemory);
-        copyBuffer(stagingBuffer, vertexBuffer, size);
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+            void* data;
+            vkMapMemory(device, stagingBuffer.memory, 0, size, 0, &data);
+            memcpy(data, objects[i]->getVertexData(), size);
+            vkUnmapMemory(device, stagingBuffer.memory);
+
+            vertexBuffers[i] = vk_Buffer(device, physicalDevice, size,
+                                         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            copyBuffer(stagingBuffer.buffer, vertexBuffers[i].buffer, size);
+            stagingBuffer.destory();
+        }
     }
 
-    void createIndexBuffer() {
-        VkDeviceSize size = indices.size() * sizeof(indices[0]);
+    void createIndexBuffers() {
+        indexBuffers.resize(objects.size());
+        for (size_t i = 0; i < objects.size(); ++i) {
+            VkDeviceSize size = objects[i]->getIndexSize() * sizeof(uint32_t);
 
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-        createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                         VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     stagingBuffer, stagingBufferMemory);
+            vk_Buffer stagingBuffer(device, physicalDevice, size,
+                                    VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        void* data;
-        vkMapMemory(device, stagingBufferMemory, 0, size, 0, &data);
-        memcpy(data, indices.data(), size);
-        vkUnmapMemory(device, stagingBufferMemory);
+            void* data;
+            vkMapMemory(device, stagingBuffer.memory, 0, size, 0, &data);
+            memcpy(data, objects[i]->getIndexData(), size);
+            vkUnmapMemory(device, stagingBuffer.memory);
 
-        createBuffer(
-            size,
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer,
-            indexBufferMemory);
-        copyBuffer(stagingBuffer, indexBuffer, size);
-        vkDestroyBuffer(device, stagingBuffer, nullptr);
-        vkFreeMemory(device, stagingBufferMemory, nullptr);
+            indexBuffers[i] = vk_Buffer(device, physicalDevice, size,
+                                        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+            copyBuffer(stagingBuffer.buffer, indexBuffers[i].buffer, size);
+            stagingBuffer.destory();
+        }
     }
 
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
 
         uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
         uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                         uniformBuffers[i], uniformBuffersMemory[i]);
-            vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0,
+            uniformBuffers[i] =
+                vk_Buffer(device, physicalDevice, bufferSize,
+                          VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+            vkMapMemory(device, uniformBuffers[i].memory, 0, bufferSize, 0,
                         &uniformBuffersMapped[i]);
         }
     }
@@ -1817,8 +1690,8 @@ class HelloTriangleApplication {
             throw std::runtime_error("failed to create graphics command pool!");
         }
 
-        // This command pool is to allocate command buffers that will be short
-        // lived
+        // This command pool is to allocate command buffers that will be
+        // short lived
         VkCommandPoolCreateInfo transferPoolInfo{};
         transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
@@ -1872,7 +1745,7 @@ class HelloTriangleApplication {
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = uniformBuffers[i];
+            bufferInfo.buffer = uniformBuffers[i].buffer;
             bufferInfo.range = sizeof(UniformBufferObjects);
             bufferInfo.offset = 0;
 
@@ -1971,18 +1844,20 @@ class HelloTriangleApplication {
         scissor.extent = swapChainImageExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer};
         VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0,
-                             VK_INDEX_TYPE_UINT32);
+        for (int i = 0; i < vertexBuffers.size(); ++i) {
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1,
+                                   &vertexBuffers[i].buffer, offsets);
+            vkCmdBindIndexBuffer(commandBuffer, indexBuffers[i].buffer, 0,
+                                 VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelineLayout, 0, 1,
-                                &descriptorSets[currentFrame], 0, nullptr);
-
-        vkCmdDrawIndexed(commandBuffer, indices.size(), 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, objects[i]->getIndexSize(), 1, 0, 0,
+                             0);
+        }
 
         vkCmdEndRenderPass(commandBuffer);
 
@@ -2047,8 +1922,7 @@ class HelloTriangleApplication {
                          .count();
 
         UniformBufferObjects ubo{};
-        ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, 0.01f, 0.01f));
-        ubo.model = glm::rotate(ubo.model, glm::radians(90.0f),
+        ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f),
                                 glm::vec3(1.0f, 0.0f, 0.0f));
         ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),
                                 glm::vec3(0.0f, 1.0f, 0.0f));
@@ -2138,10 +2012,20 @@ class HelloTriangleApplication {
 };
 
 int main() {
-    HelloTriangleApplication app;
+    VulkanEngine engine;
+
+    Object car1 = Object(MODEL_PATH);
+    Object car2 = Object(MODEL_PATH);
+
+    car1.scale({0.01, 0.01, 0.01});
+    car2.scale({0.01, 0.01, 0.01});
+    car2.translate({8, 0, 0});
 
     try {
-        app.run();
+        engine.addObject(&car1);
+        engine.addObject(&car2);
+
+        engine.run();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;

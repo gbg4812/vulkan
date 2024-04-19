@@ -13,6 +13,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
 set(SRC 
     src/app.cpp
+    src/Vertex.cpp
+    src/Object.cpp
+    src/vkutils.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SRC})
