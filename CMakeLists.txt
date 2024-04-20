@@ -12,13 +12,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
 set(SRC 
-    src/app.cpp
+    src/VulkanEngine.cpp
+    src/VulkanExtras.cpp
     src/Vertex.cpp
     src/Object.cpp
     src/vkutils.cpp
 )
 
-add_executable(${PROJECT_NAME} ${SRC})
+add_library(${PROJECT_NAME} ${SRC})
 
 if(CMAKE_BUILD_TYPE STREQUAL Release OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
     target_compile_options(${PROJECT_NAME} PRIVATE -O3)
