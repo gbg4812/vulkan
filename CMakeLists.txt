@@ -47,6 +47,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
 add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD
+    COMMAND [ -h ${CMAKE_SOURCE_DIR}/compile_commands.json ] || ln -s ${CMAKE_BINARY_DIR}/compile_commands.json ${CMAKE_SOURCE_DIR}/ || exit 0
     COMMAND [ -h ${CMAKE_BINARY_DIR}/textures ] || ln -s ${PROJECT_SOURCE_DIR}/data/textures ${CMAKE_BINARY_DIR}/ || exit 0
     COMMAND [ -h ${CMAKE_BINARY_DIR}/shaders ] || ln -s ${PROJECT_SOURCE_DIR}/data/shaders ${CMAKE_BINARY_DIR}/ || exit 0
     COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ${PROJECT_SOURCE_DIR}/data/models ${CMAKE_BINARY_DIR}/ || exit 0
