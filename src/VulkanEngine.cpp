@@ -11,8 +11,8 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
-#include <glm.hpp>
-#include <gtc/matrix_transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
