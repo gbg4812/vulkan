@@ -19,11 +19,10 @@ set(SRC
     src/vkutils.cpp
 )
 
-add_library(${PROJECT_NAME} ${SRC})
+add_library(${PROJECT_NAME} STATIC ${SRC})
 
 
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_link_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/lib)
 
 set(LIBS glfw3 vulkan Xi Xrandr Xcursor Xinerama)
 
