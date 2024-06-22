@@ -6,6 +6,9 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+
+#include <stb_image.h>
+
 #include <cstdint>
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
@@ -13,9 +16,7 @@
 #include <string>
 #include <vector>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-
+#include "Camera.h"
 #include "Object.h"
 #include "Vertex.h"
 #include "vk_Buffer.h"
@@ -37,6 +38,8 @@ const std::vector<const char*> validationLayers = {
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
+
+#define NDEBUG
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -60,16 +63,10 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-struct ViewMatrixUBO {
-    // Vulkan requires us to align the descriptor data. If it is a scalar to N
-    // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
-    // a vec4 to 4N. The alignas operator does this for us!
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
 class VulkanEngine {
    public:
     void addObject(const Object* object);
+    void addCamera(const Camera* camera);
     void run();
 
     ~VulkanEngine();
@@ -127,6 +124,8 @@ class VulkanEngine {
     VkImageView depthImageView;
 
     std::vector<const Object*> objects;
+    std::vector<const Camera*> cameras;
+    int currentCamera = -1;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 

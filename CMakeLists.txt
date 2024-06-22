@@ -22,9 +22,9 @@ set(SRC
 add_library(${PROJECT_NAME} STATIC ${SRC})
 
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include/)
 
-set(LIBS glfw3 vulkan Xi Xrandr Xcursor Xinerama)
+set(LIBS vulkan Xi Xrandr Xcursor Xinerama)
 
 # update the LIBS list with external libs
 add_subdirectory(external)
@@ -35,7 +35,7 @@ target_link_libraries(${PROJECT_NAME} ${LIBS})
 add_custom_command(
     TARGET ${PROJECT_NAME}
     POST_BUILD
-    COMMAND [ -h ${CMAKE_BINARY_DIR}/textures ] || ln -s ${CMAKE_SOURCE_DIR}/data/textures ${CMAKE_BINARY_DIR}/ || exit 0
-    COMMAND [ -h ${CMAKE_BINARY_DIR}/shaders ] || ln -s ${CMAKE_SOURCE_DIR}/data/shaders ${CMAKE_BINARY_DIR}/ || exit 0
-    COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ${CMAKE_SOURCE_DIR}/data/models ${CMAKE_BINARY_DIR}/ || exit 0
+    COMMAND [ -h ${CMAKE_BINARY_DIR}/textures ] || ln -s ${CMAKE_CURRENT_SOURCE_DIR}/data/textures ${CMAKE_BINARY_DIR}/ || exit 0
+    COMMAND [ -h ${CMAKE_BINARY_DIR}/shaders ] || ln -s ${CMAKE_CURRENT_SOURCE_DIR}/data/shaders ${CMAKE_BINARY_DIR}/ || exit 0
+    COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ${CMAKE_CURRENT_SOURCE_DIR}/data/models ${CMAKE_BINARY_DIR}/ || exit 0
 )

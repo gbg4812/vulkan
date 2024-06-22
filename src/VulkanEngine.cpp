@@ -1,5 +1,7 @@
 #include "VulkanEngine.h"
 
+#include <vulkan/vulkan_core.h>
+
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
@@ -22,6 +24,9 @@
 #include <string>
 #include <vector>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include "Logger.h"
 #include "Object.h"
 #include "Vertex.h"
@@ -31,6 +36,12 @@
 void VulkanEngine::addObject(const Object* object) {
     objects.push_back(object);
 }
+
+void VulkanEngine::addCamera(const Camera* camera) {
+    cameras.push_back(camera);
+    currentCamera = cameras.size() - 1;
+}
+
 void VulkanEngine::run() {
     initWindow();
     initVulkan();
@@ -240,7 +251,7 @@ void VulkanEngine::createInstance() {
     }
 }
 
-bool checkValidationLayerSupport() {
+bool VulkanEngine::checkValidationLayerSupport() {
     uint32_t layerCount;
     // geting the number of available layers
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -269,7 +280,7 @@ bool checkValidationLayerSupport() {
     return true;
 }
 
-const std::vector<const char*> getRequiredExtensions() {
+const std::vector<const char*> VulkanEngine::getRequiredExtensions() {
     // get the extensions required by glfw
     uint32_t glfwExtensionCount = 0;
     const char** glfwExtensions;
@@ -284,6 +295,7 @@ const std::vector<const char*> getRequiredExtensions() {
     // validation layers are enabled
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+        extensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
     }
 
     return extensions;
@@ -328,11 +340,11 @@ void VulkanEngine::populateDebugMessengerCreateInfo(
 // static method since it is not concrete to the application instance
 //     checks if signature is correct
 //
-static VKAPI_ATTR VkBool32 VKAPI_CALL
-debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-              VkDebugUtilsMessageTypeFlagsEXT messageType,
-              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-              void* pUserData) {
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanEngine::debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
     std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
     return VK_FALSE;
@@ -540,7 +552,7 @@ SwapChainSupportDetails VulkanEngine::querySwapChainSupport(
     return details;
 }
 
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(
+VkSurfaceFormatKHR VulkanEngine::chooseSwapSurfaceFormat(
     const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB and
@@ -552,7 +564,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(
     return availableFormats[0];
 }
 
-VkPresentModeKHR choosePresentMode(
+VkPresentModeKHR VulkanEngine::choosePresentMode(
     const std::vector<VkPresentModeKHR>& presentModes) {
     for (const auto& availablePresentMode : presentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -668,7 +680,7 @@ void VulkanEngine::createColorResources() {
     colorImageView =
         createImageView(colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
-std::vector<char> readFile(const std::string& filename) {
+std::vector<char> VulkanEngine::readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
     if (!file) {
         throw std::runtime_error("failed to open file!");
@@ -1072,7 +1084,7 @@ VkFormat VulkanEngine::findDepthFormat() {
         VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
-bool hasStencilComponent(VkFormat format) {
+bool VulkanEngine::hasStencilComponent(VkFormat format) {
     return format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
            format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
@@ -1761,17 +1773,10 @@ void VulkanEngine::updateUniformBuffer(uint32_t currentImage) {
                      currentTime - startTime)
                      .count();
 
-    ViewMatrixUBO ubo{};
-    ubo.view =
-        glm::lookAt(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f));
-    ubo.proj = glm::perspective(
-        glm::radians(45.0f),
-        swapChainImageExtent.width / (float)swapChainImageExtent.height, 0.1f,
-        100.0f);
-    ubo.proj[1][1] *= -1;
-
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    if (currentCamera >= 0 and currentCamera < cameras.size()) {
+        memcpy(uniformBuffersMapped[currentImage],
+               cameras[currentCamera]->ubo(), sizeof(ViewMatrixUBO));
+    }
 }
 
 void VulkanEngine::drawFrame() {
