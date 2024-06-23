@@ -2,6 +2,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include "GLFW/glfw3.h"
+
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
@@ -27,6 +29,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include "Camera.h"
 #include "Logger.h"
 #include "Object.h"
 #include "Vertex.h"
@@ -37,7 +40,7 @@ void VulkanEngine::addObject(const Object* object) {
     objects.push_back(object);
 }
 
-void VulkanEngine::addCamera(const Camera* camera) {
+void VulkanEngine::addCamera(Camera* camera) {
     cameras.push_back(camera);
     currentCamera = cameras.size() - 1;
 }
@@ -117,6 +120,20 @@ void VulkanEngine::keyCallback(GLFWwindow* window, int key, int scancode,
         reinterpret_cast<VulkanEngine*>(glfwGetWindowUserPointer(window));
     if (key == GLFW_KEY_W && action == GLFW_PRESS) {
         std::cout << "W key pressed" << std::endl;
+        engine->cameras[engine->currentCamera]->updateCamera(
+            0.0f, 0.0f, true, false, false, false);
+    } else if (key == GLFW_KEY_S && action == GLFW_PRESS) {
+        std::cout << "S key pressed" << std::endl;
+        engine->cameras[engine->currentCamera]->updateCamera(
+            0.0f, 0.0f, false, true, false, false);
+    } else if (key == GLFW_KEY_D && action == GLFW_PRESS) {
+        std::cout << "D key pressed" << std::endl;
+        engine->cameras[engine->currentCamera]->updateCamera(
+            0.0f, 0.0f, false, false, true, false);
+    } else if (key == GLFW_KEY_A && action == GLFW_PRESS) {
+        std::cout << "A key pressed" << std::endl;
+        engine->cameras[engine->currentCamera]->updateCamera(
+            0.0f, 0.0f, false, false, false, true);
     }
 }
 
@@ -883,7 +900,7 @@ void VulkanEngine::createGraphicsPipeline() {
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
@@ -1774,8 +1791,8 @@ void VulkanEngine::updateUniformBuffer(uint32_t currentImage) {
                      .count();
 
     if (currentCamera >= 0 and currentCamera < cameras.size()) {
-        memcpy(uniformBuffersMapped[currentImage],
-               cameras[currentCamera]->ubo(), sizeof(ViewMatrixUBO));
+        ViewMatrixUBO UBO = cameras[currentCamera]->ubo();
+        memcpy(uniformBuffersMapped[currentImage], &UBO, sizeof(ViewMatrixUBO));
     }
 }
 

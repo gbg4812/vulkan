@@ -39,8 +39,6 @@ const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
-#define NDEBUG
-
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -66,7 +64,7 @@ struct SwapChainSupportDetails {
 class VulkanEngine {
    public:
     void addObject(const Object* object);
-    void addCamera(const Camera* camera);
+    void addCamera(Camera* camera);
     void run();
 
     ~VulkanEngine();
@@ -124,7 +122,7 @@ class VulkanEngine {
     VkImageView depthImageView;
 
     std::vector<const Object*> objects;
-    std::vector<const Camera*> cameras;
+    std::vector<Camera*> cameras;
     int currentCamera = -1;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
