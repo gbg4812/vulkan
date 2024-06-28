@@ -1,5 +1,3 @@
-#include <vulkan/vulkan.h>
-
 #include <string>
 #include <vector>
 

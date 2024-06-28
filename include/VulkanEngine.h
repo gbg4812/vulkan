@@ -1,6 +1,3 @@
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
@@ -12,7 +9,6 @@
 #include <cstdint>
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,11 +16,10 @@
 #include "Object.h"
 #include "Vertex.h"
 #include "vk_Buffer.h"
+#include "vk_SwapChain.h"
 
 #pragma once
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
@@ -45,22 +40,6 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-    std::optional<uint32_t> transferFamily;
-    bool isComplete() {
-        return graphicsFamily.has_value() and presentFamily.has_value() and
-               transferFamily.has_value();
-    }
-};
-
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
-
 class VulkanEngine {
    public:
     void addObject(const Object* object);
@@ -73,22 +52,15 @@ class VulkanEngine {
     GLFWwindow* window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
-    VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device;
     VkQueue graphicsQueue;
     VkQueue presentQueue;
     VkQueue transferQueue;
-    VkSwapchainKHR swapChain;
-    std::vector<VkImage> swapChainImages;
-    VkFormat swapChainImageFormat;
-    VkExtent2D swapChainImageExtent;
-    std::vector<VkImageView> swapChainImageViews;
     VkRenderPass renderPass;
     VkDescriptorSetLayout descriptorSetLayout;
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
     VkCommandPool graphicsCmdPool;
     VkCommandPool transferCmdPool;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -96,7 +68,6 @@ class VulkanEngine {
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
-    bool frameBufferResized = false;
 
     std::vector<vk_Buffer> vertexBuffers;
     std::vector<vk_Buffer> indexBuffers;
@@ -183,21 +154,6 @@ class VulkanEngine {
 
     void createLogicalDevice();
 
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
-
-    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-
-    VkSurfaceFormatKHR chooseSwapSurfaceFormat(
-        const std::vector<VkSurfaceFormatKHR>& availableFormats);
-
-    VkPresentModeKHR choosePresentMode(
-        const std::vector<VkPresentModeKHR>& presentModes);
-
-    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
-    void createSwapChain();
-
-    void createImageViews();
-    void createColorResources();
     static std::vector<char> readFile(const std::string& filename);
 
     VkShaderModule createShaderModule(const std::vector<char>& code);
@@ -207,8 +163,6 @@ class VulkanEngine {
     void createDescriptorSetLayout();
 
     void createGraphicsPipeline();
-
-    void createFrameBuffers();
 
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags flags);
 

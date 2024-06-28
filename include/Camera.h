@@ -1,8 +1,4 @@
-#include <vulkan/vulkan_core.h>
-
-#include "ext/matrix_transform.hpp"
-#include "fwd.hpp"
-#include "trigonometric.hpp"
+#include "matrix.hpp"
 #define GLM_FORCE_IMPLEMENTATION
 #include <glm.hpp>
 #include <gtc/matrix_transform.hpp>
@@ -39,15 +35,17 @@ class Camera {
                              (float)width / (float)height, nearPlane, farPlane);
         return UBO;
     }
-    void updateCamera(double mousex, double mousey, bool front, bool back,
-                      bool right, bool left) {
-        transforms = glm::translate(
-            transforms,
-            glm::vec3(right * sensiblility + left * -sensiblility, 0,
-                      front * -sensiblility + back * sensiblility));
-        transforms = glm::rotate(transforms, (float)mousex, glm::vec3(0, 1, 0));
-        transforms = glm::rotate(transforms, (float)mousey, glm::vec3(1, 0, 0));
+    void transform(glm::mat4 transformation) {
+        transforms = transformation * transforms;
     }
+
+    void setSize(int width, int height) {
+        this->width = width;
+        this->height = height;
+    }
+
+    int getWidth() const { return width; }
+    int getHeight() const { return height; }
 
    private:
     glm::mat4 transforms;

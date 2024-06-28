@@ -1,9 +1,6 @@
-#include <vulkan/vulkan.h>
-
 #include <stdexcept>
 
-#include "vkutils.h"
-#include "vulkan/vulkan_core.h"
+#include "vk_utils.h"
 
 #pragma once
 
