@@ -2065,6 +2065,8 @@ class HelloTriangleApplication {
     }
 
     void drawFrame() {
+        // esperem que s'hagi acabat de renderitzar l'últim frame coucurrent amb
+        // el que toca renderitzar (els si els altres no han acabat no importa)
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE,
                         UINT64_MAX);
 
@@ -2083,11 +2085,15 @@ class HelloTriangleApplication {
         updateUniformBuffer(currentFrame);
 
         // Only reset fence if we know that work is going to be submitted
+        // Per tal que es pugui fer submit work
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
+        // esperarem que l'imatge estigui disponible ( imageAvailableSemaphores
+        // ) i també definim el semafor que indicarà que ha acabat el
+        // renderitzat (per saber quan presentar el frame)
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
