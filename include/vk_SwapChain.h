@@ -3,12 +3,11 @@
 
 #include <vector>
 
-#include "vk_utils.h"
+#include "vk_Context.h"
 
 class vk_SwapChain {
    public:
-    vk_SwapChain(int width, int height, VkDevice device,
-                 VkPhysicalDevice physicalDevice);
+    vk_SwapChain(int width, int height);
 
     ~vk_SwapChain();
 
@@ -17,13 +16,12 @@ class vk_SwapChain {
     VkFormat getImageFormat();
     VkExtent2D getImageExtent();
     VkSwapchainKHR getSwapChain();
-    VkSurfaceKHR surface;
-    virtual const std::vector<const char*> getRequiredExtensions();
+    virtual static std::vector<const char*> getRequiredExtensions();
 
-    void recreate(int width, int height, VkDevice device,
-                  VkPhysicalDevice physicalDevice);
+    void recreate(int width, int height);
 
    private:
+    VkSurfaceKHR surface;
     struct SwapChainSupportDetails {
         VkSurfaceCapabilitiesKHR capabilities;
         std::vector<VkSurfaceFormatKHR> formats;
@@ -42,7 +40,7 @@ class vk_SwapChain {
 
     VkDevice device;
 
-    SwapChainSupportDetails querySupport(VkPhysicalDevice physicalDevice);
+    SwapChainSupportDetails querySupport();
 
     VkSurfaceFormatKHR chooseFormat(
         const std::vector<VkSurfaceFormatKHR>& availableFormats);

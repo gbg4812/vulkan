@@ -16,6 +16,7 @@
 #include "Object.h"
 #include "Vertex.h"
 #include "vk_Buffer.h"
+#include "vk_Context.h"
 #include "vk_SwapChain.h"
 
 #pragma once
