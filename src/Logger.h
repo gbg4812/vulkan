@@ -1,7 +1,8 @@
 #include <iostream>
 #include <vector>
 
-#pragma once
+#ifndef GBG_LOGGER
+#define GBG_LOGGER
 
 #ifndef NDEBUG
 #define LOG(x) std::cout << #x << " = " << x << std::endl;
@@ -19,3 +20,5 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
 
     return os;
 }
+
+#endif

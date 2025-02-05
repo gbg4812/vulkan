@@ -27,6 +27,7 @@ find_package(Vulkan REQUIRED)
 
 
 include_directories(./external)
+include_directories(.)
 
 # GLM
 set(GLM_PTH ./external/glm)
