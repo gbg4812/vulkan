@@ -18,13 +18,12 @@ add_executable(${PROJECT_NAME} ${sources})
 if(CMAKE_BUILD_TYPE STREQUAL Release OR CMAKE_BUILD_TYPE STREQUAL RelWithDebInfo)
     target_compile_options(${PROJECT_NAME} PRIVATE -O3)
 elseif(CMAKE_BUILD_TYPE STREQUAL Debug)
-    target_compile_options(${PROJECT_NAME} PRIVATE -Wall -O0)
+    target_compile_options(${PROJECT_NAME} PRIVATE -g -Wall -O0)
 endif()
 
 
 # External dependencies
 find_package(Vulkan REQUIRED)
-
 
 include_directories(./external)
 include_directories(.)

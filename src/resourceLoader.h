@@ -5,57 +5,14 @@
 #include <tiny_obj_loader.h>
 
 #include <string>
-#include <string_view>
-#include <vector>
+
+#include "internal/scene/Scene.hpp"
 
 namespace gbg {
 
-struct Resource {
-    enum Type {
-        TEXTURE,
-        INT,
-        FLOAT,
-    };
+void loadModel(Scene& scene, std::string model_path);
 
-    Resource::Type type;
-};
-
-struct Shader {
-    int id;
-    std::string_view shaderPath;
-    std::vector<Resource> bindings;
-};
-
-struct Material {
-    int id;
-    int shaderID;
-    std::vector<Resource*> resources;
-};
-
-struct TextureResource : Resource {
-    TextureResource() { type = TEXTURE; }
-    ~TextureResource() { stbi_image_free(pixels); }
-    stbi_uc* pixels;
-    int width;
-    int height;
-    int channels;
-};
-
-struct IntResource : Resource {
-    IntResource() { type = INT; }
-    int value;
-};
-
-struct Model {
-    int materialID;
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-};
-
-Model loadModel(std::string model_path);
-
-TextureResource loadTexture(std::string texture_path);
+TextureInputData loadTexture(Scene& scene, std::string texture_path);
 
 }  // namespace gbg
 

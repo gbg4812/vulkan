@@ -23,15 +23,16 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "Logger.h"
+#include "Vertex.h"
 #include "resourceLoader.h"
 #include "vkBuffer.h"
 #include "vkImage.h"
 #include "vkSwapChain.h"
 #include "vkTexture.h"
+#include "vkVertexDescriptions.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -94,58 +95,6 @@ struct QueueFamilyIndices {
     }
 };
 
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 color;
-    glm::vec2 texCoord;
-
-    static VkVertexInputBindingDescription getBindingDescription() {
-        VkVertexInputBindingDescription description{};
-        description.binding = 0;
-        description.stride = sizeof(Vertex);
-        description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        return description;
-    }
-
-    static std::array<VkVertexInputAttributeDescription, 3>
-    getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-        return attributeDescriptions;
-    }
-
-    bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color &&
-               texCoord == other.texCoord;
-    }
-};
-
-namespace std {
-template <>
-struct hash<Vertex> {
-    size_t operator()(Vertex const& vertex) const {
-        return ((hash<glm::vec3>()(vertex.pos) ^
-                 (hash<glm::vec3>()(vertex.color) << 1)) >>
-                1) ^
-               (hash<glm::vec2>()(vertex.texCoord) << 1);
-    }
-};
-}  // namespace std
-
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
@@ -167,7 +116,7 @@ class HelloTriangleApplication {
         cleanup();
     }
 
-    void addTexture(const gbg::TextureResource& res) {
+    void addTexture(const gbg::TextureData& res) {
         gbg::vkTexture texture;
         texture.mipLevels = static_cast<uint32_t>(std::floor(
                                 std::log2(std::max(res.width, res.height)))) +
@@ -183,7 +132,7 @@ class HelloTriangleApplication {
 
         void* data;
         vkMapMemory(device, stagingBuffer.memory, 0, imageSize, 0, &data);
-        memcpy(data, res.pixels, static_cast<size_t>(imageSize));
+        memcpy(data, res.pixels.data(), static_cast<size_t>(imageSize));
         vkUnmapMemory(device, stagingBuffer.memory);
 
         texture.textureImage = gbg::createImage(
@@ -209,6 +158,36 @@ class HelloTriangleApplication {
         vkFreeMemory(device, stagingBuffer.memory, nullptr);
 
         textures.push_back(texture);
+    }
+
+    void addModel(const gbg::Model& model) {
+        std::unordered_map<gbg::Vertex, uint32_t> uniqueVertices{};
+
+        for (const auto& shape : model.shapes) {
+            for (const auto& index : shape.mesh.indices) {
+                gbg::Vertex vertex{};
+                vertex.pos = {
+                    model.attrib.vertices[3 * index.vertex_index + 0],
+                    model.attrib.vertices[3 * index.vertex_index + 1],
+                    model.attrib.vertices[3 * index.vertex_index + 2],
+                };
+
+                vertex.texCoord = {
+
+                    model.attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.0f - model.attrib.texcoords[2 * index.texcoord_index + 1],
+                };
+
+                vertex.color = {1.0f, 1.0f, 1.0f};
+
+                if (uniqueVertices.count(vertex) == 0) {
+                    uniqueVertices[vertex] =
+                        static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(uniqueVertices[vertex]);
+            }
+        }
     }
 
    private:
@@ -256,7 +235,7 @@ class HelloTriangleApplication {
 
     gbg::vkImage depthImage;
 
-    std::vector<Vertex> vertices;
+    std::vector<gbg::Vertex> vertices;
     std::vector<uint32_t> indices;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
@@ -1021,8 +1000,8 @@ class HelloTriangleApplication {
         vertexInputInfo.sType =
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-        auto bindingDescription = Vertex::getBindingDescription();
-        auto attributeDescriptions = Vertex::getAttributeDescriptions();
+        auto bindingDescription = gbg::getBindingDescription();
+        auto attributeDescriptions = gbg::getAttributeDescriptions();
 
         vertexInputInfo.vertexBindingDescriptionCount = 1;
         vertexInputInfo.vertexAttributeDescriptionCount =
@@ -1265,36 +1244,6 @@ class HelloTriangleApplication {
         transitionImageLayout(
             depthImage.image, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED,
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
-    }
-
-    void addModel(const gbg::Model& model) {
-        std::unordered_map<Vertex, uint32_t> uniqueVertices{};
-
-        for (const auto& shape : model.shapes) {
-            for (const auto& index : shape.mesh.indices) {
-                Vertex vertex{};
-                vertex.pos = {
-                    model.attrib.vertices[3 * index.vertex_index + 0],
-                    model.attrib.vertices[3 * index.vertex_index + 1],
-                    model.attrib.vertices[3 * index.vertex_index + 2],
-                };
-
-                vertex.texCoord = {
-
-                    model.attrib.texcoords[2 * index.texcoord_index + 0],
-                    1.0f - model.attrib.texcoords[2 * index.texcoord_index + 1],
-                };
-
-                vertex.color = {1.0f, 1.0f, 1.0f};
-
-                if (uniqueVertices.count(vertex) == 0) {
-                    uniqueVertices[vertex] =
-                        static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
-                indices.push_back(uniqueVertices[vertex]);
-            }
-        }
     }
 
     void generateMipmaps(VkImage image, VkFormat format, int32_t texWidth,
@@ -2021,9 +1970,13 @@ int main() {
     HelloTriangleApplication app;
     app.init();
 
-    gbg::TextureResource tex = gbg::loadTexture(TEXTURE_PATH);
+    gbg::TextureData tex = gbg::loadTexture(TEXTURE_PATH);
+
+    gbg::Model mod =
+        gbg::loadModel("../../data/models/pony-cartoon/Pony_cartoon.obj");
 
     app.addTexture(tex);
+    app.addModel(mod);
 
     try {
         app.run();
