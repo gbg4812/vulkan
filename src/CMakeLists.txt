@@ -52,3 +52,9 @@ add_custom_command(
     COMMAND [ -h ${CMAKE_BINARY_DIR}/shaders ] || ln -s ../../data/shaders ${CMAKE_BINARY_DIR}/ || exit 0
     COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ../../data/models ${CMAKE_BINARY_DIR}/ || exit 0
 )
+
+# Test targets
+
+add_executable(modeltests scene/tests/modeltests.cpp)
+
+target_link_libraries(modeltests "glm::glm")
