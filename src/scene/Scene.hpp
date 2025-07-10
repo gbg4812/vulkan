@@ -1,10 +1,9 @@
+#pragma once
 #include <memory>
 #include <vector>
 
 #include "Model.hpp"
 #include "Shader.hpp"
-
-#pragma once
 
 namespace gbg {
 

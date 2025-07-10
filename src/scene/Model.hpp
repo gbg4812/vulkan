@@ -1,60 +1,117 @@
+#pragma once
 #include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <variant>
 #include <vector>
 
-#include "fwd.hpp"
+#include "glm.hpp"
+#include "scene/Shader.hpp"
+#include "scene/gbg_traits.hpp"
 namespace gbg {
 
-enum AttributeType {
-    Vector3,
-    Vector2,
-    Float,
-};
+typedef std::variant<std::shared_ptr<std::vector<float>>,
+                     std::shared_ptr<std::vector<glm::vec2>>,
+                     std::shared_ptr<std::vector<glm::vec3>>>
+    attr_variant_t;
 
-class Attribute {
-   public:
-    AttributeType type;
-    void* data;
+struct PushDefaultElement {
+    PushDefaultElement() {
+        float_default = 0;
+        vec2_default = glm::vec2(0.0f);
+        vec3_default = glm::vec3(0.0f);
+    }
+    void operator()(std::shared_ptr<std::vector<float>> vec) {
+        vec->push_back(float_default);
+    }
+    void operator()(std::shared_ptr<std::vector<glm::vec2>> vec) {
+        vec->push_back(vec2_default);
+    }
+    void operator()(std::shared_ptr<std::vector<glm::vec3>> vec) {
+        vec->push_back(vec3_default);
+    }
+
+    float float_default;
+    glm::vec2 vec2_default;
+    glm::vec3 vec3_default;
 };
 
 class Mesh {
-   private:
-    std::map<std::string, std::shared_ptr<Attribute>> attrib_data;
-
    public:
-    std::vector<glm::vec3>* getVec3Attribute(std::string name) {
-        auto it = attrib_data.find(name);
-        if (it->second->type != AttributeType::Vector3 or
-            it == attrib_data.end()) {
+    Mesh() : _vertex_cnt(0) {
+        _positions = std::make_shared<std::vector<glm::vec3>>(0);
+        _indices = std::make_shared<std::vector<int>>(0);
+    }
+
+    template <AttributeType I>
+    std::variant_alternative_t<to_underlying(I), attr_variant_t>
+    createAttribute(const std::string& name) {
+        if (name == "position" or _attributes.contains(name)) {
             return nullptr;
         }
-        return reinterpret_cast<std::vector<glm::vec3>*>(
-            attrib_data[name]->data);
+
+        auto new_attrib_ptr =
+            std::make_shared<typename std::variant_alternative_t<
+                to_underlying(I), attr_variant_t>::element_type>(_vertex_cnt);
+
+        _attributes[name] = new_attrib_ptr;
+
+        return new_attrib_ptr;
     }
-    std::vector<glm::vec2>* getVec2Attribute(std::string name) {
-        auto it = attrib_data.find(name);
-        if (it->second->type != AttributeType::Vector2 or
-            it == attrib_data.end()) {
+
+    template <AttributeType I>
+    std::variant_alternative_t<to_underlying(I), attr_variant_t> getAttribute(
+        const std::string& name) {
+        if (name == "position" and I == AttributeType::Vector3) {
+            return _positions;
+        }
+        auto it = _attributes.find(name);
+        if (it == _attributes.end()) {
             return nullptr;
         }
-        return reinterpret_cast<std::vector<glm::vec2>*>(
-            attrib_data[name]->data);
-    }
-    std::vector<float>* getFloatAttribute(std::string name) {
-        auto it = attrib_data.find(name);
-        if (it->second->type != AttributeType::Vector2 or
-            it == attrib_data.end()) {
-            return nullptr;
+
+        if (auto ptr = std::get_if<I>(&_attributes[name])) {
+            return *ptr;
         }
-        return reinterpret_cast<std::vector<float>*>(attrib_data[name]->data);
+
+        return nullptr;
     }
+
+    int addVertex(glm::vec3 position) {
+        _positions->push_back(position);
+        _vertex_cnt++;
+
+        for (auto it = _attributes.begin(); it != _attributes.end(); it++) {
+            std::visit(PushDefaultElement{}, it->second);
+        }
+
+        return _positions->size() - 2;
+    }
+
+    std::shared_ptr<std::vector<int>> getIndices() { return _indices; };
+    std::shared_ptr<std::vector<glm::vec3>> getPositions() {
+        return _positions;
+    }
+
+   private:
+    std::map<std::string, attr_variant_t> _attributes;
+    std::shared_ptr<std::vector<int>> _indices;
+    std::shared_ptr<std::vector<glm::vec3>> _positions;
+    size_t _vertex_cnt;
 };
 
 class Model {
-    int materialID;
-    std::weak_ptr<Mesh> mesh;
+   public:
+    Model(std::shared_ptr<Material> mat, std::shared_ptr<Mesh> mesh)
+        : _mat(mat), _mesh(mesh) {}
+
+    void setMaterial(std::shared_ptr<Material> mat) { _mat = mat; }
+    void setMesh(std::shared_ptr<Mesh> mesh) { _mesh = mesh; }
+
+   private:
+    std::shared_ptr<Material> _mat;
+    std::shared_ptr<Mesh> _mesh;
 };
 
 }  // namespace gbg
