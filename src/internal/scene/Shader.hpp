@@ -7,7 +7,7 @@
 
 #include "TypeEnums.hpp"
 #include "gbg_traits.hpp"
-#include "glm.hpp"
+#include "glm/glm.hpp"
 
 /*
  * Attributes and Inputs will be bound in the shader by alphabetical order and

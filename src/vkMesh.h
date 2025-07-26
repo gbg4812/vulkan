@@ -6,16 +6,14 @@
 namespace gbg {
 
 struct vkAttribute {
-    VkVertexInputBindingDescription bindingDesc;
-    VkVertexInputAttributeDescription attribDesc;
-
-   protected:
-    vkAttribute();
-};
-
-class vkVector2Attribute : vkAttribute {
    public:
-    vkVector2Attribute(int location);
+    vkAttribute(int location, int binding, size_t element_size,
+                size_t element_count, void* data);
+
+    virtual VkVertexInputBindingDescription getBindingDesc();
+    virtual VkVertexInputAttributeDescription getAttribDesc();
+
+   public:
     vkBuffer buffer;
 };
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <list>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -6,9 +7,9 @@
 #include <variant>
 #include <vector>
 
-#include "glm.hpp"
-#include "scene/Shader.hpp"
-#include "scene/gbg_traits.hpp"
+#include "Shader.hpp"
+#include "gbg_traits.hpp"
+#include "glm/glm.hpp"
 namespace gbg {
 
 typedef std::variant<std::shared_ptr<std::vector<float>>,
@@ -41,7 +42,7 @@ class Mesh {
    public:
     Mesh() : _vertex_cnt(0) {
         _positions = std::make_shared<std::vector<glm::vec3>>(0);
-        _indices = std::make_shared<std::vector<int>>(0);
+        _faces = std::make_shared<std::vector<std::list<int>>>(0);
     }
 
     template <AttributeType I>
@@ -89,14 +90,40 @@ class Mesh {
         return _positions->size() - 2;
     }
 
-    std::shared_ptr<std::vector<int>> getIndices() { return _indices; };
+    template <AttributeType I>
+    bool setAttributeValue(
+        const std::string& name, int indice,
+        std::variant_alternative_t<to_underlying(I), attr_variant_t> value) {
+        if (name == "position" and I == AttributeType::Vector3) {
+            (*_positions)[indice] = value;
+            return true;
+        }
+        auto it = _attributes.find(name);
+        if (it == _attributes.end()) {
+            return false;
+        }
+
+        if (auto ptr = std::get_if<I>(&_attributes[name])) {
+            (*ptr)[indice] = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    int addFace(std::list<int> face) {
+        _faces->push_back(face);
+        return _faces->size() - 2;
+    }
+
+    std::shared_ptr<std::vector<std::list<int>>> getFaces() { return _faces; };
     std::shared_ptr<std::vector<glm::vec3>> getPositions() {
         return _positions;
     }
 
    private:
     std::map<std::string, attr_variant_t> _attributes;
-    std::shared_ptr<std::vector<int>> _indices;
+    std::shared_ptr<std::vector<std::list<int>>> _faces;
     std::shared_ptr<std::vector<glm::vec3>> _positions;
     size_t _vertex_cnt;
 };

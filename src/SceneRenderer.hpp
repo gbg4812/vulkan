@@ -1,6 +1,10 @@
 #include <vulkan/vulkan_core.h>
+
+#include <memory>
+
+#include "Scene.hpp"
 #define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include "GLFW/glfw3.h"
 
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
@@ -13,9 +17,6 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
-#include <glm.hpp>
-#include <gtc/matrix_transform.hpp>
-#include <gtx/hash.hpp>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -27,20 +28,20 @@
 
 #include "Logger.h"
 #include "Vertex.h"
-#include "resourceLoader.h"
+#include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtx/hash.hpp"
 #include "vkBuffer.h"
 #include "vkImage.h"
 #include "vkSwapChain.h"
 #include "vkTexture.h"
 #include "vkVertexDescriptions.h"
 
+namespace gbg {
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-
-const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
-const std::string TEXTURE_PATH =
-    "models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation",
@@ -110,12 +111,15 @@ class SceneRenderer {
         initVulkan();
     }
 
+    void setScene(std::shared_ptr<gbg::Scene> scene) {}
+
     void run() {
         initResources();
         mainLoop();
         cleanup();
     }
 
+    /*
     void addTexture(const gbg::TextureData& res) {
         gbg::vkTexture texture;
         texture.mipLevels = static_cast<uint32_t>(std::floor(
@@ -159,36 +163,7 @@ class SceneRenderer {
 
         textures.push_back(texture);
     }
-
-    void addModel(const gbg::Model& model) {
-        std::unordered_map<gbg::Vertex, uint32_t> uniqueVertices{};
-
-        for (const auto& shape : model.shapes) {
-            for (const auto& index : shape.mesh.indices) {
-                gbg::Vertex vertex{};
-                vertex.pos = {
-                    model.attrib.vertices[3 * index.vertex_index + 0],
-                    model.attrib.vertices[3 * index.vertex_index + 1],
-                    model.attrib.vertices[3 * index.vertex_index + 2],
-                };
-
-                vertex.texCoord = {
-
-                    model.attrib.texcoords[2 * index.texcoord_index + 0],
-                    1.0f - model.attrib.texcoords[2 * index.texcoord_index + 1],
-                };
-
-                vertex.color = {1.0f, 1.0f, 1.0f};
-
-                if (uniqueVertices.count(vertex) == 0) {
-                    uniqueVertices[vertex] =
-                        static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
-                }
-                indices.push_back(uniqueVertices[vertex]);
-            }
-        }
-    }
+    */
 
    private:
     GLFWwindow* window;
@@ -239,6 +214,8 @@ class SceneRenderer {
     std::vector<uint32_t> indices;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    std::shared_ptr<Scene> scene;
 
    private:
     void setupGlfwCallbacks() {
@@ -291,6 +268,9 @@ class SceneRenderer {
     }
 
     void initResources() {
+        for (auto mesh : scene->meshes) {
+            createVkMesh(mesh);
+        }
         createTexturesImageViews();
         createTextureSampler();
         createVertexBuffer();
@@ -1965,3 +1945,4 @@ class SceneRenderer {
         currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 };
+}  // namespace gbg

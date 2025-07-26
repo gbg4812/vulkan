@@ -4,15 +4,16 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 
+#include <memory>
 #include <string>
 
-#include "scene/Scene.hpp"
+#include "Model.hpp"
 
 namespace gbg {
 
-void loadModel(Scene& scene, std::string model_path);
+std::shared_ptr<Mesh> loadMesh(std::string model_path);
 
-Image loadTexture(Scene& scene, std::string texture_path);
+std::shared_ptr<Image> loadTexture(std::string texture_path);
 
 }  // namespace gbg
 

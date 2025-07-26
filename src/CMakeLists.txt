@@ -25,22 +25,12 @@ endif()
 # External dependencies
 find_package(Vulkan REQUIRED)
 
-include_directories(./external)
-include_directories(.)
+target_include_directories(${PROJECT_NAME} PUBLIC .)
 
-# GLM
-set(GLM_PTH ./external/glm)
-add_subdirectory(${GLM_PTH})
+add_subdirectory(./external)
+add_subdirectory(./internal)
 
-include_directories(${GLM_PTH}/glm/)
-
-set(GLFW_PTH ./external/glfw)
-
-add_subdirectory(${GLFW_PTH})
-
-include_directories(${GLFW_PTH}/include/)
-
-set(LIBS "Vulkan::Vulkan;glfw;glm::glm")
+set(LIBS "Vulkan::Vulkan;glfw;glm::glm;stbimage;tinyobjloader;gbgscene")
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})
 
@@ -53,8 +43,3 @@ add_custom_command(
     COMMAND [ -h ${CMAKE_BINARY_DIR}/models ] || ln -s ../../data/models ${CMAKE_BINARY_DIR}/ || exit 0
 )
 
-# Test targets
-
-add_executable(modeltests scene/tests/modeltests.cpp)
-
-target_link_libraries(modeltests "glm::glm")

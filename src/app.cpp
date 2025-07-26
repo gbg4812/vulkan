@@ -1,14 +1,21 @@
+#include "Scene.hpp"
+#include "SceneRenderer.hpp"
+#include "Shader.hpp"
+#include "resourceLoader.hpp"
+
+const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
+const std::string TEXTURE_PATH =
+    "models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
+
 int main() {
-    SceneRenderer app;
+    gbg::Scene scene;
+    gbg::SceneRenderer app;
     app.init();
 
-    gbg::TextureData tex = gbg::loadTexture(TEXTURE_PATH);
+    auto tex = gbg::loadTexture(TEXTURE_PATH);
 
-    gbg::Model mod =
-        gbg::loadModel("../../data/models/pony-cartoon/Pony_cartoon.obj");
-
-    app.addTexture(tex);
-    app.addModel(mod);
+    auto mesh =
+        gbg::loadMesh("../../data/models/pony-cartoon/Pony_cartoon.obj");
 
     try {
         app.run();

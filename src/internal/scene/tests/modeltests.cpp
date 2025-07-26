@@ -1,9 +1,9 @@
 #include <iostream>
 #include <memory>
 
-#include "../Model.hpp"
-#include "Logger.h"
-#include "scene/Shader.hpp"
+#include "Logger.hpp"
+#include "Model.hpp"
+#include "Shader.hpp"
 
 int main(int argc, char* argv[]) {
     LOG("Creating Mesh: ")
