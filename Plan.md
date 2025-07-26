@@ -1,9 +1,8 @@
-# The plan!
+# The plan
 
-## Objectives:
+## Objectives
 
 0. create separate descriptor sets for:
-
    - diferent allocations for dinamic and static (so diferent pools must be created)
 
    - samplers (it is static)
@@ -25,3 +24,11 @@
 - when geo is modified only command buffer is needed to change, the pipeline remains.
 - pipeline changes (needed to rebuild) when we change de rendering proces (shaders, passes...)
 - swapchin needs to be rebuild when window/render target changes (size, aspect...)
+
+## Design
+
+### GPU Objects
+
+#### Memory
+
+Vulkan objects have wrpper structs and utility functions, they don't have methods. GPU Objects are manually created and destroyed with functions.

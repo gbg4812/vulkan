@@ -5,7 +5,7 @@
 
 #include <stdexcept>
 
-#include "vkUtil.h"
+#include "vkUtil.hh"
 namespace gbg {
 vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
                       VkDeviceSize size, VkBufferUsageFlags usage,

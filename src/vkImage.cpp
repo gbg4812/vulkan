@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-#include "vkUtil.h"
+#include "vkUtil.hh"
 
 namespace gbg {
 

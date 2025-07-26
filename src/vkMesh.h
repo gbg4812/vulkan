@@ -7,14 +7,16 @@ namespace gbg {
 
 struct vkAttribute {
    public:
-    vkAttribute(int location, int binding, size_t element_size,
-                size_t element_count, void* data);
+    vkAttribute(int attrib_id, size_t element_size, size_t element_count,
+                void* data);
 
     virtual VkVertexInputBindingDescription getBindingDesc();
     virtual VkVertexInputAttributeDescription getAttribDesc();
 
    public:
     vkBuffer buffer;
+    int attrib_id;
+    size_t size;
 };
 
 struct vkMesh {
