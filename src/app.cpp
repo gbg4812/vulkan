@@ -9,8 +9,8 @@ const std::string TEXTURE_PATH =
 
 int main() {
     gbg::Scene scene;
-    gbg::SceneRenderer app;
-    app.init();
+    gbg::SceneRenderer renderer;
+    renderer.init();
 
     auto tex = gbg::loadTexture(TEXTURE_PATH);
 
@@ -18,7 +18,7 @@ int main() {
         gbg::loadMesh("../../data/models/pony-cartoon/Pony_cartoon.obj");
 
     try {
-        app.run();
+        renderer.run();
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;

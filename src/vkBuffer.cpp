@@ -1,11 +1,13 @@
 
-#include "vkBuffer.h"
+#include "vkBuffer.hh"
 
 #include <vulkan/vulkan_core.h>
 
 #include <stdexcept>
 
+#include "vkCommandBuffer.hh"
 #include "vkUtil.hh"
+
 namespace gbg {
 vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
                       VkDeviceSize size, VkBufferUsageFlags usage,
@@ -18,6 +20,7 @@ vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
     bufferInfo.flags = 0;
 
     vkBuffer buffer;
+    buffer.size = size;
 
     if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) !=
         VK_SUCCESS) {
@@ -40,5 +43,21 @@ vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
 
     vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
     return buffer;
+}
+
+void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer,
+                VkCommandPool transferCmdPool) {
+    VkCommandBuffer cpyCmdBuffer =
+        beginSingleTimeCommands(device, transferCmdPool);
+
+    VkBufferCopy cpyRegion{};
+    cpyRegion.srcOffset = 0;
+    cpyRegion.dstOffset = 0;
+    cpyRegion.size = srcBuffer.size;
+
+    vkCmdCopyBuffer(cpyCmdBuffer, srcBuffer.buffer, dstBuffer.buffer, 1,
+                    &cpyRegion);
+
+    endSingleTimeCommands(device, cpyCmdBuffer, transferCmdPool, device.tqueue);
 }
 }  // namespace gbg

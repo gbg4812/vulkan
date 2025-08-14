@@ -8,6 +8,7 @@
 #include "vkDebugMessangerEXT.hh"
 
 namespace gbg {
+
 const std::vector<const char*> getRequiredExtensions(
     bool enableValidationLayers) {
     // get the extensions required by glfw
@@ -125,6 +126,66 @@ void destoryInstance(vkInstance instance) {
                                       instance.debugMessenger, nullptr);
     }
     vkDestroyInstance(instance.instance, nullptr);
+}
+
+std::optional<uint32_t> getGraphicQueueFamilyIndex(VkPhysicalDevice pdevice) {
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             queueFamilies.data());
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            return std::optional<uint32_t>(i);
+        }
+        i++;
+    }
+
+    return std::optional<uint32_t>();
+}
+std::optional<uint32_t> getTransferQueueFamilyIndex(VkPhysicalDevice pdevice) {
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             queueFamilies.data());
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+            return std::optional<uint32_t>(i);
+        }
+        i++;
+    }
+
+    return std::optional<uint32_t>();
+}
+
+std::optional<uint32_t> getPresentQueueFamilyIndex(VkPhysicalDevice pdevice,
+                                                   VkSurfaceKHR surface) {
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(pdevice, &queueFamilyCount,
+                                             queueFamilies.data());
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(pdevice, i, surface,
+                                             &presentSupport);
+        if (presentSupport) {
+            return std::optional<uint32_t>(i);
+        }
+        i++;
+    }
+
+    return std::optional<uint32_t>();
 }
 
 }  // namespace gbg

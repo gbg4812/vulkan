@@ -136,6 +136,9 @@ class Model {
     void setMaterial(std::shared_ptr<Material> mat) { _mat = mat; }
     void setMesh(std::shared_ptr<Mesh> mesh) { _mesh = mesh; }
 
+    std::shared_ptr<Material> getMat() { return _mat; }
+    std::shared_ptr<Mesh> getMesh() { return _mesh; }
+
    private:
     std::shared_ptr<Material> _mat;
     std::shared_ptr<Mesh> _mesh;

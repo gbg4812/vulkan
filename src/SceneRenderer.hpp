@@ -1,8 +1,10 @@
+#include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
 #include <memory>
 
 #include "Scene.hpp"
+#include "glm/fwd.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 
@@ -28,8 +30,11 @@
 
 #include "Logger.h"
 #include "Vertex.h"
-#include "vkBuffer.h"
+#include "vkBuffer.hh"
+#include "vkDevice.hh"
 #include "vkImage.h"
+#include "vkInstance.hh"
+#include "vkMesh.h"
 #include "vkSwapChain.h"
 #include "vkTexture.h"
 #include "vkVertexDescriptions.h"
@@ -54,17 +59,6 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-
-    std::optional<uint32_t> transferFamily;
-    bool isComplete() {
-        return graphicsFamily.has_value() and presentFamily.has_value() and
-               transferFamily.has_value();
-    }
-};
-
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
@@ -80,7 +74,7 @@ class SceneRenderer {
         initVulkan();
     }
 
-    void setScene(std::shared_ptr<gbg::Scene> scene) {}
+    void setScene(std::shared_ptr<gbg::Scene> scene) { this->scene = scene; }
 
     void run() {
         initResources();
@@ -136,13 +130,10 @@ class SceneRenderer {
 
    private:
     GLFWwindow* window;
-    VkInstance instance;
+    vkInstance instance;
     VkSurfaceKHR surface;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device;
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-    VkQueue transferQueue;
+    vkDevice device;
     VkRenderPass renderPass;
 
     VkDescriptorPool descriptorPool;
@@ -167,6 +158,8 @@ class SceneRenderer {
     bool frameBufferResized = false;
     gbg::vkBuffer vertexBuffer;
     gbg::vkBuffer indexBuffer;
+
+    std::vector<gbg::vkMesh> meshes;
 
     std::vector<gbg::vkBuffer> uniformBuffers;
     std::vector<void*> uniformBuffersMapped;
@@ -234,14 +227,28 @@ class SceneRenderer {
         createFrameBuffers();
     }
 
-    void initResources() {
-        for (auto mesh : scene->meshes) {
-            createVkMesh(mesh);
+    void addModels() {
+        // TODO: Add materials and various attributes
+        for (auto model : scene->models) {
+            auto mesh = model->getMesh();
+            auto pos = mesh->getPositions();
+            auto faces = mesh->getFaces();
+            vkMesh vkmesh{};
+            vkVector3Attribute attrib = vkVector3Attribute(
+                device, 0, sizeof(glm::vec3), pos->size(), pos->data());
+
+            vkmesh.vertexAttributes.push_back(attrib);
+            vkmesh.indexBuffer = gbg::createIndexBuffer(device, *faces);
+            meshes.push_back(vkmesh);
         }
-        createTexturesImageViews();
-        createTextureSampler();
-        createVertexBuffer();
-        createIndexBuffer();
+    }
+
+    void initResources() {
+        addModels();
+        // createTexturesImageViews();
+        // createTextureSampler();
+        // createVertexBuffer();
+        // createIndexBuffer();
         createUniformBuffers();
         createDescriptorPool();
         createDynamicDescriptorSets();
@@ -257,55 +264,57 @@ class SceneRenderer {
             drawFrame();
         }
 
-        vkDeviceWaitIdle(device);
+        vkDeviceWaitIdle(device.ldevice);
     }
 
     void cleanup() {
         cleanupSwapChain();
 
-        vkDestroySampler(device, textureSampler, nullptr);
+        vkDestroySampler(device.ldevice, textureSampler, nullptr);
 
         for (gbg::vkTexture texture : textures) {
-            gbg::destoryImage(texture.textureImage, device);
+            gbg::destoryImage(texture.textureImage, device.ldevice);
         }
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vkDestroyBuffer(device, uniformBuffers[i].buffer, nullptr);
-            vkFreeMemory(device, uniformBuffers[i].memory, nullptr);
+            vkDestroyBuffer(device.ldevice, uniformBuffers[i].buffer, nullptr);
+            vkFreeMemory(device.ldevice, uniformBuffers[i].memory, nullptr);
         }
 
-        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+        vkDestroyDescriptorPool(device.ldevice, descriptorPool, nullptr);
 
-        vkDestroyDescriptorSetLayout(device, inmutableDescriptorSetLayout,
-                                     nullptr);
-        vkDestroyDescriptorSetLayout(device, variableDescriptorSetLayout,
-                                     nullptr);
+        vkDestroyDescriptorSetLayout(device.ldevice,
+                                     inmutableDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device.ldevice,
+                                     variableDescriptorSetLayout, nullptr);
         for (VkDescriptorSetLayout descSet : materialDescSetLayouts) {
-            vkDestroyDescriptorSetLayout(device, descSet, nullptr);
+            vkDestroyDescriptorSetLayout(device.ldevice, descSet, nullptr);
         }
 
-        vkDestroyBuffer(device, vertexBuffer.buffer, nullptr);
-        vkFreeMemory(device, vertexBuffer.memory, nullptr);
+        vkDestroyBuffer(device.ldevice, vertexBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, vertexBuffer.memory, nullptr);
 
-        vkDestroyBuffer(device, indexBuffer.buffer, nullptr);
-        vkFreeMemory(device, indexBuffer.memory, nullptr);
+        vkDestroyBuffer(device.ldevice, indexBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, indexBuffer.memory, nullptr);
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-            vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-            vkDestroyFence(device, inFlightFences[i], nullptr);
+            vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
+                               nullptr);
+            vkDestroySemaphore(device.ldevice, renderFinishedSemaphores[i],
+                               nullptr);
+            vkDestroyFence(device.ldevice, inFlightFences[i], nullptr);
         }
 
-        vkDestroyCommandPool(device, graphicsCmdPool, nullptr);
-        vkDestroyCommandPool(device, transferCmdPool, nullptr);
+        vkDestroyCommandPool(device.ldevice, graphicsCmdPool, nullptr);
+        vkDestroyCommandPool(device.ldevice, transferCmdPool, nullptr);
 
-        vkDestroyPipeline(device, graphicsPipeline, nullptr);
-        vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-        vkDestroyRenderPass(device, renderPass, nullptr);
+        vkDestroyPipeline(device.ldevice, graphicsPipeline, nullptr);
+        vkDestroyPipelineLayout(device.ldevice, pipelineLayout, nullptr);
+        vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
-        vkDestroyDevice(device, nullptr);
+        vkDestroyDevice(device.ldevice, nullptr);
 
-        vkDestroySurfaceKHR(instance, surface, nullptr);
+        vkDestroySurfaceKHR(instance.instance, surface, nullptr);
 
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -369,24 +378,28 @@ class SceneRenderer {
     // creates an instance. the instance is the object that stores the
     // information about the application that needs to be passed to the
     // implementation to "configure it".
-    void createInstance() {}
+    void createInstance() {
+        instance =
+            gbg::createInstance(validationLayers, enableValidationLayers);
+    }
 
     void createSurface() {
-        if (glfwCreateWindowSurface(instance, window, nullptr, &surface) !=
-            VK_SUCCESS) {
+        if (glfwCreateWindowSurface(instance.instance, window, nullptr,
+                                    &surface) != VK_SUCCESS) {
             throw std::runtime_error("failed to create window surface!");
         }
     }
 
     void pickPhysicalDevice() {
         uint32_t deviceCount = 0;
-        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+        vkEnumeratePhysicalDevices(instance.instance, &deviceCount, nullptr);
         if (deviceCount == 0) {
             throw std::runtime_error("failed to find GPUs with vulkan suport!");
         }
         std::vector<VkPhysicalDevice> devices(deviceCount);
         std::multimap<uint32_t, VkPhysicalDevice> scoredDevices;
-        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+        vkEnumeratePhysicalDevices(instance.instance, &deviceCount,
+                                   devices.data());
         for (const auto& device : devices) {
             uint32_t score = deviceScore(device);
             if (score) {
@@ -456,95 +469,8 @@ class SceneRenderer {
     // the logical device is the abstract device that will be responsable for
     // reciving commands (like graphic commands). It is an interface with the
     // physical device
-
     void createLogicalDevice() {
-        // setup queue info struct to pass to the logical device creation who
-        // will create the queues for us
-
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-        LOG(indices.graphicsFamily.value())
-        LOG(indices.presentFamily.value())
-        LOG(indices.transferFamily.value())
-
-        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {
-            indices.graphicsFamily.value(), indices.presentFamily.value(),
-            indices.transferFamily.value()};
-
-        float queuePriority = 1.0f;
-        for (uint32_t queueFamily : uniqueQueueFamilies) {
-            VkDeviceQueueCreateInfo queueCreateInfo{};
-            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = queueFamily;
-            queueCreateInfo.queueCount = 1;
-            queueCreateInfo.pQueuePriorities = &queuePriority;
-            queueCreateInfos.push_back(queueCreateInfo);
-        }
-
-        VkPhysicalDeviceFeatures deviceFeatures{};
-        vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
-        VkDeviceCreateInfo deviceCreateInfo{};
-        deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        deviceCreateInfo.queueCreateInfoCount =
-            static_cast<uint32_t>(queueCreateInfos.size());
-        deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
-
-        deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-        deviceCreateInfo.enabledExtensionCount =
-            static_cast<uint32_t>(deviceExtensions.size());
-        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
-
-        if (enableValidationLayers) {
-            deviceCreateInfo.enabledLayerCount =
-                static_cast<uint32_t>(validationLayers.size());
-            deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
-        } else {
-            deviceCreateInfo.enabledLayerCount = 0;
-        }
-
-        if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr,
-                           &device) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create logical device!");
-        }
-
-        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0,
-                         &graphicsQueue);
-        vkGetDeviceQueue(device, indices.presentFamily.value(), 0,
-                         &presentQueue);
-        vkGetDeviceQueue(device, indices.transferFamily.value(), 0,
-                         &transferQueue);
-    }
-
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-        QueueFamilyIndices indices;
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount,
-                                                 nullptr);
-
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount,
-                                                 queueFamilies.data());
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface,
-                                                 &presentSupport);
-            if (presentSupport) {
-                indices.presentFamily = i;
-            }
-
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphicsFamily = i;
-            }
-
-            if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
-                indices.transferFamily = i;
-            }
-
-            if (indices.isComplete()) break;
-            i++;
-        }
-        return indices;
+        device = createDevice(physicalDevice, deviceExtensions);
     }
 
     void cleanupSwapChain() {
@@ -984,19 +910,6 @@ class SceneRenderer {
         }
     }
 
-    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
-        VkCommandBuffer cpyCmdBuffer = beginSingleTimeCommands(transferCmdPool);
-
-        VkBufferCopy cpyRegion{};
-        cpyRegion.srcOffset = 0;
-        cpyRegion.dstOffset = 0;
-        cpyRegion.size = size;
-
-        vkCmdCopyBuffer(cpyCmdBuffer, srcBuffer, dstBuffer, 1, &cpyRegion);
-
-        endSingleTimeCommands(cpyCmdBuffer, transferCmdPool, transferQueue);
-    }
-
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
                                   VkImageTiling tiling,
                                   VkFormatFeatureFlags features) {
@@ -1132,44 +1045,6 @@ class SceneRenderer {
                              nullptr, 0, nullptr, 1, &barrier);
 
         endSingleTimeCommands(commandBuffer, graphicsCmdPool, graphicsQueue);
-    }
-
-    VkCommandBuffer beginSingleTimeCommands(VkCommandPool commandPool) {
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandPool = commandPool;
-        allocInfo.commandBufferCount = 1;
-
-        VkCommandBuffer commandBuffer;
-
-        if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) !=
-            VK_SUCCESS) {
-            throw std::runtime_error("failed to allocate command buffer!");
-        }
-
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-        return commandBuffer;
-    }
-
-    void endSingleTimeCommands(VkCommandBuffer commandBuffer,
-                               VkCommandPool commandPool, VkQueue queue) {
-        vkEndCommandBuffer(commandBuffer);
-
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer;
-
-        vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(queue);
-
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
 
     void transitionImageLayout(VkImage image, VkFormat format,
@@ -1321,27 +1196,7 @@ class SceneRenderer {
         vkFreeMemory(device, stagingBuffer.memory, nullptr);
     }
 
-    void createIndexBuffer() {
-        VkDeviceSize size = indices.size() * sizeof(indices[0]);
-
-        gbg::vkBuffer stagingBuffer = gbg::createBuffer(
-            device, physicalDevice, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        void* data;
-        vkMapMemory(device, stagingBuffer.memory, 0, size, 0, &data);
-        memcpy(data, indices.data(), size);
-        vkUnmapMemory(device, stagingBuffer.memory);
-
-        indexBuffer = gbg::createBuffer(
-            device, physicalDevice, size,
-            VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        copyBuffer(stagingBuffer.buffer, indexBuffer.buffer, size);
-        vkDestroyBuffer(device, stagingBuffer.buffer, nullptr);
-        vkFreeMemory(device, stagingBuffer.memory, nullptr);
-    }
+    void createIndexBuffer() {}
 
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
