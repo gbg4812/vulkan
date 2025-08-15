@@ -6,6 +6,7 @@
 
 #include "GLFW/glfw3.h"
 #include "vkDebugMessangerEXT.hh"
+#include "vkDevice.hh"
 
 namespace gbg {
 
@@ -126,6 +127,15 @@ void destoryInstance(vkInstance instance) {
                                       instance.debugMessenger, nullptr);
     }
     vkDestroyInstance(instance.instance, nullptr);
+}
+
+bool getDeviceQueueCompatibility(VkPhysicalDevice device,
+                                 VkSurfaceKHR surface) {
+    auto gfamily = getGraphicQueueFamilyIndex(device);
+    auto pfamily = getPresentQueueFamilyIndex(device, surface);
+    auto tfamily = getTransferQueueFamilyIndex(device);
+
+    return gfamily.has_value() and pfamily.has_value() and tfamily.has_value();
 }
 
 std::optional<uint32_t> getGraphicQueueFamilyIndex(VkPhysicalDevice pdevice) {

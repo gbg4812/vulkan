@@ -5,6 +5,7 @@
 
 #include "Scene.hpp"
 #include "glm/fwd.hpp"
+#include "vkCommandBuffer.hh"
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 
@@ -156,8 +157,6 @@ class SceneRenderer {
     std::vector<VkFence> inFlightFences;
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
-    gbg::vkBuffer vertexBuffer;
-    gbg::vkBuffer indexBuffer;
 
     std::vector<gbg::vkMesh> meshes;
 
@@ -170,9 +169,6 @@ class SceneRenderer {
     gbg::vkImage colorImage;
 
     gbg::vkImage depthImage;
-
-    std::vector<gbg::Vertex> vertices;
-    std::vector<uint32_t> indices;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -349,11 +345,14 @@ class SceneRenderer {
         gbg::SwapChainSupportDetails details =
             gbg::querySwapChainSupport(physicalDevice, surface);
         VkExtent2D extent = chooseSwapExtent(details.capabilities);
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+        std::optional<uint32_t> gfamily =
+            getGraphicQueueFamilyIndex(device.pdevice);
+        std::optional<uint32_t> pfamily =
+            getPresentQueueFamilyIndex(device.pdevice, surface);
 
-        swapChain = gbg::createSwapChain(physicalDevice, device, surface,
-                                         extent, indices.graphicsFamily.value(),
-                                         indices.presentFamily.value());
+        swapChain =
+            gbg::createSwapChain(physicalDevice, device.ldevice, surface,
+                                 extent, gfamily.value(), pfamily.value());
     }
 
     void recreateSwapChain() {
@@ -364,7 +363,7 @@ class SceneRenderer {
             glfwWaitEvents();
         }
 
-        vkDeviceWaitIdle(device);
+        vkDeviceWaitIdle(device.ldevice);
 
         cleanupSwapChain();
 
@@ -430,9 +429,9 @@ class SceneRenderer {
         if (deviceFeatures.geometryShader) {
             score += 1;
         }
-        QueueFamilyIndices indices = findQueueFamilies(device);
 
-        if (indices.isComplete() and checkDeviceExtensionSupport(device)) {
+        if (getDeviceQueueCompatibility(device, surface) and
+            checkDeviceExtensionSupport(device)) {
             gbg::SwapChainSupportDetails swapChainDetails =
                 gbg::querySwapChainSupport(device, surface);
             if (swapChainDetails.formats.empty() or
@@ -470,15 +469,17 @@ class SceneRenderer {
     // reciving commands (like graphic commands). It is an interface with the
     // physical device
     void createLogicalDevice() {
-        device = createDevice(physicalDevice, deviceExtensions);
+        device =
+            createDevice(physicalDevice, deviceExtensions,
+                         enableValidationLayers, validationLayers, surface);
     }
 
     void cleanupSwapChain() {
-        gbg::destoryImage(colorImage, device);
-        gbg::destoryImage(depthImage, device);
-        gbg::cleanupSwapChain(swapChain, device);
+        gbg::destoryImage(colorImage, device.ldevice);
+        gbg::destoryImage(depthImage, device.ldevice);
+        gbg::cleanupSwapChain(swapChain, device.ldevice);
         for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
+            vkDestroyFramebuffer(device.ldevice, framebuffer, nullptr);
         }
     }
 
@@ -486,21 +487,22 @@ class SceneRenderer {
         swapChain.swapChainImageViews.resize(swapChain.swapChainImages.size());
         for (size_t i = 0; i < swapChain.swapChainImages.size(); i++) {
             swapChain.swapChainImageViews[i] = gbg::createImageView(
-                swapChain.swapChainImages[i], device,
+                swapChain.swapChainImages[i], device.ldevice,
                 swapChain.swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
         }
     }
 
     void createColorResources() {
         VkFormat colorFormat = swapChain.swapChainImageFormat;
-        colorImage = gbg::createImage(
-            physicalDevice, device, swapChain.swapChainImageExtent.width,
-            swapChain.swapChainImageExtent.height, 1, msaaSamples, colorFormat,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
-                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        gbg::addImageView(colorImage, device, colorFormat,
+        colorImage =
+            gbg::createImage(physicalDevice, device.ldevice,
+                             swapChain.swapChainImageExtent.width,
+                             swapChain.swapChainImageExtent.height, 1,
+                             msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL,
+                             VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        gbg::addImageView(colorImage, device.ldevice, colorFormat,
                           VK_IMAGE_ASPECT_COLOR_BIT, 1);
     }
 
@@ -524,8 +526,8 @@ class SceneRenderer {
         createInfo.codeSize = code.size();
         createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
         VkShaderModule shaderModule;
-        if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) !=
-            VK_SUCCESS) {
+        if (vkCreateShaderModule(device.ldevice, &createInfo, nullptr,
+                                 &shaderModule) != VK_SUCCESS) {
             throw std::runtime_error("failed to create shader module");
         }
         return shaderModule;
@@ -620,8 +622,8 @@ class SceneRenderer {
         passInfo.dependencyCount = 1;
         passInfo.pDependencies = &dependency;
 
-        if (vkCreateRenderPass(device, &passInfo, nullptr, &renderPass) !=
-            VK_SUCCESS) {
+        if (vkCreateRenderPass(device.ldevice, &passInfo, nullptr,
+                               &renderPass) != VK_SUCCESS) {
             throw std::runtime_error("failed to create render pass");
         }
     }
@@ -644,9 +646,9 @@ class SceneRenderer {
             static_cast<uint32_t>(variableBindings.size());
         variableLayoutInfo.pBindings = variableBindings.data();
 
-        if (vkCreateDescriptorSetLayout(device, &variableLayoutInfo, nullptr,
-                                        &variableDescriptorSetLayout) !=
-            VK_SUCCESS) {
+        if (vkCreateDescriptorSetLayout(
+                device.ldevice, &variableLayoutInfo, nullptr,
+                &variableDescriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
 
@@ -667,9 +669,9 @@ class SceneRenderer {
             static_cast<uint32_t>(inmutableBindings.size());
         inmutableLayoutInfo.pBindings = inmutableBindings.data();
 
-        if (vkCreateDescriptorSetLayout(device, &inmutableLayoutInfo, nullptr,
-                                        &inmutableDescriptorSetLayout) !=
-            VK_SUCCESS) {
+        if (vkCreateDescriptorSetLayout(
+                device.ldevice, &inmutableLayoutInfo, nullptr,
+                &inmutableDescriptorSetLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
 
@@ -691,8 +693,8 @@ class SceneRenderer {
         materialLayoutInfo.pBindings = materialBindings.data();
 
         VkDescriptorSetLayout matLayout;
-        if (vkCreateDescriptorSetLayout(device, &materialLayoutInfo, nullptr,
-                                        &matLayout) != VK_SUCCESS) {
+        if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
+                                        nullptr, &matLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
         materialDescSetLayouts.push_back(matLayout);
@@ -850,7 +852,7 @@ class SceneRenderer {
         layoutCreateInfo.pushConstantRangeCount = 0;
         layoutCreateInfo.pPushConstantRanges = nullptr;
 
-        if (vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr,
+        if (vkCreatePipelineLayout(device.ldevice, &layoutCreateInfo, nullptr,
                                    &pipelineLayout) != VK_SUCCESS) {
             throw std::runtime_error("failed to create pipeline layout!");
         }
@@ -875,14 +877,14 @@ class SceneRenderer {
         pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
         // pipelineInfo.basePipelineIndex = -1;
 
-        if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo,
-                                      nullptr,
+        if (vkCreateGraphicsPipelines(device.ldevice, VK_NULL_HANDLE, 1,
+                                      &pipelineInfo, nullptr,
                                       &graphicsPipeline) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics pipeline!");
         }
 
-        vkDestroyShaderModule(device, fragShaderModule, nullptr);
-        vkDestroyShaderModule(device, vertShaderModule, nullptr);
+        vkDestroyShaderModule(device.ldevice, fragShaderModule, nullptr);
+        vkDestroyShaderModule(device.ldevice, vertShaderModule, nullptr);
     }
 
     void createFrameBuffers() {
@@ -903,7 +905,7 @@ class SceneRenderer {
             framebufferInfo.height = swapChain.swapChainImageExtent.height;
             framebufferInfo.layers = 1;
 
-            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr,
+            if (vkCreateFramebuffer(device.ldevice, &framebufferInfo, nullptr,
                                     &swapChainFramebuffers[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create framebuffer!");
             }
@@ -944,14 +946,15 @@ class SceneRenderer {
     void createDepthResources() {
         VkFormat depthFormat = findDepthFormat();
 
-        depthImage = gbg::createImage(
-            physicalDevice, device, swapChain.swapChainImageExtent.width,
-            swapChain.swapChainImageExtent.height, 1, msaaSamples, depthFormat,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        depthImage =
+            gbg::createImage(physicalDevice, device.ldevice,
+                             swapChain.swapChainImageExtent.width,
+                             swapChain.swapChainImageExtent.height, 1,
+                             msaaSamples, depthFormat, VK_IMAGE_TILING_OPTIMAL,
+                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        gbg::addImageView(depthImage, device, depthFormat,
+        gbg::addImageView(depthImage, device.ldevice, depthFormat,
                           VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
         transitionImageLayout(
@@ -971,7 +974,7 @@ class SceneRenderer {
         }
 
         VkCommandBuffer commandBuffer =
-            beginSingleTimeCommands(graphicsCmdPool);
+            beginSingleTimeCommands(device, graphicsCmdPool);
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1044,13 +1047,15 @@ class SceneRenderer {
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &barrier);
 
-        endSingleTimeCommands(commandBuffer, graphicsCmdPool, graphicsQueue);
+        endSingleTimeCommands(device, commandBuffer, graphicsCmdPool,
+                              device.gqueue);
     }
 
     void transitionImageLayout(VkImage image, VkFormat format,
                                VkImageLayout oldLayout, VkImageLayout newLayout,
                                uint32_t mipLevels) {
-        VkCommandBuffer transBuffer = beginSingleTimeCommands(transferCmdPool);
+        VkCommandBuffer transBuffer =
+            beginSingleTimeCommands(device, transferCmdPool);
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1108,13 +1113,14 @@ class SceneRenderer {
         vkCmdPipelineBarrier(transBuffer, srcStage, dstStage, 0, 0, nullptr, 0,
                              nullptr, 1, &barrier);
 
-        endSingleTimeCommands(transBuffer, transferCmdPool, transferQueue);
+        endSingleTimeCommands(device, transBuffer, transferCmdPool,
+                              device.tqueue);
     }
 
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width,
                            uint32_t height) {
         VkCommandBuffer commandBuffer =
-            beginSingleTimeCommands(transferCmdPool);
+            beginSingleTimeCommands(device, transferCmdPool);
 
         VkBufferImageCopy copyInfo{};
         copyInfo.bufferOffset = 0;
@@ -1133,12 +1139,13 @@ class SceneRenderer {
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &copyInfo);
 
-        endSingleTimeCommands(commandBuffer, transferCmdPool, transferQueue);
+        gbg::endSingleTimeCommands(device, commandBuffer, transferCmdPool,
+                                   device.tqueue);
     }
 
     void createTexturesImageViews() {
         for (gbg::vkTexture& texture : textures) {
-            gbg::addImageView(texture.textureImage, device,
+            gbg::addImageView(texture.textureImage, device.ldevice,
                               VK_FORMAT_R8G8B8A8_SRGB,
                               VK_IMAGE_ASPECT_COLOR_BIT, textures[0].mipLevels);
         }
@@ -1168,8 +1175,8 @@ class SceneRenderer {
         createInfo.maxLod = static_cast<float>(textures[0].mipLevels);
         createInfo.mipLodBias = 0.0f;
 
-        if (vkCreateSampler(device, &createInfo, nullptr, &textureSampler) !=
-            VK_SUCCESS) {
+        if (vkCreateSampler(device.ldevice, &createInfo, nullptr,
+                            &textureSampler) != VK_SUCCESS) {
             throw std::runtime_error("failed to create texture sampler!");
         }
     }
@@ -1177,23 +1184,24 @@ class SceneRenderer {
     void createVertexBuffer() {
         VkDeviceSize size = vertices.size() * sizeof(vertices[0]);
 
-        gbg::vkBuffer stagingBuffer = gbg::createBuffer(
-            device, physicalDevice, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        gbg::vkBuffer stagingBuffer =
+            gbg::createBuffer(device.ldevice, physicalDevice, size,
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
         void* data;
-        vkMapMemory(device, stagingBuffer.memory, 0, size, 0, &data);
+        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, size, 0, &data);
         memcpy(data, vertices.data(), size);
-        vkUnmapMemory(device, stagingBuffer.memory);
+        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
-        vertexBuffer = gbg::createBuffer(device, physicalDevice, size,
+        vertexBuffer = gbg::createBuffer(device.ldevice, physicalDevice, size,
                                          VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
                                              VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         copyBuffer(stagingBuffer.buffer, vertexBuffer.buffer, size);
-        vkDestroyBuffer(device, stagingBuffer.buffer, nullptr);
-        vkFreeMemory(device, stagingBuffer.memory, nullptr);
+        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
     }
 
     void createIndexBuffer() {}
@@ -1206,28 +1214,25 @@ class SceneRenderer {
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             uniformBuffers[i] =
-                gbg::createBuffer(device, physicalDevice, bufferSize,
+                gbg::createBuffer(device.ldevice, physicalDevice, bufferSize,
                                   VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                       VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            vkMapMemory(device, uniformBuffers[i].memory, 0, bufferSize, 0,
-                        &uniformBuffersMapped[i]);
+            vkMapMemory(device.ldevice, uniformBuffers[i].memory, 0, bufferSize,
+                        0, &uniformBuffersMapped[i]);
         }
     }
 
     void createCommandPools() {
-        QueueFamilyIndices queueFamilyIndices =
-            findQueueFamilies(physicalDevice);
-
         // This command pool is to allocate reseteable command buffers
         VkCommandPoolCreateInfo graphicsPoolInfo{};
         graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         graphicsPoolInfo.flags =
             VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         graphicsPoolInfo.queueFamilyIndex =
-            queueFamilyIndices.graphicsFamily.value();
+            getGraphicQueueFamilyIndex(device.pdevice).value();
 
-        if (vkCreateCommandPool(device, &graphicsPoolInfo, nullptr,
+        if (vkCreateCommandPool(device.ldevice, &graphicsPoolInfo, nullptr,
                                 &graphicsCmdPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics command pool!");
         }
@@ -1238,9 +1243,9 @@ class SceneRenderer {
         transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
         transferPoolInfo.queueFamilyIndex =
-            queueFamilyIndices.transferFamily.value();
+            getTransferQueueFamilyIndex(device.pdevice).value();
 
-        if (vkCreateCommandPool(device, &transferPoolInfo, nullptr,
+        if (vkCreateCommandPool(device.ldevice, &transferPoolInfo, nullptr,
                                 &transferCmdPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create transfer command pool!");
         }
@@ -1265,7 +1270,7 @@ class SceneRenderer {
         poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) +
                            static_cast<uint32_t>(textures.size()) + 1;
 
-        if (vkCreateDescriptorPool(device, &poolInfo, nullptr,
+        if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
                                    &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");
         }
@@ -1282,7 +1287,7 @@ class SceneRenderer {
         setInfo.pSetLayouts = layouts.data();
 
         variableDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-        if (vkAllocateDescriptorSets(device, &setInfo,
+        if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                      variableDescriptorSets.data()) !=
             VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor sets");
@@ -1308,7 +1313,7 @@ class SceneRenderer {
             descriptorWrites[0].pTexelBufferView = nullptr;
 
             vkUpdateDescriptorSets(
-                device, static_cast<uint32_t>(descriptorWrites.size()),
+                device.ldevice, static_cast<uint32_t>(descriptorWrites.size()),
                 descriptorWrites.data(), 0, nullptr);
         }
     }
@@ -1324,7 +1329,7 @@ class SceneRenderer {
         setInfo.pSetLayouts = layouts.data();
 
         materialDescSets.resize(MAX_FRAMES_IN_FLIGHT);
-        if (vkAllocateDescriptorSets(device, &setInfo,
+        if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                      materialDescSets.data()) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor sets");
         }
@@ -1347,7 +1352,8 @@ class SceneRenderer {
             descriptorWrite.pTexelBufferView = nullptr;
             i++;
 
-            vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+            vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0,
+                                   nullptr);
         }
     }
 
@@ -1358,7 +1364,7 @@ class SceneRenderer {
         setInfo.descriptorSetCount = 1;
         setInfo.pSetLayouts = &inmutableDescriptorSetLayout;
 
-        if (vkAllocateDescriptorSets(device, &setInfo,
+        if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                      &inmutableDescriptorSet) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor sets");
         }
@@ -1375,7 +1381,7 @@ class SceneRenderer {
         descriptorWrite.descriptorCount = 1;
         descriptorWrite.pImageInfo = &samplerInfo;
 
-        vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+        vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
     }
 
     void createCommandBuffer() {
@@ -1387,7 +1393,7 @@ class SceneRenderer {
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
 
-        if (vkAllocateCommandBuffers(device, &allocInfo,
+        if (vkAllocateCommandBuffers(device.ldevice, &allocInfo,
                                      commandBuffers.data()) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate command buffer!");
         }
@@ -1481,11 +1487,11 @@ class SceneRenderer {
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            if (vkCreateSemaphore(device, &semaphoreInfo, nullptr,
+            if (vkCreateSemaphore(device.ldevice, &semaphoreInfo, nullptr,
                                   &imageAvailableSemaphores[i]) != VK_SUCCESS or
-                vkCreateSemaphore(device, &semaphoreInfo, nullptr,
+                vkCreateSemaphore(device.ldevice, &semaphoreInfo, nullptr,
                                   &renderFinishedSemaphores[i]) != VK_SUCCESS or
-                vkCreateFence(device, &fenceInfo, nullptr,
+                vkCreateFence(device.ldevice, &fenceInfo, nullptr,
                               &inFlightFences[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create semaphores!");
             }
@@ -1545,14 +1551,14 @@ class SceneRenderer {
     void drawFrame() {
         // esperem que s'hagi acabat de renderitzar l'últim frame coucurrent amb
         // el que toca renderitzar (els si els altres no han acabat no importa)
-        vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE,
-                        UINT64_MAX);
+        vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame],
+                        VK_TRUE, UINT64_MAX);
 
         uint32_t imageIndex;
-        VkResult result =
-            vkAcquireNextImageKHR(device, swapChain.swapChain, UINT64_MAX,
-                                  imageAvailableSemaphores[currentFrame],
-                                  VK_NULL_HANDLE, &imageIndex);
+        VkResult result = vkAcquireNextImageKHR(
+            device.ldevice, swapChain.swapChain, UINT64_MAX,
+            imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
+            &imageIndex);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapChain();
             return;
@@ -1564,7 +1570,7 @@ class SceneRenderer {
 
         // Only reset fence if we know that work is going to be submitted
         // Per tal que es pugui fer submit work
-        vkResetFences(device, 1, &inFlightFences[currentFrame]);
+        vkResetFences(device.ldevice, 1, &inFlightFences[currentFrame]);
 
         vkResetCommandBuffer(commandBuffers[currentFrame], 0);
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -1590,7 +1596,7 @@ class SceneRenderer {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
-        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo,
+        if (vkQueueSubmit(device.gqueue, 1, &submitInfo,
                           inFlightFences[currentFrame]) != VK_SUCCESS) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
@@ -1607,7 +1613,7 @@ class SceneRenderer {
         presentInfo.pImageIndices = &imageIndex;
         presentInfo.pResults = nullptr;
 
-        result = vkQueuePresentKHR(presentQueue, &presentInfo);
+        result = vkQueuePresentKHR(device.pqueue, &presentInfo);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ||
             frameBufferResized) {

@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+
+#include "vkDevice.hh"
 namespace gbg {
 struct vkInstance {
     VkInstance instance;
@@ -21,5 +23,7 @@ std::optional<uint32_t> getGraphicQueueFamilyIndex(VkPhysicalDevice pdevice);
 std::optional<uint32_t> getTransferQueueFamilyIndex(VkPhysicalDevice pdevice);
 std::optional<uint32_t> getPresentQueueFamilyIndex(VkPhysicalDevice pdevice,
                                                    VkSurfaceKHR surface);
+
+bool getDeviceQueueCompatibility(VkPhysicalDevice device, VkSurfaceKHR surface);
 
 }  // namespace gbg
