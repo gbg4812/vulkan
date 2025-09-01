@@ -79,6 +79,7 @@ class Mesh {
         return nullptr;
     }
 
+    // TODO: Produces crash
     int addVertex(glm::vec3 position) {
         _positions->push_back(position);
         _vertex_cnt++;

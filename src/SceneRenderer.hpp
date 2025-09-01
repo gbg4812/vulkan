@@ -1,3 +1,4 @@
+#pragma once
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
@@ -30,12 +31,11 @@
 #include <vector>
 
 #include "Logger.h"
-#include "Vertex.h"
 #include "vkBuffer.hh"
 #include "vkDevice.hh"
 #include "vkImage.h"
 #include "vkInstance.hh"
-#include "vkMesh.h"
+#include "vkMesh.hh"
 #include "vkSwapChain.h"
 #include "vkTexture.h"
 #include "vkVertexDescriptions.h"
@@ -217,7 +217,6 @@ class SceneRenderer {
         createRenderPass();
         createDescriptorSetLayouts();
         createGraphicsPipeline();
-        createCommandPools();
         createColorResources();
         createDepthResources();
         createFrameBuffers();
@@ -230,12 +229,12 @@ class SceneRenderer {
             auto pos = mesh->getPositions();
             auto faces = mesh->getFaces();
             vkMesh vkmesh{};
-            vkVector3Attribute attrib = vkVector3Attribute(
+            auto attrib = std::make_unique<vkVector3Attribute>(
                 device, 0, sizeof(glm::vec3), pos->size(), pos->data());
 
-            vkmesh.vertexAttributes.push_back(attrib);
+            vkmesh.vertexAttributes.push_back(std::move(attrib));
             vkmesh.indexBuffer = gbg::createIndexBuffer(device, *faces);
-            meshes.push_back(vkmesh);
+            meshes.push_back(std::move(vkmesh));
         }
     }
 
@@ -287,11 +286,9 @@ class SceneRenderer {
             vkDestroyDescriptorSetLayout(device.ldevice, descSet, nullptr);
         }
 
-        vkDestroyBuffer(device.ldevice, vertexBuffer.buffer, nullptr);
-        vkFreeMemory(device.ldevice, vertexBuffer.memory, nullptr);
-
-        vkDestroyBuffer(device.ldevice, indexBuffer.buffer, nullptr);
-        vkFreeMemory(device.ldevice, indexBuffer.memory, nullptr);
+        for (const auto& mesh : meshes) {
+            destroyMesh(device, mesh);
+        }
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
@@ -728,13 +725,20 @@ class SceneRenderer {
         vertexInputInfo.sType =
             VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
-        auto bindingDescription = gbg::getBindingDescription();
-        auto attributeDescriptions = gbg::getAttributeDescriptions();
+        std::vector<VkVertexInputBindingDescription> bindingDescriptions;
+        std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+        for (const auto& mesh : meshes) {
+            for (const auto& attr : mesh.vertexAttributes) {
+                bindingDescriptions.push_back(attr->getBindingDesc());
+                attributeDescriptions.push_back(attr->getAttribDesc());
+            }
+        }
 
-        vertexInputInfo.vertexBindingDescriptionCount = 1;
+        vertexInputInfo.vertexBindingDescriptionCount =
+            bindingDescriptions.size();
         vertexInputInfo.vertexAttributeDescriptionCount =
             static_cast<uint32_t>(attributeDescriptions.size());
-        vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+        vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
         vertexInputInfo.pVertexAttributeDescriptions =
             attributeDescriptions.data();
 
@@ -1181,31 +1185,6 @@ class SceneRenderer {
         }
     }
 
-    void createVertexBuffer() {
-        VkDeviceSize size = vertices.size() * sizeof(vertices[0]);
-
-        gbg::vkBuffer stagingBuffer =
-            gbg::createBuffer(device.ldevice, physicalDevice, size,
-                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        void* data;
-        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, size, 0, &data);
-        memcpy(data, vertices.data(), size);
-        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
-
-        vertexBuffer = gbg::createBuffer(device.ldevice, physicalDevice, size,
-                                         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-                                             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        copyBuffer(stagingBuffer.buffer, vertexBuffer.buffer, size);
-        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
-        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
-    }
-
-    void createIndexBuffer() {}
-
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
 
@@ -1213,41 +1192,12 @@ class SceneRenderer {
         uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            uniformBuffers[i] =
-                gbg::createBuffer(device.ldevice, physicalDevice, bufferSize,
-                                  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            uniformBuffers[i] = gbg::createBuffer(
+                device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             vkMapMemory(device.ldevice, uniformBuffers[i].memory, 0, bufferSize,
                         0, &uniformBuffersMapped[i]);
-        }
-    }
-
-    void createCommandPools() {
-        // This command pool is to allocate reseteable command buffers
-        VkCommandPoolCreateInfo graphicsPoolInfo{};
-        graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        graphicsPoolInfo.flags =
-            VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        graphicsPoolInfo.queueFamilyIndex =
-            getGraphicQueueFamilyIndex(device.pdevice).value();
-
-        if (vkCreateCommandPool(device.ldevice, &graphicsPoolInfo, nullptr,
-                                &graphicsCmdPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create graphics command pool!");
-        }
-
-        // This command pool is to allocate command buffers that will be short
-        // lived
-        VkCommandPoolCreateInfo transferPoolInfo{};
-        transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        transferPoolInfo.queueFamilyIndex =
-            getTransferQueueFamilyIndex(device.pdevice).value();
-
-        if (vkCreateCommandPool(device.ldevice, &transferPoolInfo, nullptr,
-                                &transferCmdPool) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create transfer command pool!");
         }
     }
 
@@ -1446,26 +1396,31 @@ class SceneRenderer {
         scissor.extent = swapChain.swapChainImageExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer.buffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        std::vector<VkBuffer> vbuffers;
+        std::vector<VkDeviceSize> voffsets;
 
-        vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0,
-                             VK_INDEX_TYPE_UINT32);
+        for (const auto& mesh : meshes) {
+            for (const auto& attrb : mesh.vertexAttributes) {
+                vbuffers.push_back(attrb->buffer.buffer);
+                voffsets.push_back(0);
+            }
+            vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
+                                   vbuffers.data(), voffsets.data());
+            vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer, 0,
+                                 VK_INDEX_TYPE_UINT32);
+            vkCmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                0, 1, &inmutableDescriptorSet, 0, nullptr);
+            vkCmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                1, 1, materialDescSets.data(), 0, nullptr);
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelineLayout, 0, 1, &inmutableDescriptorSet,
-                                0, nullptr);
+            vkCmdBindDescriptorSets(
+                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+                2, 1, &variableDescriptorSets[currentFrame], 0, nullptr);
 
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipelineLayout, 1, 1, materialDescSets.data(),
-                                0, nullptr);
-
-        vkCmdBindDescriptorSets(
-            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 2,
-            1, &variableDescriptorSets[currentFrame], 0, nullptr);
-
-        vkCmdDrawIndexed(commandBuffer, indices.size(), 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size, 1, 0, 0, 0);
+        }
 
         vkCmdEndRenderPass(commandBuffer);
 

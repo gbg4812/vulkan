@@ -9,6 +9,8 @@ struct vkDevice {
     VkQueue gqueue;
     VkQueue pqueue;
     VkQueue tqueue;
+    VkCommandPool graphicsCmdPool;
+    VkCommandPool transferCmdPool;
 };
 vkDevice createDevice(VkPhysicalDevice pdevice,
                       const std::vector<const char*>& deviceExtensions,

@@ -1,4 +1,4 @@
-#include "vkMesh.h"
+#include "vkMesh.hh"
 
 #include <string.h>
 #include <vulkan/vulkan_core.h>
@@ -14,10 +14,10 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
     : attrib_id(attrib_id), size(element_count * element_size) {
     VkDeviceSize dsize = size;
 
-    gbg::vkBuffer stagingBuffer = gbg::createBuffer(
-        device.ldevice, device.pdevice, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    gbg::vkBuffer stagingBuffer =
+        gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     void* sdata;
     vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
@@ -25,10 +25,10 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
     vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
     buffer = gbg::createBuffer(
-        device.ldevice, device.pdevice, dsize,
+        device, dsize,
         VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    copyBuffer(stagingBuffer.buffer, buffer.buffer, size);
+    copyBuffer(device, stagingBuffer, buffer);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 }
@@ -72,10 +72,10 @@ vkBuffer createIndexBuffer(vkDevice device,
     }
     VkDeviceSize size = indices.size() * sizeof(indices[0]);
 
-    gbg::vkBuffer stagingBuffer = gbg::createBuffer(
-        device.ldevice, device.pdevice, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    gbg::vkBuffer stagingBuffer =
+        gbg::createBuffer(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     void* data;
     vkMapMemory(device.ldevice, stagingBuffer.memory, 0, size, 0, &data);
@@ -83,14 +83,20 @@ vkBuffer createIndexBuffer(vkDevice device,
     vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
     vkBuffer indexBuffer = gbg::createBuffer(
-        device.ldevice, device.pdevice, size,
+        device, size,
         VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    copyBuffer(stagingBuffer.buffer, indexBuffer.buffer, size);
+    copyBuffer(device, stagingBuffer, indexBuffer);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 
     return indexBuffer;
 }
 
+void destroyMesh(const vkDevice& device, const vkMesh& mesh) {
+    destroyBuffer(device, mesh.indexBuffer);
+    for (const auto& attrb : mesh.vertexAttributes) {
+        destroyBuffer(device, attrb->buffer);
+    }
+}
 }  // namespace gbg

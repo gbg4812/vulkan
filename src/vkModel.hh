@@ -1,5 +1,5 @@
 #pragma once
-#include "vkMesh.h"
+#include "vkMesh.hh"
 namespace gbg {
 struct vkModel {
     vkMesh mesh;

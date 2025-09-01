@@ -2,6 +2,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <list>
+#include <memory>
 #include <vector>
 
 #include "vkBuffer.hh"
@@ -13,8 +14,8 @@ struct vkAttribute {
     vkAttribute(vkDevice device, int attrib_id, size_t element_size,
                 size_t element_count, void* data);
 
-    virtual VkVertexInputBindingDescription getBindingDesc();
-    virtual VkVertexInputAttributeDescription getAttribDesc();
+    virtual VkVertexInputBindingDescription getBindingDesc() = 0;
+    virtual VkVertexInputAttributeDescription getAttribDesc() = 0;
 
    public:
     vkBuffer buffer;
@@ -23,7 +24,7 @@ struct vkAttribute {
 };
 
 struct vkMesh {
-    std::vector<gbg::vkAttribute> vertexAttributes;
+    std::vector<std::unique_ptr<gbg::vkAttribute>> vertexAttributes;
     gbg::vkBuffer indexBuffer;
 };
 
@@ -37,4 +38,5 @@ struct vkVector3Attribute : public vkAttribute {
     virtual VkVertexInputAttributeDescription getAttribDesc() override;
 };
 
+void destroyMesh(const vkDevice& device, const vkMesh& mesh);
 }  // namespace gbg

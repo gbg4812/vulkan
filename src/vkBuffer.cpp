@@ -5,12 +5,9 @@
 
 #include <stdexcept>
 
-#include "vkCommandBuffer.hh"
-#include "vkUtil.hh"
-
 namespace gbg {
-vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
-                      VkDeviceSize size, VkBufferUsageFlags usage,
+vkBuffer createBuffer(vkDevice device, VkDeviceSize size,
+                      VkBufferUsageFlags usage,
                       VkMemoryPropertyFlags properties) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -22,33 +19,33 @@ vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
     vkBuffer buffer;
     buffer.size = size;
 
-    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) !=
+    if (vkCreateBuffer(device.ldevice, &bufferInfo, nullptr, &buffer.buffer) !=
         VK_SUCCESS) {
         throw std::runtime_error("failed to create buffer!");
     }
 
     VkMemoryRequirements memRequirements{};
-    vkGetBufferMemoryRequirements(device, buffer.buffer, &memRequirements);
+    vkGetBufferMemoryRequirements(device.ldevice, buffer.buffer,
+                                  &memRequirements);
 
     VkMemoryAllocateInfo allocateInfo{};
     allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocateInfo.allocationSize = memRequirements.size;
     allocateInfo.memoryTypeIndex = findMemoryType(
-        physicalDevice, memRequirements.memoryTypeBits, properties);
+        device.pdevice, memRequirements.memoryTypeBits, properties);
 
-    if (vkAllocateMemory(device, &allocateInfo, nullptr, &buffer.memory) !=
-        VK_SUCCESS) {
+    if (vkAllocateMemory(device.ldevice, &allocateInfo, nullptr,
+                         &buffer.memory) != VK_SUCCESS) {
         throw std::runtime_error("failed to allocate buffer memory!");
     }
 
-    vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
+    vkBindBufferMemory(device.ldevice, buffer.buffer, buffer.memory, 0);
     return buffer;
 }
 
-void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer,
-                VkCommandPool transferCmdPool) {
+void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer) {
     VkCommandBuffer cpyCmdBuffer =
-        beginSingleTimeCommands(device, transferCmdPool);
+        beginSingleTimeCommands(device, device.transferCmdPool);
 
     VkBufferCopy cpyRegion{};
     cpyRegion.srcOffset = 0;
@@ -58,6 +55,12 @@ void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer,
     vkCmdCopyBuffer(cpyCmdBuffer, srcBuffer.buffer, dstBuffer.buffer, 1,
                     &cpyRegion);
 
-    endSingleTimeCommands(device, cpyCmdBuffer, transferCmdPool, device.tqueue);
+    endSingleTimeCommands(device, cpyCmdBuffer, device.transferCmdPool,
+                          device.tqueue);
+}
+
+void destroyBuffer(vkDevice device, vkBuffer buffer) {
+    vkDestroyBuffer(device.ldevice, buffer.buffer, nullptr);
+    vkFreeMemory(device.ldevice, buffer.memory, nullptr);
 }
 }  // namespace gbg

@@ -1,3 +1,5 @@
+#include <memory>
+
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
@@ -8,14 +10,17 @@ const std::string TEXTURE_PATH =
     "models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
 
 int main() {
-    gbg::Scene scene;
+    const auto& scene = std::make_shared<gbg::Scene>();
     gbg::SceneRenderer renderer;
-    renderer.init();
 
     auto tex = gbg::loadTexture(TEXTURE_PATH);
 
     auto mesh =
         gbg::loadMesh("../../data/models/pony-cartoon/Pony_cartoon.obj");
+    scene->meshes.push_back(mesh);
+
+    renderer.setScene(scene);
+    renderer.init();
 
     try {
         renderer.run();

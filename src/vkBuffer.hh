@@ -3,6 +3,10 @@
 
 #include <optional>
 
+#include "vkCommandBuffer.hh"
+#include "vkDevice.hh"
+#include "vkUtil.hh"
+
 namespace gbg {
 struct vkBuffer {
     VkBuffer buffer;
@@ -11,9 +15,11 @@ struct vkBuffer {
     std::optional<VkBufferView> view;
 };
 
-vkBuffer createBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
-                      VkDeviceSize size, VkBufferUsageFlags usage,
+vkBuffer createBuffer(vkDevice device, VkDeviceSize size,
+                      VkBufferUsageFlags usage,
                       VkMemoryPropertyFlags properties);
 
-void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer);
+
+void destroyBuffer(vkDevice device, vkBuffer buffer);
 }  // namespace gbg

@@ -1,4 +1,4 @@
-#include "vkUtil.h"
+#include "vkUtil.hh"
 
 #include <vulkan/vulkan_core.h>
 

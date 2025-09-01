@@ -64,6 +64,31 @@ vkDevice createDevice(VkPhysicalDevice pdevice,
     vkGetDeviceQueue(device.ldevice, gfamily.value(), 0, &device.gqueue);
     vkGetDeviceQueue(device.ldevice, pfamily.value(), 0, &device.pqueue);
     vkGetDeviceQueue(device.ldevice, tfamily.value(), 0, &device.tqueue);
+
+    // This command pool is to allocate reseteable command buffers
+    VkCommandPoolCreateInfo graphicsPoolInfo{};
+    graphicsPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    graphicsPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    graphicsPoolInfo.queueFamilyIndex =
+        getGraphicQueueFamilyIndex(device.pdevice).value();
+
+    if (vkCreateCommandPool(device.ldevice, &graphicsPoolInfo, nullptr,
+                            &device.graphicsCmdPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create graphics command pool!");
+    }
+
+    // This command pool is to allocate command buffers that will be short
+    // lived
+    VkCommandPoolCreateInfo transferPoolInfo{};
+    transferPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    transferPoolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    transferPoolInfo.queueFamilyIndex =
+        getTransferQueueFamilyIndex(device.pdevice).value();
+
+    if (vkCreateCommandPool(device.ldevice, &transferPoolInfo, nullptr,
+                            &device.transferCmdPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create transfer command pool!");
+    }
     return device;
 }
 }  // namespace gbg

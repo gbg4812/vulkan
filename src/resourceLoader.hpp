@@ -1,6 +1,4 @@
-
-#ifndef GBG_RESLOD
-#define GBG_RESLOD
+#pragma once
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 
@@ -16,5 +14,3 @@ std::shared_ptr<Mesh> loadMesh(std::string model_path);
 std::shared_ptr<Image> loadTexture(std::string texture_path);
 
 }  // namespace gbg
-
-#endif
