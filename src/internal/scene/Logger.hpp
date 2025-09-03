@@ -1,5 +1,6 @@
 #pragma once
 #include <iostream>
+#include <list>
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
@@ -18,6 +19,17 @@ template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
     os << "(";
     for (const auto& el : vec) {
+        os << el << ", ";
+    }
+    os << ")" << std::endl;
+
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::list<T>& lst) {
+    os << "(";
+    for (const auto& el : lst) {
         os << el << ", ";
     }
     os << ")" << std::endl;

@@ -30,7 +30,7 @@
 #include <string>
 #include <vector>
 
-#include "Logger.h"
+#include "Logger.hpp"
 #include "vkBuffer.hh"
 #include "vkDevice.hh"
 #include "vkImage.h"
@@ -38,7 +38,6 @@
 #include "vkMesh.hh"
 #include "vkSwapChain.h"
 #include "vkTexture.h"
-#include "vkVertexDescriptions.h"
 
 namespace gbg {
 
@@ -133,24 +132,21 @@ class SceneRenderer {
     GLFWwindow* window;
     vkInstance instance;
     VkSurfaceKHR surface;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     vkDevice device;
     VkRenderPass renderPass;
 
     VkDescriptorPool descriptorPool;
     std::vector<VkDescriptorSetLayout> materialDescSetLayouts;
     VkDescriptorSetLayout inmutableDescriptorSetLayout;
-    VkDescriptorSetLayout variableDescriptorSetLayout;
+    VkDescriptorSetLayout globalDescriptorSetLayout;
     std::vector<VkDescriptorSet> materialDescSets;
-    std::vector<VkDescriptorSet> variableDescriptorSets;
+    std::vector<VkDescriptorSet> globalDescriptorSets;
     VkDescriptorSet inmutableDescriptorSet;
 
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
     gbg::vkSwapChain swapChain;
     std::vector<VkFramebuffer> swapChainFramebuffers;
-    VkCommandPool graphicsCmdPool;
-    VkCommandPool transferCmdPool;
     std::vector<VkCommandBuffer> commandBuffers;
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
@@ -210,26 +206,24 @@ class SceneRenderer {
     void initVulkan() {
         createInstance();
         createSurface();
-        pickPhysicalDevice();
         createLogicalDevice();
         createSwapChain();
         createImageViews();
         createRenderPass();
-        createDescriptorSetLayouts();
-        createGraphicsPipeline();
         createColorResources();
         createDepthResources();
         createFrameBuffers();
     }
 
     void addModels() {
-        // TODO: Add materials and various attributes
-        for (auto model : scene->models) {
-            auto mesh = model->getMesh();
+        // TODO: Add materials and various attributes and proces models not
+        // meshes
+        for (auto mesh : scene->meshes) {
+            LOG("Adding mesh!")
             auto pos = mesh->getPositions();
             auto faces = mesh->getFaces();
             vkMesh vkmesh{};
-            auto attrib = std::make_unique<vkVector3Attribute>(
+            auto attrib = std::make_shared<vkVector3Attribute>(
                 device, 0, sizeof(glm::vec3), pos->size(), pos->data());
 
             vkmesh.vertexAttributes.push_back(std::move(attrib));
@@ -244,9 +238,11 @@ class SceneRenderer {
         // createTextureSampler();
         // createVertexBuffer();
         // createIndexBuffer();
+        createDescriptorSetLayouts();
+        createGraphicsPipeline();
         createUniformBuffers();
         createDescriptorPool();
-        createDynamicDescriptorSets();
+        createGlobalDescriptorSets();
         createMaterialDescriptorSets();
         createInmutableDescriptorSets();
         createCommandBuffer();
@@ -280,8 +276,8 @@ class SceneRenderer {
 
         vkDestroyDescriptorSetLayout(device.ldevice,
                                      inmutableDescriptorSetLayout, nullptr);
-        vkDestroyDescriptorSetLayout(device.ldevice,
-                                     variableDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(device.ldevice, globalDescriptorSetLayout,
+                                     nullptr);
         for (VkDescriptorSetLayout descSet : materialDescSetLayouts) {
             vkDestroyDescriptorSetLayout(device.ldevice, descSet, nullptr);
         }
@@ -298,8 +294,8 @@ class SceneRenderer {
             vkDestroyFence(device.ldevice, inFlightFences[i], nullptr);
         }
 
-        vkDestroyCommandPool(device.ldevice, graphicsCmdPool, nullptr);
-        vkDestroyCommandPool(device.ldevice, transferCmdPool, nullptr);
+        vkDestroyCommandPool(device.ldevice, device.graphicsCmdPool, nullptr);
+        vkDestroyCommandPool(device.ldevice, device.transferCmdPool, nullptr);
 
         vkDestroyPipeline(device.ldevice, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device.ldevice, pipelineLayout, nullptr);
@@ -340,7 +336,7 @@ class SceneRenderer {
 
     void createSwapChain() {
         gbg::SwapChainSupportDetails details =
-            gbg::querySwapChainSupport(physicalDevice, surface);
+            gbg::querySwapChainSupport(device.pdevice, surface);
         VkExtent2D extent = chooseSwapExtent(details.capabilities);
         std::optional<uint32_t> gfamily =
             getGraphicQueueFamilyIndex(device.pdevice);
@@ -348,7 +344,7 @@ class SceneRenderer {
             getPresentQueueFamilyIndex(device.pdevice, surface);
 
         swapChain =
-            gbg::createSwapChain(physicalDevice, device.ldevice, surface,
+            gbg::createSwapChain(device.pdevice, device.ldevice, surface,
                                  extent, gfamily.value(), pfamily.value());
     }
 
@@ -386,7 +382,7 @@ class SceneRenderer {
         }
     }
 
-    void pickPhysicalDevice() {
+    VkPhysicalDevice pickPhysicalDevice() {
         uint32_t deviceCount = 0;
         vkEnumeratePhysicalDevices(instance.instance, &deviceCount, nullptr);
         if (deviceCount == 0) {
@@ -396,10 +392,10 @@ class SceneRenderer {
         std::multimap<uint32_t, VkPhysicalDevice> scoredDevices;
         vkEnumeratePhysicalDevices(instance.instance, &deviceCount,
                                    devices.data());
-        for (const auto& device : devices) {
-            uint32_t score = deviceScore(device);
+        for (const auto& pdevice : devices) {
+            uint32_t score = deviceScore(pdevice);
             if (score) {
-                scoredDevices.emplace(score, device);
+                scoredDevices.emplace(score, pdevice);
             }
         }
 
@@ -407,8 +403,7 @@ class SceneRenderer {
             throw std::runtime_error("failed to find a suitable GPU!");
         }
 
-        physicalDevice = scoredDevices.rbegin()->second;
-        msaaSamples = getMaxUsableSampleCount();
+        return scoredDevices.rbegin()->second;
     }
 
     uint32_t deviceScore(VkPhysicalDevice device) {
@@ -466,9 +461,11 @@ class SceneRenderer {
     // reciving commands (like graphic commands). It is an interface with the
     // physical device
     void createLogicalDevice() {
+        VkPhysicalDevice physicalDevice = pickPhysicalDevice();
         device =
             createDevice(physicalDevice, deviceExtensions,
                          enableValidationLayers, validationLayers, surface);
+        msaaSamples = getMaxUsableSampleCount(device.pdevice);
     }
 
     void cleanupSwapChain() {
@@ -492,7 +489,7 @@ class SceneRenderer {
     void createColorResources() {
         VkFormat colorFormat = swapChain.swapChainImageFormat;
         colorImage =
-            gbg::createImage(physicalDevice, device.ldevice,
+            gbg::createImage(device.pdevice, device.ldevice,
                              swapChain.swapChainImageExtent.width,
                              swapChain.swapChainImageExtent.height, 1,
                              msaaSamples, colorFormat, VK_IMAGE_TILING_OPTIMAL,
@@ -643,12 +640,15 @@ class SceneRenderer {
             static_cast<uint32_t>(variableBindings.size());
         variableLayoutInfo.pBindings = variableBindings.data();
 
-        if (vkCreateDescriptorSetLayout(
-                device.ldevice, &variableLayoutInfo, nullptr,
-                &variableDescriptorSetLayout) != VK_SUCCESS) {
+        if (vkCreateDescriptorSetLayout(device.ldevice, &variableLayoutInfo,
+                                        nullptr, &globalDescriptorSetLayout) !=
+            VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
 
+        if (textures.empty()) {
+            return;
+        }
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 0;
         samplerLayoutBinding.descriptorCount = 1;
@@ -727,6 +727,7 @@ class SceneRenderer {
 
         std::vector<VkVertexInputBindingDescription> bindingDescriptions;
         std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+        LOG("Adding input bindings...")
         for (const auto& mesh : meshes) {
             for (const auto& attr : mesh.vertexAttributes) {
                 bindingDescriptions.push_back(attr->getBindingDesc());
@@ -840,13 +841,18 @@ class SceneRenderer {
         dynamicState.pDynamicStates = dynamicStates.data();
 
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
-            inmutableDescriptorSetLayout};
+            globalDescriptorSetLayout};
 
-        descriptorSetLayouts.insert(descriptorSetLayouts.end(),
-                                    materialDescSetLayouts.begin(),
-                                    materialDescSetLayouts.end());
+        if (not textures.empty()) {
+            descriptorSetLayouts.insert(descriptorSetLayouts.end(),
+                                        materialDescSetLayouts.begin(),
+                                        materialDescSetLayouts.end());
 
-        descriptorSetLayouts.push_back(variableDescriptorSetLayout);
+            descriptorSetLayouts.push_back(inmutableDescriptorSetLayout);
+        }
+
+        LOG("Number of descSets: ")
+        LOG(descriptorSetLayouts.size())
 
         VkPipelineLayoutCreateInfo layoutCreateInfo{};
         layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -921,7 +927,7 @@ class SceneRenderer {
                                   VkFormatFeatureFlags features) {
         for (VkFormat format : candidates) {
             VkFormatProperties props;
-            vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+            vkGetPhysicalDeviceFormatProperties(device.pdevice, format, &props);
             if (tiling == VK_IMAGE_TILING_LINEAR &&
                 (props.optimalTilingFeatures & features) == features) {
                 return format;
@@ -951,7 +957,7 @@ class SceneRenderer {
         VkFormat depthFormat = findDepthFormat();
 
         depthImage =
-            gbg::createImage(physicalDevice, device.ldevice,
+            gbg::createImage(device.pdevice, device.ldevice,
                              swapChain.swapChainImageExtent.width,
                              swapChain.swapChainImageExtent.height, 1,
                              msaaSamples, depthFormat, VK_IMAGE_TILING_OPTIMAL,
@@ -966,10 +972,11 @@ class SceneRenderer {
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
     }
 
-    void generateMipmaps(VkImage image, VkFormat format, int32_t texWidth,
-                         int32_t texHeight, uint32_t mipLevels) {
+    void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
+                         int32_t texWidth, int32_t texHeight,
+                         uint32_t mipLevels) {
         VkFormatProperties formatProperties;
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, format,
+        vkGetPhysicalDeviceFormatProperties(device.pdevice, format,
                                             &formatProperties);
         if (!(formatProperties.optimalTilingFeatures &
               VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
@@ -978,7 +985,7 @@ class SceneRenderer {
         }
 
         VkCommandBuffer commandBuffer =
-            beginSingleTimeCommands(device, graphicsCmdPool);
+            beginSingleTimeCommands(device, device.graphicsCmdPool);
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1051,7 +1058,7 @@ class SceneRenderer {
                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &barrier);
 
-        endSingleTimeCommands(device, commandBuffer, graphicsCmdPool,
+        endSingleTimeCommands(device, commandBuffer, device.graphicsCmdPool,
                               device.gqueue);
     }
 
@@ -1059,7 +1066,7 @@ class SceneRenderer {
                                VkImageLayout oldLayout, VkImageLayout newLayout,
                                uint32_t mipLevels) {
         VkCommandBuffer transBuffer =
-            beginSingleTimeCommands(device, transferCmdPool);
+            beginSingleTimeCommands(device, device.transferCmdPool);
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1117,14 +1124,14 @@ class SceneRenderer {
         vkCmdPipelineBarrier(transBuffer, srcStage, dstStage, 0, 0, nullptr, 0,
                              nullptr, 1, &barrier);
 
-        endSingleTimeCommands(device, transBuffer, transferCmdPool,
+        endSingleTimeCommands(device, transBuffer, device.transferCmdPool,
                               device.tqueue);
     }
 
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width,
                            uint32_t height) {
         VkCommandBuffer commandBuffer =
-            beginSingleTimeCommands(device, transferCmdPool);
+            beginSingleTimeCommands(device, device.transferCmdPool);
 
         VkBufferImageCopy copyInfo{};
         copyInfo.bufferOffset = 0;
@@ -1143,8 +1150,8 @@ class SceneRenderer {
                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                                &copyInfo);
 
-        gbg::endSingleTimeCommands(device, commandBuffer, transferCmdPool,
-                                   device.tqueue);
+        gbg::endSingleTimeCommands(device, commandBuffer,
+                                   device.transferCmdPool, device.tqueue);
     }
 
     void createTexturesImageViews() {
@@ -1166,7 +1173,7 @@ class SceneRenderer {
         createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
         VkPhysicalDeviceProperties properties;
-        vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+        vkGetPhysicalDeviceProperties(device.pdevice, &properties);
         createInfo.anisotropyEnable = VK_TRUE;
         createInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
         createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -1208,9 +1215,10 @@ class SceneRenderer {
             static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
         descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
         descriptorPoolSizes[1].descriptorCount = 1;
+
         descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         descriptorPoolSizes[2].descriptorCount =
-            static_cast<uint32_t>(textures.size());
+            static_cast<uint32_t>(std::max<int>(textures.size(), 1));
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1226,9 +1234,9 @@ class SceneRenderer {
         }
     }
 
-    void createDynamicDescriptorSets() {
+    void createGlobalDescriptorSets() {
         std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
-                                                   variableDescriptorSetLayout);
+                                                   globalDescriptorSetLayout);
 
         VkDescriptorSetAllocateInfo setInfo{};
         setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1236,9 +1244,9 @@ class SceneRenderer {
         setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
         setInfo.pSetLayouts = layouts.data();
 
-        variableDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+        globalDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
         if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
-                                     variableDescriptorSets.data()) !=
+                                     globalDescriptorSets.data()) !=
             VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor sets");
         }
@@ -1251,7 +1259,7 @@ class SceneRenderer {
 
             std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrites[0].dstSet = variableDescriptorSets[i];
+            descriptorWrites[0].dstSet = globalDescriptorSets[i];
             descriptorWrites[0].dstBinding = 0;
             descriptorWrites[0].dstArrayElement = 0;
             descriptorWrites[0].descriptorType =
@@ -1269,6 +1277,7 @@ class SceneRenderer {
     }
 
     void createMaterialDescriptorSets() {
+        if (textures.empty()) return;
         std::vector<VkDescriptorSetLayout> layouts(textures.size(),
                                                    materialDescSetLayouts[0]);
 
@@ -1278,7 +1287,7 @@ class SceneRenderer {
         setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
         setInfo.pSetLayouts = layouts.data();
 
-        materialDescSets.resize(MAX_FRAMES_IN_FLIGHT);
+        materialDescSets.resize(textures.size());
         if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                      materialDescSets.data()) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor sets");
@@ -1308,6 +1317,7 @@ class SceneRenderer {
     }
 
     void createInmutableDescriptorSets() {
+        if (textures.empty()) return;
         VkDescriptorSetAllocateInfo setInfo{};
         setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         setInfo.descriptorPool = descriptorPool;
@@ -1339,7 +1349,7 @@ class SceneRenderer {
 
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = graphicsCmdPool;
+        allocInfo.commandPool = device.graphicsCmdPool;
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
 
@@ -1396,10 +1406,9 @@ class SceneRenderer {
         scissor.extent = swapChain.swapChainImageExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        std::vector<VkBuffer> vbuffers;
-        std::vector<VkDeviceSize> voffsets;
-
         for (const auto& mesh : meshes) {
+            std::vector<VkBuffer> vbuffers;
+            std::vector<VkDeviceSize> voffsets;
             for (const auto& attrb : mesh.vertexAttributes) {
                 vbuffers.push_back(attrb->buffer.buffer);
                 voffsets.push_back(0);
@@ -1408,18 +1417,21 @@ class SceneRenderer {
                                    vbuffers.data(), voffsets.data());
             vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer, 0,
                                  VK_INDEX_TYPE_UINT32);
-            vkCmdBindDescriptorSets(
-                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                0, 1, &inmutableDescriptorSet, 0, nullptr);
-            vkCmdBindDescriptorSets(
-                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                1, 1, materialDescSets.data(), 0, nullptr);
+            if (not textures.empty()) {
+                vkCmdBindDescriptorSets(
+                    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    pipelineLayout, 2, 1, &inmutableDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(
+                    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    pipelineLayout, 1, 1, materialDescSets.data(), 0, nullptr);
+            }
 
             vkCmdBindDescriptorSets(
                 commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                2, 1, &variableDescriptorSets[currentFrame], 0, nullptr);
+                0, 1, &globalDescriptorSets[currentFrame], 0, nullptr);
 
-            vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size, 1, 0, 0, 0);
+            vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4, 1, 0, 0,
+                             0);
         }
 
         vkCmdEndRenderPass(commandBuffer);
@@ -1453,10 +1465,9 @@ class SceneRenderer {
         }
     }
 
-    VkSampleCountFlagBits getMaxUsableSampleCount() {
+    VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice) {
         VkPhysicalDeviceProperties physicalDeviceProperties;
-        vkGetPhysicalDeviceProperties(physicalDevice,
-                                      &physicalDeviceProperties);
+        vkGetPhysicalDeviceProperties(pdevice, &physicalDeviceProperties);
         VkSampleCountFlags counts =
             physicalDeviceProperties.limits.framebufferColorSampleCounts &
             physicalDeviceProperties.limits.framebufferDepthSampleCounts;
@@ -1485,7 +1496,7 @@ class SceneRenderer {
                          .count();
 
         UniformBufferObjects ubo{};
-        ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, 0.01f, 0.01f));
+        ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, .01f, .01f));
         ubo.model = glm::rotate(ubo.model, glm::radians(90.0f),
                                 glm::vec3(1.0f, 0.0f, 0.0f));
         ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),

@@ -1,6 +1,6 @@
 #version 450
 
-layout(set = 2, binding = 0) uniform UniformBufferObject {
+layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
@@ -18,6 +18,7 @@ void main() {
     // view matrix orientates de scene to the view
     // proj matrix aplies perspective deformation
     gl_Position = ubo.proj * ubo.view * ubo.model * vec4(inPosition, 1.0);
+    //gl_Position = vec4(inPosition, 1.0);
     fragColor = vec3(0.5, 0.7, 1.0);
     //fragTexCoord = inTexCoord;
 }

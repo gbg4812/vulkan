@@ -4,6 +4,7 @@
 #include "Logger.hpp"
 #include "Model.hpp"
 #include "Shader.hpp"
+#include "resourceLoader.hpp"
 
 int main(int argc, char* argv[]) {
     LOG("Creating Mesh: ")
@@ -21,6 +22,12 @@ int main(int argc, char* argv[]) {
 
     LOG("Adding vertex {1,1,1}")
     mesh1->addVertex({1, 1, 1});
+    mesh1->addVertex({2, 2, 2});
+    mesh1->addVertex({3, 3, 3});
+    mesh1->addVertex({4, 4, 4});
+
+    auto attr = mesh1->getAttribute<gbg::AttributeType::Float>("pscale");
+    LOG(attr->at(3));
 
     LOG_VAR(*pscale)
     LOG_VAR(*pos)
@@ -43,6 +50,12 @@ int main(int argc, char* argv[]) {
 
     LOG("Creating Object")
     auto obj1 = std::make_shared<gbg::Model>(mat1, mesh1);
+
+    LOG("Loading Mesh: ")
+    auto lmesh = gbg::loadMesh("../../models/EasyModels/square.obj");
+
+    LOG_VAR(*lmesh->getPositions())
+    LOG_VAR(*lmesh->getFaces())
 
     return 0;
 }

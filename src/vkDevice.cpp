@@ -4,7 +4,7 @@
 
 #include <set>
 
-#include "Logger.h"
+#include "Logger.hpp"
 #include "vkInstance.hh"
 namespace gbg {
 vkDevice createDevice(VkPhysicalDevice pdevice,

@@ -41,17 +41,16 @@ struct PushDefaultElement {
 class Mesh {
    public:
     Mesh() : _vertex_cnt(0) {
-        _positions = std::make_shared<std::vector<glm::vec3>>(0);
+        this->createAttribute<AttributeType::Vector3>("position");
         _faces = std::make_shared<std::vector<std::list<int>>>(0);
     }
 
     template <AttributeType I>
     std::variant_alternative_t<to_underlying(I), attr_variant_t>
     createAttribute(const std::string& name) {
-        if (name == "position" or _attributes.contains(name)) {
+        if (_attributes.contains(name)) {
             return nullptr;
         }
-
         auto new_attrib_ptr =
             std::make_shared<typename std::variant_alternative_t<
                 to_underlying(I), attr_variant_t>::element_type>(_vertex_cnt);
@@ -64,15 +63,12 @@ class Mesh {
     template <AttributeType I>
     std::variant_alternative_t<to_underlying(I), attr_variant_t> getAttribute(
         const std::string& name) {
-        if (name == "position" and I == AttributeType::Vector3) {
-            return _positions;
-        }
         auto it = _attributes.find(name);
         if (it == _attributes.end()) {
             return nullptr;
         }
 
-        if (auto ptr = std::get_if<I>(&_attributes[name])) {
+        if (auto ptr = std::get_if<to_underlying(I)>(&it->second)) {
             return *ptr;
         }
 
@@ -81,24 +77,22 @@ class Mesh {
 
     // TODO: Produces crash
     int addVertex(glm::vec3 position) {
-        _positions->push_back(position);
         _vertex_cnt++;
 
         for (auto it = _attributes.begin(); it != _attributes.end(); it++) {
             std::visit(PushDefaultElement{}, it->second);
         }
 
-        return _positions->size() - 2;
+        auto pos = this->getPositions();
+        (*pos)[_vertex_cnt - 1] = position;
+
+        return _vertex_cnt - 1;
     }
 
     template <AttributeType I>
     bool setAttributeValue(
         const std::string& name, int indice,
         std::variant_alternative_t<to_underlying(I), attr_variant_t> value) {
-        if (name == "position" and I == AttributeType::Vector3) {
-            (*_positions)[indice] = value;
-            return true;
-        }
         auto it = _attributes.find(name);
         if (it == _attributes.end()) {
             return false;
@@ -119,13 +113,12 @@ class Mesh {
 
     std::shared_ptr<std::vector<std::list<int>>> getFaces() { return _faces; };
     std::shared_ptr<std::vector<glm::vec3>> getPositions() {
-        return _positions;
+        return getAttribute<AttributeType::Vector3>("position");
     }
 
    private:
     std::map<std::string, attr_variant_t> _attributes;
     std::shared_ptr<std::vector<std::list<int>>> _faces;
-    std::shared_ptr<std::vector<glm::vec3>> _positions;
     size_t _vertex_cnt;
 };
 

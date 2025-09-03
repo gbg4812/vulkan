@@ -1,5 +1,6 @@
 #include <memory>
 
+#include "Model.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"

@@ -24,7 +24,7 @@ struct vkAttribute {
 };
 
 struct vkMesh {
-    std::vector<std::unique_ptr<gbg::vkAttribute>> vertexAttributes;
+    std::vector<std::shared_ptr<gbg::vkAttribute>> vertexAttributes;
     gbg::vkBuffer indexBuffer;
 };
 

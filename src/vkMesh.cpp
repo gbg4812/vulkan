@@ -5,6 +5,7 @@
 
 #include <list>
 
+#include "Logger.hpp"
 #include "glm/glm.hpp"
 #include "vkBuffer.hh"
 
@@ -13,6 +14,7 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
                          size_t element_count, void* data)
     : attrib_id(attrib_id), size(element_count * element_size) {
     VkDeviceSize dsize = size;
+    LOG("Creating attrib!")
 
     gbg::vkBuffer stagingBuffer =
         gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -21,7 +23,7 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
 
     void* sdata;
     vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
-    memcpy(data, data, size);
+    memcpy(sdata, data, size);
     vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
     buffer = gbg::createBuffer(
@@ -46,8 +48,8 @@ VkVertexInputBindingDescription vkVector3Attribute::getBindingDesc() {
 }
 VkVertexInputAttributeDescription vkVector3Attribute::getAttribDesc() {
     VkVertexInputAttributeDescription description;
-    description.location = 0;
-    description.binding = 0;
+    description.location = attrib_id;
+    description.binding = attrib_id;
     description.format = VK_FORMAT_R32G32B32_SFLOAT;
     description.offset = 0;
     return description;
@@ -58,19 +60,17 @@ vkBuffer createIndexBuffer(vkDevice device,
     std::vector<uint32_t> indices;
     for (const auto& face : faces) {
         if (not face.empty()) {
-            uint32_t fidx = *face.begin();
-            int i = 0;
-            for (uint32_t idx : face) {
-                if (i % 3 == 0 and idx != fidx) {
-                    i = 0;
-                    indices.push_back(fidx);
-                }
-                indices.push_back(idx);
-                i++;
+            auto it = ++face.begin();
+            while (it != --face.end()) {
+                indices.push_back(*face.begin());
+                indices.push_back(*it);
+                indices.push_back(*++it);
             }
         }
     }
     VkDeviceSize size = indices.size() * sizeof(indices[0]);
+    LOG("Index Buffer Size: ")
+    LOG_VAR(size)
 
     gbg::vkBuffer stagingBuffer =
         gbg::createBuffer(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
