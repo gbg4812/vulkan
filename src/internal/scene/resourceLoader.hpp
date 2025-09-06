@@ -47,15 +47,16 @@ std::shared_ptr<Mesh> loadMesh(std::string model_path) {
     auto color = mesh->createAttribute<AttributeType::Vector3>("color");
     auto uv = mesh->createAttribute<AttributeType::Vector2>("uv");
 
+    LOG_VAR(shapes.size())
+
     for (const auto& shape : shapes) {
         LOG("Adding shape!")
+        int indices_idx = 0;
         for (const auto& face_verts : shape.mesh.num_face_vertices) {
-            LOG("Adding face!")
             std::list<int> face;
-            int i = 0;
-            for (; i < face_verts; i++) {
-                LOG("Adding vert: ")
-                const auto& index = shape.mesh.indices[i];
+            // for every vert of the face
+            for (int i = 0; i < face_verts; i++) {
+                const auto& index = shape.mesh.indices[indices_idx];
                 glm::vec3 pos = {
                     attribs.vertices[3 * index.vertex_index + 0],
                     attribs.vertices[3 * index.vertex_index + 1],
@@ -76,6 +77,7 @@ std::shared_ptr<Mesh> loadMesh(std::string model_path) {
                 (*uv)[vert] = texCoord;
 
                 face.push_back(vert);
+                indices_idx++;
             }
 
             mesh->addFace(face);

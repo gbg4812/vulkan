@@ -82,52 +82,6 @@ class SceneRenderer {
         cleanup();
     }
 
-    /*
-    void addTexture(const gbg::TextureData& res) {
-        gbg::vkTexture texture;
-        texture.mipLevels = static_cast<uint32_t>(std::floor(
-                                std::log2(std::max(res.width, res.height)))) +
-                            1;
-        VkDeviceSize imageSize = res.width * res.height * 4;
-
-        gbg::vkBuffer stagingBuffer;
-
-        stagingBuffer = gbg::createBuffer(
-            device, physicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        void* data;
-        vkMapMemory(device, stagingBuffer.memory, 0, imageSize, 0, &data);
-        memcpy(data, res.pixels.data(), static_cast<size_t>(imageSize));
-        vkUnmapMemory(device, stagingBuffer.memory);
-
-        texture.textureImage = gbg::createImage(
-            physicalDevice, device, res.width, res.height, texture.mipLevels,
-            VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        transitionImageLayout(
-            texture.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            texture.mipLevels);
-        copyBufferToImage(stagingBuffer.buffer, texture.textureImage.image,
-                          static_cast<uint32_t>(res.width),
-                          static_cast<uint32_t>(res.height));
-
-        generateMipmaps(texture.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
-                        res.width, res.height, texture.mipLevels);
-
-        vkDestroyBuffer(device, stagingBuffer.buffer, nullptr);
-        vkFreeMemory(device, stagingBuffer.memory, nullptr);
-
-        textures.push_back(texture);
-    }
-    */
-
    private:
     GLFWwindow* window;
     vkInstance instance;
@@ -136,15 +90,20 @@ class SceneRenderer {
     VkRenderPass renderPass;
 
     VkDescriptorPool descriptorPool;
+    // Descriptors diferent for each material
     std::vector<VkDescriptorSetLayout> materialDescSetLayouts;
+    // Descriptors for objects that all shaders have but can´t change
     VkDescriptorSetLayout inmutableDescriptorSetLayout;
+    // Descriptors that change in a frame basis but not per-material
     VkDescriptorSetLayout globalDescriptorSetLayout;
+
     std::vector<VkDescriptorSet> materialDescSets;
-    std::vector<VkDescriptorSet> globalDescriptorSets;
+    std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> globalDescriptorSets;
     VkDescriptorSet inmutableDescriptorSet;
 
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
+
     gbg::vkSwapChain swapChain;
     std::vector<VkFramebuffer> swapChainFramebuffers;
     std::vector<VkCommandBuffer> commandBuffers;
@@ -156,11 +115,11 @@ class SceneRenderer {
 
     std::vector<gbg::vkMesh> meshes;
 
-    std::vector<gbg::vkBuffer> uniformBuffers;
-    std::vector<void*> uniformBuffersMapped;
-
     std::vector<gbg::vkTexture> textures;
     VkSampler textureSampler;
+
+    std::vector<gbg::vkBuffer> globalBuffers;
+    std::vector<void*> globalBuffersMapped;
 
     gbg::vkImage colorImage;
 
@@ -268,8 +227,8 @@ class SceneRenderer {
         }
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            vkDestroyBuffer(device.ldevice, uniformBuffers[i].buffer, nullptr);
-            vkFreeMemory(device.ldevice, uniformBuffers[i].memory, nullptr);
+            vkDestroyBuffer(device.ldevice, globalBuffers[i].buffer, nullptr);
+            vkFreeMemory(device.ldevice, globalBuffers[i].memory, nullptr);
         }
 
         vkDestroyDescriptorPool(device.ldevice, descriptorPool, nullptr);
@@ -646,9 +605,6 @@ class SceneRenderer {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
 
-        if (textures.empty()) {
-            return;
-        }
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 0;
         samplerLayoutBinding.descriptorCount = 1;
@@ -672,15 +628,19 @@ class SceneRenderer {
             throw std::runtime_error("failed to create descriptor set layout!");
         }
 
+        // TODO: Create descriptor layout from material description
+        if (textures.empty()) {
+            return;
+        }
+        std::vector<VkDescriptorSetLayoutBinding> materialBindings;
+
         VkDescriptorSetLayoutBinding textureLayoutBinding{};
         textureLayoutBinding.binding = 0;
         textureLayoutBinding.descriptorCount = 1;
         textureLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         textureLayoutBinding.pImmutableSamplers = nullptr;
         textureLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        std::array<VkDescriptorSetLayoutBinding, 1> materialBindings = {
-            textureLayoutBinding};
+        materialBindings.push_back(textureLayoutBinding);
 
         VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
         materialLayoutInfo.sType =
@@ -972,96 +932,6 @@ class SceneRenderer {
             VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
     }
 
-    void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
-                         int32_t texWidth, int32_t texHeight,
-                         uint32_t mipLevels) {
-        VkFormatProperties formatProperties;
-        vkGetPhysicalDeviceFormatProperties(device.pdevice, format,
-                                            &formatProperties);
-        if (!(formatProperties.optimalTilingFeatures &
-              VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
-            throw std::runtime_error(
-                "texture image format does not support linear blitting!");
-        }
-
-        VkCommandBuffer commandBuffer =
-            beginSingleTimeCommands(device, device.graphicsCmdPool);
-
-        VkImageMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.image = image;
-        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        barrier.subresourceRange.baseArrayLayer = 0;
-        barrier.subresourceRange.layerCount = 1;
-        barrier.subresourceRange.levelCount = 1;
-
-        int32_t mipWidth = texWidth;
-        int32_t mipHeight = texHeight;
-
-        for (uint32_t i = 1; i < mipLevels; i++) {
-            barrier.subresourceRange.baseMipLevel = i - 1;
-            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr,
-                                 0, nullptr, 1, &barrier);
-
-            VkImageBlit blit{};
-            blit.srcOffsets[0] = {0, 0, 0};
-            blit.srcOffsets[1] = {mipWidth, mipHeight, 1};
-            blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.srcSubresource.mipLevel = i - 1;
-            blit.srcSubresource.baseArrayLayer = 0;
-            blit.srcSubresource.layerCount = 1;
-            blit.dstOffsets[0] = {0, 0, 0};
-            blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1,
-                                  mipHeight > 1 ? mipHeight / 2 : 1, 1};
-
-            blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            blit.dstSubresource.mipLevel = i;
-            blit.dstSubresource.baseArrayLayer = 0;
-            blit.dstSubresource.layerCount = 1;
-
-            vkCmdBlitImage(commandBuffer, image,
-                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit,
-                           VK_FILTER_LINEAR);
-
-            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                 VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
-                                 nullptr, 0, nullptr, 1, &barrier);
-            if (mipWidth > 1) {
-                mipWidth /= 2;
-            }
-            if (mipHeight > 1) {
-                mipHeight /= 2;
-            }
-        }
-
-        barrier.subresourceRange.baseMipLevel = mipLevels - 1;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
-                             nullptr, 0, nullptr, 1, &barrier);
-
-        endSingleTimeCommands(device, commandBuffer, device.graphicsCmdPool,
-                              device.gqueue);
-    }
-
     void transitionImageLayout(VkImage image, VkFormat format,
                                VkImageLayout oldLayout, VkImageLayout newLayout,
                                uint32_t mipLevels) {
@@ -1195,16 +1065,16 @@ class SceneRenderer {
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
 
-        uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-        uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+        globalBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+        globalBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            uniformBuffers[i] = gbg::createBuffer(
+            globalBuffers[i] = gbg::createBuffer(
                 device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-            vkMapMemory(device.ldevice, uniformBuffers[i].memory, 0, bufferSize,
-                        0, &uniformBuffersMapped[i]);
+            vkMapMemory(device.ldevice, globalBuffers[i].memory, 0, bufferSize,
+                        0, &globalBuffersMapped[i]);
         }
     }
 
@@ -1244,7 +1114,6 @@ class SceneRenderer {
         setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
         setInfo.pSetLayouts = layouts.data();
 
-        globalDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
         if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                      globalDescriptorSets.data()) !=
             VK_SUCCESS) {
@@ -1253,7 +1122,7 @@ class SceneRenderer {
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = uniformBuffers[i].buffer;
+            bufferInfo.buffer = globalBuffers[i].buffer;
             bufferInfo.range = sizeof(UniformBufferObjects);
             bufferInfo.offset = 0;
 
@@ -1511,7 +1380,7 @@ class SceneRenderer {
                              0.1f, 100.0f);
         ubo.proj[1][1] *= -1;
 
-        memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+        memcpy(globalBuffersMapped[currentImage], &ubo, sizeof(ubo));
     }
 
     void drawFrame() {

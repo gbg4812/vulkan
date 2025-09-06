@@ -1,8 +1,7 @@
 
 
-#ifndef GBG_VKTEXTURE
-#define GBG_VKTEXTURE
-
+#pragma once
+#include "vkDevice.hh"
 #include "vkImage.h"
 
 namespace gbg {
@@ -13,6 +12,7 @@ struct vkTexture {
     uint32_t sampler;
 };
 
-}  // namespace gbg
+void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
+                     int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
-#endif
+}  // namespace gbg
