@@ -174,23 +174,6 @@ class SceneRenderer {
         createFrameBuffers();
     }
 
-    void addModels() {
-        // TODO: Add materials and various attributes and proces models not
-        // meshes
-        for (auto mesh : scene->meshes) {
-            LOG("Adding mesh!")
-            auto pos = mesh->getPositions();
-            auto faces = mesh->getFaces();
-            vkMesh vkmesh{};
-            auto attrib = std::make_shared<vkVector3Attribute>(
-                device, 0, sizeof(glm::vec3), pos->size(), pos->data());
-
-            vkmesh.vertexAttributes.push_back(std::move(attrib));
-            vkmesh.indexBuffer = gbg::createIndexBuffer(device, *faces);
-            meshes.push_back(std::move(vkmesh));
-        }
-    }
-
     void initResources() {
         addModels();
         // createTexturesImageViews();
@@ -206,6 +189,23 @@ class SceneRenderer {
         createInmutableDescriptorSets();
         createCommandBuffer();
         createSyncObjects();
+    }
+
+    void addModels() {
+        // TODO: Add materials and various attributes and proces models not
+        // meshes
+        for (auto mesh : scene->meshes) {
+            LOG("Adding mesh!")
+            auto pos = mesh->getPositions();
+            auto faces = mesh->getFaces();
+            vkMesh vkmesh{};
+            auto attrib = std::make_shared<vkVector3Attribute>(
+                device, 0, sizeof(glm::vec3), pos->size(), pos->data());
+
+            vkmesh.vertexAttributes.push_back(std::move(attrib));
+            vkmesh.indexBuffer = gbg::createIndexBuffer(device, *faces);
+            meshes.push_back(std::move(vkmesh));
+        }
     }
 
     void mainLoop() {
