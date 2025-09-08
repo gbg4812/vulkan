@@ -18,7 +18,13 @@ int main() {
 
     auto mesh =
         gbg::loadMesh("../../data/models/pony-cartoon/Pony_cartoon.obj");
-    scene->meshes.push_back(mesh);
+
+    auto shader =
+        std::make_shared<gbg::Shader>("shaders/vert.spv", "shaders/frag.spv");
+    auto mat = std::make_shared<gbg::Material>(shader);
+
+    auto model = std::make_shared<gbg::Model>(shader, mesh);
+    scene->models.push_back(model);
 
     renderer.setScene(scene);
     renderer.init();

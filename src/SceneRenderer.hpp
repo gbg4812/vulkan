@@ -191,18 +191,38 @@ class SceneRenderer {
         createSyncObjects();
     }
 
+    typedef struct vkAttributeComputeSize {
+        uint32_t operator()(std::shared_ptr<std::vector<glm::float32_t>> vec) {
+            return vec->size() * sizeof(glm::float32_t);
+        }
+        uint32_t operator()(std::shared_ptr<std::vector<glm::vec2>> vec) {
+            return vec->size() * sizeof(glm::vec2);
+        }
+        uint32_t operator()(std::shared_ptr<std::vector<glm::vec3>> vec) {
+            return vec->size() * sizeof(glm::vec3);
+        }
+    } vkAttributeComputeSize;
+
     void addModels() {
         // TODO: Add materials and various attributes and proces models not
         // meshes
-        for (auto mesh : scene->meshes) {
-            LOG("Adding mesh!")
-            auto pos = mesh->getPositions();
-            auto faces = mesh->getFaces();
-            vkMesh vkmesh{};
-            auto attrib = std::make_shared<vkVector3Attribute>(
-                device, 0, sizeof(glm::vec3), pos->size(), pos->data());
+        // Implement attrib creation with visitor pattern
 
-            vkmesh.vertexAttributes.push_back(std::move(attrib));
+        for (auto model : scene->models) {
+            LOG("Adding mesh!")
+            auto mesh = model->getMesh();
+            auto faces = mesh->getFaces();
+            auto attribs = mesh->getAttributes();
+            vkMesh vkmesh{};
+            int i = 0;
+            for (auto attrib : attribs) {
+                auto vkattrib = std::make_shared<vkAttribute>(
+                    device, i,
+                    std::visit(vkAttributeComputeSize{}, attrib.second));
+                vkmesh.vertexAttributes.push_back(std::move(vkattrib));
+                i++;
+            }
+
             vkmesh.indexBuffer = gbg::createIndexBuffer(device, *faces);
             meshes.push_back(std::move(vkmesh));
         }

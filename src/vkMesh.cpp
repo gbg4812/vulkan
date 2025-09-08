@@ -6,13 +6,15 @@
 #include <list>
 
 #include "Logger.hpp"
+#include "Shader.hpp"
+#include "glm/fwd.hpp"
 #include "glm/glm.hpp"
 #include "vkBuffer.hh"
 
 namespace gbg {
-vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
-                         size_t element_count, void* data)
-    : attrib_id(attrib_id), size(element_count * element_size) {
+vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t size,
+                         void* data)
+    : attrib_id(attrib_id), size(size) {
     VkDeviceSize dsize = size;
     LOG("Creating attrib!")
 
@@ -34,30 +36,37 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 }
-vkVector3Attribute::vkVector3Attribute(vkDevice device, int attrib_id,
-                                       size_t element_size,
-                                       size_t element_count, void* data)
-    : vkAttribute(device, attrib_id, element_size, element_count, data) {}
 
-VkVertexInputBindingDescription vkVector3Attribute::getBindingDesc() {
-    VkVertexInputBindingDescription description{};
-    description.binding = attrib_id;
-    description.stride = sizeof(glm::vec3);
-    description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return description;
-}
-VkVertexInputAttributeDescription vkVector3Attribute::getAttribDesc() {
-    VkVertexInputAttributeDescription description;
-    description.location = attrib_id;
-    description.binding = attrib_id;
-    description.format = VK_FORMAT_R32G32B32_SFLOAT;
-    description.offset = 0;
-    return description;
+vkVertexInputDescription getInputDescription(int attrib_id,
+                                             AttributeType type) {
+    uint32_t stride = sizeof(glm::float32_t);
+    VkFormat format = VK_FORMAT_R32_SFLOAT;
+    switch (type) {
+        case AttributeType::Float:
+            break;
+        case AttributeType::Vector2:
+            stride = sizeof(glm::vec2);
+            format = VK_FORMAT_R32G32_SFLOAT;
+            break;
+        case AttributeType::Vector3:
+            stride = sizeof(glm::vec3);
+            format = VK_FORMAT_R32G32B32_SFLOAT;
+            break;
+    }
+    vkVertexInputDescription desc{};
+    desc.binding_desc.binding = attrib_id;
+    desc.binding_desc.stride = stride;
+    desc.binding_desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    desc.attrib_desc.binding = attrib_id;
+    desc.attrib_desc.location = attrib_id;
+    desc.attrib_desc.format = format;
+    return desc;
 }
 
 vkBuffer createIndexBuffer(vkDevice device,
                            std::vector<std::list<int>>& faces) {
     std::vector<uint32_t> indices;
+    // triangulate
     for (const auto& face : faces) {
         if (not face.empty()) {
             auto it = ++face.begin();

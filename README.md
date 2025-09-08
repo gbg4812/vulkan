@@ -20,3 +20,7 @@ Directories:
 - src/external repositoris of external dependencies like glfw or glm.
 - src/internal other sub-libraries made by me like the scene representation.
 - src/internal/scene the scene representation library with a loader for meshes
+
+## About the scene api
+
+It has been an oportunity to work with the new C++ variant api.

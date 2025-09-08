@@ -18,6 +18,8 @@ namespace gbg {
 
 typedef std::filesystem::path path_t;
 
+class Scene;
+
 struct Image {
     std::vector<unsigned char> pixels;
     int width;
@@ -32,7 +34,9 @@ typedef std::variant<float, glm::vec2, glm::vec3, glm::mat4,
 class Shader {
    public:
     Shader(path_t vert_shader, path_t frag_shader)
-        : _vert_shader(vert_shader), _frag_shader(frag_shader) {}
+        : _vert_shader(vert_shader), _frag_shader(frag_shader) {
+        this->addInputAttribute("position", AttributeType::Vector3);
+    }
 
     bool addInput(const std::string& name, InputType type) {
         auto it = _inputs.find(name);
@@ -65,7 +69,7 @@ class Shader {
 
 class Material {
    public:
-    Material(std::shared_ptr<Shader> shader) : _shader(shader) {}
+    Material(int shader) : _shader(shader) {}
 
     template <InputType I>
     bool setResource(
@@ -81,8 +85,12 @@ class Material {
         return true;
     }
 
+    const std::map<std::string, input_variant_t>& getResources() const {
+        return _resources;
+    }
+
    private:
-    std::shared_ptr<Shader> _shader;
+    int _shader;
     std::map<std::string, input_variant_t> _resources;
 };
 

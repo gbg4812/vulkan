@@ -5,17 +5,14 @@
 #include <memory>
 #include <vector>
 
+#include "Shader.hpp"
 #include "vkBuffer.hh"
 #include "vkDevice.hh"
 namespace gbg {
 
 struct vkAttribute {
    public:
-    vkAttribute(vkDevice device, int attrib_id, size_t element_size,
-                size_t element_count, void* data);
-
-    virtual VkVertexInputBindingDescription getBindingDesc() = 0;
-    virtual VkVertexInputAttributeDescription getAttribDesc() = 0;
+    vkAttribute(vkDevice device, int attrib_id, size_t size, void* data);
 
    public:
     vkBuffer buffer;
@@ -30,13 +27,12 @@ struct vkMesh {
 
 vkBuffer createIndexBuffer(vkDevice device, std::vector<std::list<int>>& faces);
 
-struct vkVector3Attribute : public vkAttribute {
-   public:
-    vkVector3Attribute(vkDevice device, int attrib_id, size_t element_size,
-                       size_t element_count, void* data);
-    virtual VkVertexInputBindingDescription getBindingDesc() override;
-    virtual VkVertexInputAttributeDescription getAttribDesc() override;
-};
+typedef struct vkVertexInputDescription {
+    VkVertexInputAttributeDescription attrib_desc;
+    VkVertexInputBindingDescription binding_desc;
+} vkVertexInputDescription;
+
+vkVertexInputDescription getInputDescription(int attrib_id, InputType type);
 
 void destroyMesh(const vkDevice& device, const vkMesh& mesh);
 }  // namespace gbg

@@ -75,7 +75,6 @@ class Mesh {
         return nullptr;
     }
 
-    // TODO: Produces crash
     int addVertex(glm::vec3 position) {
         _vertex_cnt++;
 
@@ -111,6 +110,10 @@ class Mesh {
         return _faces->size() - 2;
     }
 
+    const std::map<std::string, attr_variant_t> getAttributes() const {
+        return _attributes;
+    }
+
     std::shared_ptr<std::vector<std::list<int>>> getFaces() { return _faces; };
     std::shared_ptr<std::vector<glm::vec3>> getPositions() {
         return getAttribute<AttributeType::Vector3>("position");
@@ -124,18 +127,17 @@ class Mesh {
 
 class Model {
    public:
-    Model(std::shared_ptr<Material> mat, std::shared_ptr<Mesh> mesh)
-        : _mat(mat), _mesh(mesh) {}
+    Model(int mat, int mesh) : _mat(mat), _mesh(mesh) {}
 
-    void setMaterial(std::shared_ptr<Material> mat) { _mat = mat; }
-    void setMesh(std::shared_ptr<Mesh> mesh) { _mesh = mesh; }
+    void setMaterial(int mat) { _mat = mat; }
+    void setMesh(int mesh) { _mesh = mesh; }
 
-    std::shared_ptr<Material> getMat() { return _mat; }
-    std::shared_ptr<Mesh> getMesh() { return _mesh; }
+    int getMat() { return _mat; }
+    int getMesh() { return _mesh; }
 
    private:
-    std::shared_ptr<Material> _mat;
-    std::shared_ptr<Mesh> _mesh;
+    int _mat;
+    int _mesh;
 };
 
 }  // namespace gbg
