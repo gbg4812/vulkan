@@ -10,9 +10,9 @@
 #include "vkBuffer.hh"
 
 namespace gbg {
-vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
-                         size_t element_count, void* data)
-    : attrib_id(attrib_id), size(element_count * element_size) {
+vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t size,
+                         void* data)
+    : attrib_id(attrib_id), size(size) {
     VkDeviceSize dsize = size;
     LOG("Creating attrib!")
 
@@ -33,26 +33,6 @@ vkAttribute::vkAttribute(vkDevice device, int attrib_id, size_t element_size,
     copyBuffer(device, stagingBuffer, buffer);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
-}
-vkVector3Attribute::vkVector3Attribute(vkDevice device, int attrib_id,
-                                       size_t element_size,
-                                       size_t element_count, void* data)
-    : vkAttribute(device, attrib_id, element_size, element_count, data) {}
-
-VkVertexInputBindingDescription vkVector3Attribute::getBindingDesc() {
-    VkVertexInputBindingDescription description{};
-    description.binding = attrib_id;
-    description.stride = sizeof(glm::vec3);
-    description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return description;
-}
-VkVertexInputAttributeDescription vkVector3Attribute::getAttribDesc() {
-    VkVertexInputAttributeDescription description;
-    description.location = attrib_id;
-    description.binding = attrib_id;
-    description.format = VK_FORMAT_R32G32B32_SFLOAT;
-    description.offset = 0;
-    return description;
 }
 
 vkBuffer createIndexBuffer(vkDevice device,
