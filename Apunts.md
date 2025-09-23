@@ -2,8 +2,8 @@
 
 ## Vertex Buffer bindings and locations (input attributes)
 
-The binding is the identifier of a buffer.
-The location is the identifier of a vertex attribute.
+The binding is the identifier of a buffer. The location is the identifier of a
+vertex attribute.
 
 We can have various vertex attributes combined and repeated in a single buffer.
 ![packed attributes](packed.png)
@@ -13,7 +13,8 @@ We can have various attributes each in a diferent buffer (binding)
 
 > [!NOTE] Bindings and locations are independent of each other.
 
-So when creating a pipeline we need to describe the bindings and the (attributes/locations).
+So when creating a pipeline we need to describe the bindings and the
+(attributes/locations).
 
 In a pipeline can't exist two attributes with the same location.
 
@@ -34,11 +35,13 @@ Each attribute has:
 
 ## Descriptors and Sets of Descriptors
 
-Descriptors are like pointers to memory that the shader can use.
-Descriptor sets are sets of descriptors. In the command buffer only descriptor sets
-can be bound.
+Descriptors are like pointers to memory that the shader can use. Descriptor sets
+are sets of descriptors. In the command buffer only descriptor sets can be
+bound.
 
-Inside a descriptor set each descriptor has a binding (identifier like in input attributes). We can have also descriptor arrays, in other words, in one binding various descriptors of the same type forming an array.
+Inside a descriptor set each descriptor has a binding (identifier like in input
+attributes). We can have also descriptor arrays, in other words, in one binding
+various descriptors of the same type forming an array.
 
 They would be accessed like this:
 
@@ -47,3 +50,9 @@ layout(set = 0, binding = 0) uniform UBO0 {
     uint data;
 } buffers[4];
 ```
+
+## Stl vector how to hide parts
+
+First i tried inheriting but when i try to convert a vector& to its
+vector_child& it gives undefined behavior... So the best way seems to be
+composition or give up in protecting attrib vectors.

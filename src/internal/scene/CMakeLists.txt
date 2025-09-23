@@ -8,3 +8,5 @@ target_link_libraries(gbgscene INTERFACE glm::glm stbimage tinyobjloader)
 # Test targets
 add_executable(modeltests tests/modeltests.cpp)
 target_link_libraries(modeltests gbgscene)
+add_executable(attribstest tests/TEST_attrib_storage.cpp)
+target_link_libraries(attribstest gbgscene)

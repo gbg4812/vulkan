@@ -25,6 +25,7 @@ vkVertexInputDescription getVertexVector2InputDescription(uint32_t attrib_id) {
     desc.attrib_desc.offset = 0;
     return desc;
 }
+
 vkVertexInputDescription getVertexFloatInputDescription(uint32_t attrib_id) {
     vkVertexInputDescription desc;
     desc.binding_desc.binding = attrib_id;

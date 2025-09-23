@@ -17,27 +17,6 @@ typedef std::variant<std::shared_ptr<std::vector<float>>,
                      std::shared_ptr<std::vector<glm::vec3>>>
     attr_variant_t;
 
-struct PushDefaultElement {
-    PushDefaultElement() {
-        float_default = 0;
-        vec2_default = glm::vec2(0.0f);
-        vec3_default = glm::vec3(0.0f);
-    }
-    void operator()(std::shared_ptr<std::vector<float>> vec) {
-        vec->push_back(float_default);
-    }
-    void operator()(std::shared_ptr<std::vector<glm::vec2>> vec) {
-        vec->push_back(vec2_default);
-    }
-    void operator()(std::shared_ptr<std::vector<glm::vec3>> vec) {
-        vec->push_back(vec3_default);
-    }
-
-    float float_default;
-    glm::vec2 vec2_default;
-    glm::vec3 vec3_default;
-};
-
 class Mesh {
    public:
     Mesh() : _vertex_cnt(0) {
@@ -117,7 +96,6 @@ class Mesh {
     }
 
    private:
-    std::map<std::string, attr_variant_t> _attributes;
     std::shared_ptr<std::vector<std::list<int>>> _faces;
     size_t _vertex_cnt;
 };
