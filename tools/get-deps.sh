@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 loginfo() {
     echo -e "\033[33;1m\n"$1"\033[0m"
 }
@@ -12,7 +11,7 @@ if [[ $conf == Y ]]; then
     loginfo "Installing vulkan loader!!!"
     sudo apt install libvulkan-dev
     loginfo "Installing vulkan validation layers and spirv tools!!!"
-    sudo apt install vulkan-validationlayers-dev spirv-tools
+    sudo apt install vulkan-utility-libraries-dev spirv-tools
 fi
 
 read -p "Do you want to install glfw deps with apt? (Y/n) " conf
