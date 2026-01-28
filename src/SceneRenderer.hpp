@@ -3,6 +3,10 @@
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
+#include <memory>
+
+#include "Mesh.hpp"
+
 #define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
@@ -46,10 +50,16 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     void init();
-    void setScene(std::shared_ptr<gbg::Scene> scene);
+    void setScene(std::shared_ptr<gbg::Scene> scene,
+                  std::shared_ptr<gbg::SceneTree> st);
     void run();
+    SceneRenderer() : meshes(10, (uint8_t)ResourceTypes::MESH) {}
 
    private:
+    enum class ResourceTypes {
+        MODEL = 0,
+        MESH,
+    };
     GLFWwindow* window;
     vkInstance instance;
     VkSurfaceKHR surface;

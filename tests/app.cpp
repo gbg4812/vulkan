@@ -1,10 +1,8 @@
 #include <memory>
 
-#include "Model.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
-#include "Shader.hpp"
-#include "resourceLoader.hpp"
+#include "loaders/objLoader.hpp"
 
 const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
 const std::string TEXTURE_PATH =
@@ -13,14 +11,12 @@ const std::string TEXTURE_PATH =
 int main() {
     const auto& scene = std::make_shared<gbg::Scene>();
     gbg::SceneRenderer renderer;
+    auto sc = std::make_shared<gbg::Scene>();
+    auto st = std::make_shared<gbg::SceneTree>();
 
-    auto tex = gbg::loadTexture(TEXTURE_PATH);
+    gbg::objLoader(MODEL_PATH, *sc.get(), st.get());
 
-    auto mesh =
-        gbg::loadMesh("../../data/models/pony-cartoon/Pony_cartoon.obj");
-    scene->meshes.push_back(mesh);
-
-    renderer.setScene(scene);
+    renderer.setScene(sc, st);
     renderer.init();
 
     try {

@@ -6,13 +6,14 @@
 #include <list>
 
 #include "Logger.hpp"
+#include "Mesh.hpp"
 #include "glm/glm.hpp"
 #include "vkBuffer.hh"
 
 namespace gbg {
 vkAttribute::vkAttribute(vkDevice device, uint attrib_id, size_t size,
-                         void* data)
-    : attrib_id(attrib_id), size(size) {
+                         AttributeTypes type, void* data)
+    : attrib_id(attrib_id), size(size), type(type) {
     VkDeviceSize dsize = size;
     LOG("Creating attrib!")
 
@@ -33,6 +34,33 @@ vkAttribute::vkAttribute(vkDevice device, uint attrib_id, size_t size,
     copyBuffer(device, stagingBuffer, buffer);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
+}
+
+std::pair<VkVertexInputBindingDescription, VkVertexInputAttributeDescription>
+vkAttribute::getAttributeDescriptions() const {
+    VkVertexInputBindingDescription description{};
+    VkVertexInputAttributeDescription attributeDescription{};
+    switch (type) {
+        case gbg::AttributeTypes::FLOAT_ATTR:
+            description.stride = sizeof(float);
+            attributeDescription.format = VK_FORMAT_R32_SFLOAT;
+            break;
+        case gbg::AttributeTypes::VEC2_ATTR:
+            description.stride = sizeof(glm::vec2);
+            attributeDescription.format = VK_FORMAT_R32G32_SFLOAT;
+            break;
+        case gbg::AttributeTypes::VEC3_ATTR:
+            description.stride = sizeof(glm::vec3);
+            attributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+            break;
+    }
+
+    description.binding = attrib_id;
+    description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    attributeDescription.location = attrib_id;
+    attributeDescription.binding = attrib_id;
+    attributeDescription.offset = 0;
+    return {description, attributeDescription};
 }
 
 vkBuffer createIndexBuffer(vkDevice device,

@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "Mesh.hpp"
 #include "vk_utils/vkMesh.hh"
 
 #define GLFW_INCLUDE_VULKAN
@@ -58,8 +59,10 @@ void SceneRenderer::init() {
     initVulkan();
 }
 
-void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
+void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene,
+                             std::shared_ptr<SceneTree> st) {
     this->scene = scene;
+    this->scene_tree = st;
 }
 
 void SceneRenderer::run() {
@@ -148,8 +151,8 @@ void SceneRenderer::_CreationVisitor::operator()(const ModelHandle& h) {
     for (auto& attr : mesh.getAttributes()) {
         vkAttribute attrib = std::visit<vkAttribute>(
             [&](auto&& arg) -> vkAttribute {
-                return vkAttribute(renderer->device, attr.first,
-                                   sizeof(decltype(arg.back())) * arg.size(),
+                return vkAttribute(renderer->device, attr.first, arg.size(),
+                                   (AttributeTypes)attr.second.index(),
                                    (void*)arg.data());
             },
             attr.second);
@@ -653,8 +656,9 @@ void SceneRenderer::createGraphicsPipeline() {
     LOG("Adding input bindings...")
     for (const auto& mesh : meshes) {
         for (const auto& attr : mesh.vertexAttributes) {
-            bindingDescriptions.push_back(attr->getBindingDesc());
-            attributeDescriptions.push_back(attr->getAttribDesc());
+            auto desc = attr.getAttributeDescriptions();
+            bindingDescriptions.push_back(desc.first);
+            attributeDescriptions.push_back(desc.second);
         }
     }
 
@@ -1226,7 +1230,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
         std::vector<VkBuffer> vbuffers;
         std::vector<VkDeviceSize> voffsets;
         for (const auto& attrb : mesh.vertexAttributes) {
-            vbuffers.push_back(attrb->buffer.buffer);
+            vbuffers.push_back(attrb.buffer.buffer);
             voffsets.push_back(0);
         }
         vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
