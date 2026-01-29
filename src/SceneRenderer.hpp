@@ -5,26 +5,22 @@
 
 #include <memory>
 
-#include "Mesh.hpp"
-
 #define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#include "GLFW/glfw3.h"
-
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+#include "GLFW/glfw3.h"
 #include "Scene.hpp"
 #include "SceneTree.hpp"
-#include "glm/glm.hpp"
+#include "srModel.hpp"
 #include "srPool.hpp"
-#include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
@@ -34,6 +30,7 @@
 #include "vk_utils/vkTexture.h"
 
 namespace gbg {
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -53,7 +50,9 @@ class SceneRenderer {
     void setScene(std::shared_ptr<gbg::Scene> scene,
                   std::shared_ptr<gbg::SceneTree> st);
     void run();
-    SceneRenderer() : meshes(10, (uint8_t)ResourceTypes::MESH) {}
+    SceneRenderer()
+        : meshes(10, (uint8_t)ResourceTypes::MESH),
+          models(10, (uint8_t)ResourceTypes::MODEL) {}
 
    private:
     enum class ResourceTypes {
@@ -91,6 +90,7 @@ class SceneRenderer {
     bool frameBufferResized = false;
 
     srPool<gbg::vkMesh> meshes;
+    srPool<gbg::srModel> models;
 
     std::vector<gbg::vkTexture> textures;
     VkSampler textureSampler;

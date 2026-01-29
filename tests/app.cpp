@@ -1,12 +1,15 @@
+#include <iostream>
 #include <memory>
 
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
+#include "SceneTree.hpp"
 #include "loaders/objLoader.hpp"
 
-const std::string MODEL_PATH = "models/pony-cartoon/Pony_cartoon.obj";
+const std::string MODEL_PATH = "./data/models/EasyModels/scene.obj";
+// const std::string MODEL_PATH = "./data/models/pony-cartoon/Pony_cartoon.obj";
 const std::string TEXTURE_PATH =
-    "models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
+    "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
 
 int main() {
     const auto& scene = std::make_shared<gbg::Scene>();

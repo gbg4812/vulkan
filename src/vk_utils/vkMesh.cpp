@@ -13,7 +13,21 @@
 namespace gbg {
 vkAttribute::vkAttribute(vkDevice device, uint attrib_id, size_t size,
                          AttributeTypes type, void* data)
-    : attrib_id(attrib_id), size(size), type(type) {
+    : attrib_id(attrib_id), type(type) {
+    switch (type) {
+        case gbg::AttributeTypes::VEC3_ATTR:
+            size *= sizeof(glm::vec3);
+            break;
+        case FLOAT_ATTR:
+            size *= sizeof(float);
+            break;
+        case VEC2_ATTR:
+            size *= sizeof(glm::vec2);
+            break;
+    }
+
+    this->size = size;
+
     VkDeviceSize dsize = size;
     LOG("Creating attrib!")
 

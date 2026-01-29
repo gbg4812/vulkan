@@ -1,5 +1,6 @@
 
-#include "SceneRenderer.hpp"
+#pragma once
+#include "SceneTree.hpp"
 namespace gbg {
 
 struct srModel {

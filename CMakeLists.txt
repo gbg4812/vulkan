@@ -36,15 +36,11 @@ fetchcontent_makeavailable(fmt)
 FetchContent_Declare(
     glm
     GIT_REPOSITORY	https://github.com/g-truc/glm.git
-    GIT_TAG 82f86a8057c169ae0d6c939dfa148970e97d6693
+    GIT_TAG 8d1fd52e5ab5590e2c81768ace50c72bae28f2ed
 )
 
-FetchContent_GetProperties(glm)
-if (NOT glm_POPULATED)
-    FetchContent_Populate(glm)
-    add_library(glm INTERFACE)
-    target_include_directories(glm INTERFACE ${glm_SOURCE_DIR})
-endif()
+FetchContent_MakeAvailable(glm)
+
 
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG master)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -54,17 +50,19 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;glfw;glm;stbimage;fmt::fmt;SceneEquipament")
+set(LIBS "Vulkan::Vulkan;glfw;glm::glm;stbimage;fmt::fmt;SceneEquipament")
 
 target_link_libraries(${PROJECT_NAME} ${LIBS})
 
-# testing
+###########
+# Testing #
+###########
+
 FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG 52eb8108c5bdec04579160ae17225d66034bd723
 )
-
 
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -74,3 +72,10 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 
 file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLIC)
+
+add_executable(app tests/app.cpp)
+
+target_link_libraries(app PRIVATE ${PROJECT_NAME})
+
+
+

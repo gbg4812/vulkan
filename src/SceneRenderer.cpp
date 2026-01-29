@@ -6,6 +6,8 @@
 #include <memory>
 
 #include "Mesh.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+#include "srModel.hpp"
 #include "vk_utils/vkMesh.hh"
 
 #define GLFW_INCLUDE_VULKAN
@@ -25,13 +27,6 @@
 #include <vector>
 
 #include "GLFW/glfw3.h"
-
-// This forces the perspective proj matrix to use a depth from 0 to 1 when
-// it transforms the geometry as vulkan likes.
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#include "glm/ext.hpp"
 #include "vk_utils/Logger.hpp"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
@@ -148,6 +143,10 @@ void SceneRenderer::_CreationVisitor::operator()(const ModelHandle& h) {
     DepDataHandle vkmh = renderer->meshes.alloc();
     vkMesh& vkmesh = renderer->meshes.get(vkmh);
 
+    DepDataHandle vkmd = renderer->models.alloc();
+    srModel& srModel = renderer->models.get(vkmd);
+    srModel.mesh = vkmh;
+
     for (auto& attr : mesh.getAttributes()) {
         vkAttribute attrib = std::visit<vkAttribute>(
             [&](auto&& arg) -> vkAttribute {
@@ -161,12 +160,11 @@ void SceneRenderer::_CreationVisitor::operator()(const ModelHandle& h) {
         vkmesh.indexBuffer =
             gbg::createIndexBuffer(renderer->device, mesh.getFaces());
     }
+
+    scene_tree->setDepDataHandle(vkmh);
 }
 
 void SceneRenderer::addModels() {
-    // TODO: make a pre-order traversal of the scene_tree with a visitor that
-    // creates the deps handle for each resource.
-
     auto& md_mg = scene->getModelManager();
     auto& ms_mg = scene->getMeshManager();
 
@@ -624,8 +622,8 @@ void SceneRenderer::createDescriptorSetLayouts() {
 }
 
 void SceneRenderer::createGraphicsPipeline() {
-    auto vertShaderCode = readFile("shaders/vert.spv");
-    auto fragShaderCode = readFile("shaders/frag.spv");
+    auto vertShaderCode = readFile("data/shaders/vert.spv");
+    auto fragShaderCode = readFile("data/shaders/frag.spv");
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -653,6 +651,8 @@ void SceneRenderer::createGraphicsPipeline() {
 
     std::vector<VkVertexInputBindingDescription> bindingDescriptions;
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+
+    // TODO: make-it from the shader
     LOG("Adding input bindings...")
     for (const auto& mesh : meshes) {
         for (const auto& attr : mesh.vertexAttributes) {
@@ -1316,7 +1316,7 @@ void SceneRenderer::updateUniformBuffer(uint32_t currentImage) {
                      .count();
 
     UniformBufferObjects ubo{};
-    ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, .01f, .01f));
+    ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
     ubo.model = glm::rotate(ubo.model, glm::radians(90.0f),
                             glm::vec3(1.0f, 0.0f, 0.0f));
     ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),
