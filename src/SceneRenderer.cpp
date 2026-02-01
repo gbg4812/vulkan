@@ -6,9 +6,10 @@
 #include <memory>
 
 #include "Mesh.hpp"
+#include "Resource.hpp"
 #include "glm/gtc/matrix_transform.hpp"
-#include "srModel.hpp"
 #include "vk_utils/vkMesh.hh"
+#include "vk_utils/vkPipeline.hh"
 
 #define GLFW_INCLUDE_VULKAN
 #include <algorithm>
@@ -16,7 +17,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -31,6 +31,7 @@
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
 #include "vk_utils/vkInstance.hh"
+#include "vk_utils/vkPipeline.hh"
 #include "vk_utils/vkSwapChain.h"
 
 namespace gbg {
@@ -111,72 +112,136 @@ void SceneRenderer::initVulkan() {
 }
 
 void SceneRenderer::initResources() {
-    addModels();
+    // Model DSL, Global DSL (camera and lights)
+    createGlobalDescriptorSetLayouts();
+
+    // Camera and light buffers;
+    createGlobalShaderResources();
+    createGlobalDescriptorPool();
+    createGlobalDescriptorSets();
+
+    // Per Material pool and sets
+    createMaterialDescriptorPool();  // TODO: crear descriptor pool i
+
+    // Per Model pool and sets
+    createModelDescriptorPool();
+
+    // Material DSLs created
+    // Material UBO and Textures created also
+    processScene();
+
     // createTexturesImageViews();
     // createTextureSampler();
-    // createVertexBuffer();
-    // createIndexBuffer();
-    createDescriptorSetLayouts();
-    createGraphicsPipeline();
-    createUniformBuffers();
-    createDescriptorPool();
-    createGlobalDescriptorSets();
-    createMaterialDescriptorSets();
-    createInmutableDescriptorSets();
+
     createCommandBuffer();
     createSyncObjects();
 }
 
-void SceneRenderer::_CreationVisitor::operator()(const std::monostate& h) {}
-
-void SceneRenderer::_CreationVisitor::operator()(const ModelHandle& h) {
-    auto scene = renderer->scene;
-    auto scene_tree = renderer->scene_tree;
-
-    auto& md_mg = scene->getModelManager();
-    Model& mdl = md_mg.get(h);
-    auto& ms_mg = scene->getMeshManager();
-    Mesh& mesh = ms_mg.get(mdl.getMesh());
-
+void SceneRenderer::addMesh(Mesh& mesh) {
     LOG("Adding mesh!")
 
-    DepDataHandle vkmh = renderer->meshes.alloc();
-    vkMesh& vkmesh = renderer->meshes.get(vkmh);
-
-    DepDataHandle vkmd = renderer->models.alloc();
-    srModel& srModel = renderer->models.get(vkmd);
-    srModel.mesh = vkmh;
+    DepDataHandle vkmh = meshes.alloc();
+    mesh.setDepDataHandle(vkmh);
+    vkMesh& vkmesh = meshes.get(vkmh);
 
     for (auto& attr : mesh.getAttributes()) {
         vkAttribute attrib = std::visit<vkAttribute>(
             [&](auto&& arg) -> vkAttribute {
-                return vkAttribute(renderer->device, attr.first, arg.size(),
+                return vkAttribute(device, attr.first, arg.size(),
                                    (AttributeTypes)attr.second.index(),
                                    (void*)arg.data());
             },
             attr.second);
 
         vkmesh.vertexAttributes.push_back(std::move(attrib));
-        vkmesh.indexBuffer =
-            gbg::createIndexBuffer(renderer->device, mesh.getFaces());
+        vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
     }
-
-    scene_tree->setDepDataHandle(vkmh);
 }
 
-void SceneRenderer::addModels() {
-    auto& md_mg = scene->getModelManager();
-    auto& ms_mg = scene->getMeshManager();
+void SceneRenderer::addShader(Shader& shader) {
+    DepDataHandle shh = shaders.alloc();
+    shader.setDepDataHandle(shh);
+    srShader& sr_sh = shaders.get(shh);
+    VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
+    matParmsLayoutBinding.binding = 0;
+    matParmsLayoutBinding.descriptorCount = 1;
+    matParmsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    matParmsLayoutBinding.pImmutableSamplers = nullptr;
+    matParmsLayoutBinding.stageFlags =
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    std::queue<SceneTree*> Q;
-    Q.push(scene_tree.get());
-    while (not Q.empty()) {
-        SceneTree* curr = Q.front();
-        Q.pop();
-        std::visit<void>(_CreationVisitor{this}, curr->getResourceHandle());
-        for (auto& chid : curr->getChildren()) {
-            Q.push(chid);
+    std::array<VkDescriptorSetLayoutBinding, 1> materialBindings = {
+        matParmsLayoutBinding};
+
+    VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
+    materialLayoutInfo.sType =
+        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    materialLayoutInfo.bindingCount =
+        static_cast<uint32_t>(materialBindings.size());
+    materialLayoutInfo.pBindings = materialBindings.data();
+
+    if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
+                                    nullptr, &sr_sh.layout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout!");
+    }
+
+    std::vector<VkDescriptorSetLayout> desc_sets_layouts = {sr_sh.layout};
+
+    LOG("Adding input bindings...")
+
+    std::vector<VkVertexInputBindingDescription> bindingDescriptions;
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+    // TODO: make them a parameter.
+    for (const auto& type : shader.getAttributes()) {
+        vkVertexInputDescription desc;
+        switch (type.second) {
+            case gbg::AttributeTypes::FLOAT_ATTR:
+                desc = getVertexFloatInputDescription(type.first);
+                break;
+            case VEC2_ATTR:
+                desc = getVertexVector2InputDescription(type.first);
+                break;
+            case VEC3_ATTR:
+                desc = getVertexVector3InputDescription(type.first);
+                break;
         }
+        bindingDescriptions.push_back(desc.binding_desc);
+        attributeDescriptions.push_back(desc.attrib_desc);
+    }
+
+    sr_sh.pipeline = createGraphicsPipeline(
+        device.ldevice, shader.getVertShaderCode(), shader.getFragShaderCode(),
+        desc_sets_layouts, bindingDescriptions, attributeDescriptions,
+        msaaSamples, renderPass);
+}
+
+void SceneRenderer::addMaterial(Material& mat) {
+    DepDataHandle mth = materials.alloc();
+    mat.setDepDataHandle(mth);
+
+    srMaterial srmt = materials.get(mth);
+
+    // TODO: complete
+    // descriptor sets
+
+    srmt.parameter_values =
+}
+
+void SceneRenderer::processScene() {
+    auto& ms_mg = scene->getMeshManager();
+    auto& mt_mg = scene->getMaterialManager();
+    auto& sh_mg = scene->getShaderManager();
+
+    for (Mesh& mesh : ms_mg.getAll()) {
+        addMesh(mesh);
+    }
+
+    for (Shader& sh : sh_mg.getAll()) {
+        addShader(sh);
+    }
+
+    for (Material& mat : mt_mg.getAll()) {
+        addMaterial(mat);
     }
 }
 
@@ -203,7 +268,7 @@ void SceneRenderer::cleanup() {
         vkFreeMemory(device.ldevice, globalBuffers[i].memory, nullptr);
     }
 
-    vkDestroyDescriptorPool(device.ldevice, descriptorPool, nullptr);
+    vkDestroyDescriptorPool(device.ldevice, globalDescriptorPool, nullptr);
 
     vkDestroyDescriptorSetLayout(device.ldevice, inmutableDescriptorSetLayout,
                                  nullptr);
@@ -426,34 +491,6 @@ void SceneRenderer::createColorResources() {
                       VK_IMAGE_ASPECT_COLOR_BIT, 1);
 }
 
-std::vector<char> SceneRenderer::readFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-    if (!file) {
-        throw std::runtime_error("failed to open file!");
-    }
-
-    size_t fileSize = (size_t)file.tellg();
-    std::vector<char> buffer(fileSize);
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-    file.close();
-    return buffer;
-}
-
-VkShaderModule SceneRenderer::createShaderModule(
-    const std::vector<char>& code) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(device.ldevice, &createInfo, nullptr,
-                             &shaderModule) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create shader module");
-    }
-    return shaderModule;
-}
-
 void SceneRenderer::createRenderPass() {
     // describe how the color attachment will be treated and interpreted
     // (settings) an attachment is a reference to an image view in the
@@ -545,7 +582,7 @@ void SceneRenderer::createRenderPass() {
     }
 }
 
-void SceneRenderer::createDescriptorSetLayouts() {
+void SceneRenderer::createGlobalDescriptorSetLayouts() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
     uboLayoutBinding.descriptorCount = 1;
@@ -553,22 +590,42 @@ void SceneRenderer::createDescriptorSetLayouts() {
     uboLayoutBinding.pImmutableSamplers = nullptr;
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 1> variableBindings = {
+    std::array<VkDescriptorSetLayoutBinding, 1> globalBindings = {
         uboLayoutBinding};
 
-    VkDescriptorSetLayoutCreateInfo variableLayoutInfo{};
-    variableLayoutInfo.sType =
+    VkDescriptorSetLayoutCreateInfo globalLayoutInfo{};
+    globalLayoutInfo.sType =
         VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    variableLayoutInfo.bindingCount =
-        static_cast<uint32_t>(variableBindings.size());
-    variableLayoutInfo.pBindings = variableBindings.data();
+    globalLayoutInfo.bindingCount =
+        static_cast<uint32_t>(globalBindings.size());
+    globalLayoutInfo.pBindings = globalBindings.data();
 
-    if (vkCreateDescriptorSetLayout(device.ldevice, &variableLayoutInfo,
-                                    nullptr,
+    if (vkCreateDescriptorSetLayout(device.ldevice, &globalLayoutInfo, nullptr,
                                     &globalDescriptorSetLayout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 
+    VkDescriptorSetLayoutBinding modelLayoutBinding{};
+    uboLayoutBinding.binding = 1;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.pImmutableSamplers = nullptr;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    std::array<VkDescriptorSetLayoutBinding, 1> modelBindings = {
+        modelLayoutBinding};
+
+    VkDescriptorSetLayoutCreateInfo modelLayoutInfo{};
+    modelLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    modelLayoutInfo.bindingCount = static_cast<uint32_t>(modelBindings.size());
+    modelLayoutInfo.pBindings = modelBindings.data();
+
+    if (vkCreateDescriptorSetLayout(device.ldevice, &modelLayoutInfo, nullptr,
+                                    &modelDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor set layout!");
+    }
+
+    /*
     VkDescriptorSetLayoutBinding samplerLayoutBinding{};
     samplerLayoutBinding.binding = 0;
     samplerLayoutBinding.descriptorCount = 1;
@@ -619,205 +676,7 @@ void SceneRenderer::createDescriptorSetLayouts() {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
     materialDescSetLayouts.push_back(matLayout);
-}
-
-void SceneRenderer::createGraphicsPipeline() {
-    auto vertShaderCode = readFile("data/shaders/vert.spv");
-    auto fragShaderCode = readFile("data/shaders/frag.spv");
-
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
-
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vertShaderModule;
-    vertShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = fragShaderModule;
-    fragShaderStageInfo.pName = "main";
-
-    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
-                                                      fragShaderStageInfo};
-
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-
-    std::vector<VkVertexInputBindingDescription> bindingDescriptions;
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
-
-    // TODO: make-it from the shader
-    LOG("Adding input bindings...")
-    for (const auto& mesh : meshes) {
-        for (const auto& attr : mesh.vertexAttributes) {
-            auto desc = attr.getAttributeDescriptions();
-            bindingDescriptions.push_back(desc.first);
-            attributeDescriptions.push_back(desc.second);
-        }
-    }
-
-    vertexInputInfo.vertexBindingDescriptionCount = bindingDescriptions.size();
-    vertexInputInfo.vertexAttributeDescriptionCount =
-        static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-    VkPipelineViewportStateCreateInfo viewportInfo{};
-    viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportInfo.viewportCount = 1;
-    viewportInfo.scissorCount = 1;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer{};
-    rasterizer.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizer.depthBiasEnable = VK_FALSE;
-    rasterizer.depthBiasConstantFactor = 0.0f;
-    rasterizer.depthBiasClamp = 0.0f;
-    rasterizer.depthBiasSlopeFactor = 0.0f;
-
-    VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.sampleShadingEnable = VK_TRUE;
-    multisampling.rasterizationSamples = msaaSamples;
-    multisampling.minSampleShading = 0.2f;
-    multisampling.pSampleMask = nullptr;
-    multisampling.alphaToCoverageEnable = VK_FALSE;
-    multisampling.alphaToOneEnable = VK_FALSE;
-
-    VkPipelineDepthStencilStateCreateInfo depthStencil{};
-    depthStencil.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    depthStencil.depthBoundsTestEnable = VK_FALSE;
-    // depthStencil.maxDepthBounds = 1.0f;
-    // depthStencil.minDepthBounds = 0.0f;
-    depthStencil.stencilTestEnable = VK_FALSE;
-    // depthStencil.front = {};
-    // depthStencil.back = {};
-
-    // we perform alpha blending here
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-        VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE;
-    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    colorBlendAttachment.dstColorBlendFactor =
-        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-
-    // pseudo code explaining blendig operation
-    // if (blendEnable) {
-    //     finalColor.rgb = (srcColorBlendFactor * newColor.rgb)
-    //     <colorBlendOp> (dstColorBlendFactor * oldColor.rgb); finalColor.a
-    //     = (srcAlphaBlendFactor * newColor.a) <alphaBlendOp>
-    //     (dstAlphaBlendFactor * oldColor.a);
-    // } else {
-    //     finalColor = newColor;
-    // }
-    //
-    // finalColor = finalColor & colorWriteMask;
-
-    VkPipelineColorBlendStateCreateInfo colorBlending{};
-    colorBlending.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    colorBlending.blendConstants[0] = 0.0f;
-    colorBlending.blendConstants[1] = 0.0f;
-    colorBlending.blendConstants[2] = 0.0f;
-    colorBlending.blendConstants[3] = 0.0f;
-
-    const std::vector<VkDynamicState> dynamicStates = {
-        VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-
-    VkPipelineDynamicStateCreateInfo dynamicState{};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount =
-        static_cast<uint32_t>(dynamicStates.size());
-    dynamicState.pDynamicStates = dynamicStates.data();
-
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts = {
-        globalDescriptorSetLayout};
-
-    if (not textures.empty()) {
-        descriptorSetLayouts.insert(descriptorSetLayouts.end(),
-                                    materialDescSetLayouts.begin(),
-                                    materialDescSetLayouts.end());
-
-        descriptorSetLayouts.push_back(inmutableDescriptorSetLayout);
-    }
-
-    LOG("Number of descSets: ")
-    LOG(descriptorSetLayouts.size())
-
-    VkPipelineLayoutCreateInfo layoutCreateInfo{};
-    layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutCreateInfo.setLayoutCount =
-        static_cast<uint32_t>(descriptorSetLayouts.size());
-    layoutCreateInfo.pSetLayouts = descriptorSetLayouts.data();
-    layoutCreateInfo.pushConstantRangeCount = 0;
-    layoutCreateInfo.pPushConstantRanges = nullptr;
-
-    if (vkCreatePipelineLayout(device.ldevice, &layoutCreateInfo, nullptr,
-                               &pipelineLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create pipeline layout!");
-    }
-
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportInfo;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-
-    pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
-    pipelineInfo.subpass = 0;
-
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-    // pipelineInfo.basePipelineIndex = -1;
-
-    if (vkCreateGraphicsPipelines(device.ldevice, VK_NULL_HANDLE, 1,
-                                  &pipelineInfo, nullptr,
-                                  &graphicsPipeline) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
-    }
-
-    vkDestroyShaderModule(device.ldevice, fragShaderModule, nullptr);
-    vkDestroyShaderModule(device.ldevice, vertShaderModule, nullptr);
+    */
 }
 
 void SceneRenderer::createFrameBuffers() {
@@ -1020,7 +879,7 @@ void SceneRenderer::createTextureSampler() {
     }
 }
 
-void SceneRenderer::createUniformBuffers() {
+void SceneRenderer::createGlobalShaderResources() {
     VkDeviceSize bufferSize = sizeof(UniformBufferObjects);
 
     globalBuffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1036,27 +895,56 @@ void SceneRenderer::createUniformBuffers() {
     }
 }
 
-void SceneRenderer::createDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 3> descriptorPoolSizes{};
+void SceneRenderer::createGlobalDescriptorPool() {
+    std::array<VkDescriptorPoolSize, 1> descriptorPoolSizes{};
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorPoolSizes[1].descriptorCount = 1;
-
-    descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    descriptorPoolSizes[2].descriptorCount =
-        static_cast<uint32_t>(std::max<int>(textures.size(), 1));
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
     poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) +
-                       static_cast<uint32_t>(textures.size()) + 1;
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
-                               &descriptorPool) != VK_SUCCESS) {
+                               &globalDescriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+}
+
+void SceneRenderer::createMaterialDescriptorPool() {
+    std::array<VkDescriptorPoolSize, 2> descriptorPoolSizes{};
+    descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorPoolSizes[0].descriptorCount = max_mat;
+
+    descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    descriptorPoolSizes[1].descriptorCount = static_cast<uint32_t>(max_tex);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
+    poolInfo.pPoolSizes = descriptorPoolSizes.data();
+    poolInfo.maxSets = max_mat + max_tex;
+    if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
+                               &materialDescPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+}
+
+void SceneRenderer::createModelDescriptorPool() {
+    std::array<VkDescriptorPoolSize, 1> descriptorPoolSizes{};
+    descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorPoolSizes[0].descriptorCount = static_cast<uint32_t>(max_obj);
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
+    poolInfo.pPoolSizes = descriptorPoolSizes.data();
+    poolInfo.maxSets = static_cast<uint32_t>(max_obj);
+
+    if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
+                               &modelDescPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
     }
 }
@@ -1067,7 +955,7 @@ void SceneRenderer::createGlobalDescriptorSets() {
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    setInfo.descriptorPool = descriptorPool;
+    setInfo.descriptorPool = globalDescriptorPool;
     setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
     setInfo.pSetLayouts = layouts.data();
 
@@ -1101,13 +989,13 @@ void SceneRenderer::createGlobalDescriptorSets() {
 }
 
 void SceneRenderer::createMaterialDescriptorSets() {
-    if (textures.empty()) return;
+    /*if (textures.empty()) return;
     std::vector<VkDescriptorSetLayout> layouts(textures.size(),
                                                materialDescSetLayouts[0]);
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    setInfo.descriptorPool = descriptorPool;
+    setInfo.descriptorPool = globalDescriptorPool;
     setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
     setInfo.pSetLayouts = layouts.data();
 
@@ -1137,9 +1025,11 @@ void SceneRenderer::createMaterialDescriptorSets() {
 
         vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
     }
+    */
 }
 
-void SceneRenderer::createInmutableDescriptorSets() {
+/*
+void SceneRenderer::createStaticDescriptorSets() {
     if (textures.empty()) return;
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1166,6 +1056,7 @@ void SceneRenderer::createInmutableDescriptorSets() {
 
     vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
 }
+*/
 
 void SceneRenderer::createCommandBuffer() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1307,7 +1198,7 @@ VkSampleCountFlagBits SceneRenderer::getMaxUsableSampleCount(
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-void SceneRenderer::updateUniformBuffer(uint32_t currentImage) {
+void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
@@ -1351,7 +1242,7 @@ void SceneRenderer::drawFrame() {
         throw std::runtime_error("failed to recreate swapchain image!");
     }
 
-    updateUniformBuffer(currentFrame);
+    updateVaryingDescriptorSets(currentFrame);
 
     // Only reset fence if we know that work is going to be submitted
     // Per tal que es pugui fer submit work

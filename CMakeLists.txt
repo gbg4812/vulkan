@@ -21,6 +21,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC src/)
 # External dependencies
 find_package(Vulkan REQUIRED)
 
+if(LOCAL_SEQ)
+    fetchcontent_declare(
+  sceneeq
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SceneEquipament/)
+endif()
+
 fetchcontent_declare(
   sceneeq
   GIT_REPOSITORY https://github.com/gbg4812/SceneEquipament.git

@@ -5,6 +5,8 @@
 
 #include <memory>
 
+#include "srModel.hpp"
+
 #define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
@@ -19,8 +21,9 @@
 #include "GLFW/glfw3.h"
 #include "Scene.hpp"
 #include "SceneTree.hpp"
-#include "srModel.hpp"
+#include "srMaterial.hpp"
 #include "srPool.hpp"
+#include "srShader.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
@@ -52,12 +55,17 @@ class SceneRenderer {
     void run();
     SceneRenderer()
         : meshes(10, (uint8_t)ResourceTypes::MESH),
+          materials(1, (uint8_t)ResourceTypes::MATERIAL),
+          shaders(1, (uint8_t)ResourceTypes::SHADER),
           models(10, (uint8_t)ResourceTypes::MODEL) {}
 
    private:
     enum class ResourceTypes {
         MODEL = 0,
         MESH,
+        MATERIAL,
+        SHADER,
+        TEXTURE,
     };
     GLFWwindow* window;
     vkInstance instance;
@@ -65,17 +73,18 @@ class SceneRenderer {
     vkDevice device;
     VkRenderPass renderPass;
 
-    VkDescriptorPool descriptorPool;
+    VkDescriptorPool globalDescriptorPool;
+    VkDescriptorPool materialDescPool;
+    VkDescriptorPool modelDescPool;
     // Descriptors diferent for each material
     std::vector<VkDescriptorSetLayout> materialDescSetLayouts;
     // Descriptors for objects that all shaders have but can´t change
     VkDescriptorSetLayout inmutableDescriptorSetLayout;
     // Descriptors that change in a frame basis but not per-material
     VkDescriptorSetLayout globalDescriptorSetLayout;
+    VkDescriptorSetLayout modelDescriptorSetLayout;
 
-    std::vector<VkDescriptorSet> materialDescSets;
     std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> globalDescriptorSets;
-    VkDescriptorSet inmutableDescriptorSet;
 
     VkPipelineLayout pipelineLayout;
     VkPipeline graphicsPipeline;
@@ -89,8 +98,13 @@ class SceneRenderer {
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
 
+    srPool<gbg::srShader> shaders;
+    srPool<gbg::srMaterial> materials;
     srPool<gbg::vkMesh> meshes;
     srPool<gbg::srModel> models;
+    const uint32_t max_obj = 1000;
+    const uint32_t max_mat = 1000;
+    const uint32_t max_tex = 1000;
 
     std::vector<gbg::vkTexture> textures;
     VkSampler textureSampler;
@@ -122,7 +136,7 @@ class SceneRenderer {
 
     void initResources();
 
-    void addModels();
+    void processScene();
 
     void mainLoop();
 
@@ -164,9 +178,7 @@ class SceneRenderer {
 
     void createRenderPass();
 
-    void createDescriptorSetLayouts();
-
-    void createGraphicsPipeline();
+    void createGlobalDescriptorSetLayouts();
 
     void createFrameBuffers();
 
@@ -191,15 +203,19 @@ class SceneRenderer {
 
     void createTextureSampler();
 
-    void createUniformBuffers();
+    void createGlobalShaderResources();
 
-    void createDescriptorPool();
+    void createGlobalDescriptorPool();
+
+    void createMaterialDescriptorPool();
+
+    void createModelDescriptorPool();
 
     void createGlobalDescriptorSets();
 
     void createMaterialDescriptorSets();
 
-    void createInmutableDescriptorSets();
+    void createModelDescriptorSets();
 
     void createCommandBuffer();
 
@@ -210,14 +226,12 @@ class SceneRenderer {
 
     VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice);
 
-    void updateUniformBuffer(uint32_t currentImage);
+    void updateVaryingDescriptorSets(uint32_t currentImage);
 
     void drawFrame();
 
-    struct _CreationVisitor {
-        SceneRenderer* renderer;
-        void operator()(const ModelHandle& h);
-        void operator()(const std::monostate& h);
-    };
+    void addMesh(Mesh& mesh);
+    void addShader(Shader& shader);
+    void addMaterial(Material& shader);
 };
 }  // namespace gbg

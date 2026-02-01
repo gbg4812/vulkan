@@ -1,11 +1,12 @@
-
 #pragma once
-#include "SceneTree.hpp"
-namespace gbg {
+#include <vulkan/vulkan_core.h>
 
+#include "vk_utils/vkBuffer.hh"
+
+namespace gbg {
 struct srModel {
-    DepDataHandle mesh;
-    DepDataHandle material;
+    VkDescriptorSet mdlDescSet;
+    vkBuffer mdlBuffer;
 };
 
 }  // namespace gbg
