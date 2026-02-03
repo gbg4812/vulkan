@@ -8,6 +8,9 @@
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "srShader.hpp"
+#include "traits/traits.hpp"
+#include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkMesh.hh"
 #include "vk_utils/vkPipeline.hh"
 
@@ -185,7 +188,8 @@ void SceneRenderer::addShader(Shader& shader) {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 
-    std::vector<VkDescriptorSetLayout> desc_sets_layouts = {sr_sh.layout};
+    std::vector<VkDescriptorSetLayout> desc_sets_layouts = {
+        globalDescriptorSetLayout, sr_sh.layout};
 
     LOG("Adding input bindings...")
 
@@ -210,7 +214,7 @@ void SceneRenderer::addShader(Shader& shader) {
     }
 
     sr_sh.pipeline = createGraphicsPipeline(
-        device.ldevice, shader.getVertShaderCode(), shader.getFragShaderCode(),
+        device, shader.getVertShaderCode(), shader.getFragShaderCode(),
         desc_sets_layouts, bindingDescriptions, attributeDescriptions,
         msaaSamples, renderPass);
 }
@@ -219,12 +223,25 @@ void SceneRenderer::addMaterial(Material& mat) {
     DepDataHandle mth = materials.alloc();
     mat.setDepDataHandle(mth);
 
-    srMaterial srmt = materials.get(mth);
+    // TODO: easy to leak memory
+    srMaterial& srmt = materials.get(mth);
 
-    // TODO: complete
-    // descriptor sets
+    // we have the data layed out
+    srmt.parameter_values = gbg::allocateParameterValues(mat);
 
-    srmt.parameter_values =
+    srmt.paramBuffer = gbg::createBuffer(
+        device, srmt.parameter_values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    void* data;
+    vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
+                srmt.paramBuffer.size, 0, &data);
+    std::memcpy(data, srmt.parameter_values.data, srmt.parameter_values.size);
+    vkUnmapMemory(device.ldevice, srmt.paramBuffer.memory);
+
+    // create descriptor sets
+
+    createMaterialDescriptorSet(srmt, mat);
 }
 
 void SceneRenderer::processScene() {
@@ -257,12 +274,7 @@ void SceneRenderer::mainLoop() {
 void SceneRenderer::cleanup() {
     cleanupSwapChain();
 
-    vkDestroySampler(device.ldevice, textureSampler, nullptr);
-
-    for (gbg::vkTexture texture : textures) {
-        gbg::destoryImage(texture.textureImage, device.ldevice);
-    }
-
+    // global desc set
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         vkDestroyBuffer(device.ldevice, globalBuffers[i].buffer, nullptr);
         vkFreeMemory(device.ldevice, globalBuffers[i].memory, nullptr);
@@ -270,31 +282,40 @@ void SceneRenderer::cleanup() {
 
     vkDestroyDescriptorPool(device.ldevice, globalDescriptorPool, nullptr);
 
-    vkDestroyDescriptorSetLayout(device.ldevice, inmutableDescriptorSetLayout,
-                                 nullptr);
     vkDestroyDescriptorSetLayout(device.ldevice, globalDescriptorSetLayout,
                                  nullptr);
-    for (VkDescriptorSetLayout descSet : materialDescSetLayouts) {
-        vkDestroyDescriptorSetLayout(device.ldevice, descSet, nullptr);
+
+    for (const auto& shader : shaders) {
+        destroySrShader(device, shader);
+    }
+
+    for (const auto& material : materials) {
+        destroySrMaterial(device, material);
     }
 
     for (const auto& mesh : meshes) {
         destroyMesh(device, mesh);
     }
 
+    vkDestroyDescriptorPool(device.ldevice, materialDescPool, nullptr);
+    vkDestroyDescriptorPool(device.ldevice, modelDescPool, nullptr);
+    vkDestroyDescriptorSetLayout(device.ldevice, modelDescriptorSetLayout,
+                                 nullptr);
+
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
                            nullptr);
+        vkDestroyFence(device.ldevice, inFlightFences[i], nullptr);
+    }
+
+    for (int i = 0; i < renderFinishedSemaphores.size(); i++) {
         vkDestroySemaphore(device.ldevice, renderFinishedSemaphores[i],
                            nullptr);
-        vkDestroyFence(device.ldevice, inFlightFences[i], nullptr);
     }
 
     vkDestroyCommandPool(device.ldevice, device.graphicsCmdPool, nullptr);
     vkDestroyCommandPool(device.ldevice, device.transferCmdPool, nullptr);
 
-    vkDestroyPipeline(device.ldevice, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(device.ldevice, pipelineLayout, nullptr);
     vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
     vkDestroyDevice(device.ldevice, nullptr);
@@ -988,44 +1009,49 @@ void SceneRenderer::createGlobalDescriptorSets() {
     }
 }
 
-void SceneRenderer::createMaterialDescriptorSets() {
-    /*if (textures.empty()) return;
-    std::vector<VkDescriptorSetLayout> layouts(textures.size(),
-                                               materialDescSetLayouts[0]);
+void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
+                                                Material& mat) {
+    auto& sh_mg = scene->getShaderManager();
+    Shader& shader = sh_mg.get(mat.getShaderHandle());
+
+    DepDataHandle shh = shader.getDepDataHandle();
+    srShader& srsh = shaders.get(shh);
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    setInfo.descriptorPool = globalDescriptorPool;
-    setInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
-    setInfo.pSetLayouts = layouts.data();
+    setInfo.descriptorPool = materialDescPool;
+    setInfo.descriptorSetCount = 1;
+    setInfo.pSetLayouts = &srsh.layout;
 
-    materialDescSets.resize(textures.size());
     if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
-                                 materialDescSets.data()) != VK_SUCCESS) {
+                                 &srmat.descriptor_set) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor sets");
     }
-    int i = 0;
-    for (VkDescriptorSetLayout layout : layouts) {
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.sampler = textureSampler;
-        imageInfo.imageView = textures[i].textureImage.view.value();
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        VkWriteDescriptorSet descriptorWrite;
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = materialDescSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pImageInfo = &imageInfo;
-        // Only needed for other types of descriptors
-        descriptorWrite.pTexelBufferView = nullptr;
-        i++;
-
-        vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
-    }
+    /*
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.sampler = textureSampler;
+    imageInfo.imageView = textures[i].textureImage.view.value();
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     */
+
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = srmat.paramBuffer.buffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet descriptorWrite;
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = srmat.descriptor_set;
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pImageInfo = nullptr;
+    // Only needed for other types of descriptors
+    descriptorWrite.pTexelBufferView = nullptr;
+    descriptorWrite.pBufferInfo = &bufferInfo;
+
+    vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
 }
 
 /*
@@ -1100,8 +1126,6 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
                          VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                      graphicsPipeline);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -1110,38 +1134,73 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     viewport.height = static_cast<float>(swapChain.swapChainImageExtent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapChain.swapChainImageExtent;
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    for (const auto& mesh : meshes) {
-        std::vector<VkBuffer> vbuffers;
-        std::vector<VkDeviceSize> voffsets;
-        for (const auto& attrb : mesh.vertexAttributes) {
-            vbuffers.push_back(attrb.buffer.buffer);
-            voffsets.push_back(0);
+    auto& md_mg = scene->getModelManager();
+    auto& msh_mg = scene->getMeshManager();
+    auto& mt_mg = scene->getMaterialManager();
+    auto& sh_mg = scene->getShaderManager();
+
+    std::queue<SceneTree*> Q;
+    Q.push(scene_tree.get());
+    while (not Q.empty()) {
+        SceneTree* visited = Q.front();
+        Q.pop();
+
+        auto& handle = visited->getResourceHandle();
+
+        std::visit(
+            overloads{
+                [&](const ModelHandle& mh) {
+                    Model& md = md_mg.get(mh);
+                    Material& mt = mt_mg.get(md.getMaterial());
+                    Shader& sh = sh_mg.get(mt.getShaderHandle());
+                    srShader& srsh = shaders.get(sh.getDepDataHandle());
+                    srMaterial& srmt = materials.get(mt.getDepDataHandle());
+
+                    vkMesh& mesh =
+                        meshes.get(msh_mg.get(md.getMesh()).getDepDataHandle());
+                    vkCmdBindPipeline(commandBuffer,
+                                      VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                      srsh.pipeline.pipeline);
+
+                    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+                    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                    std::vector<VkBuffer> vbuffers;
+                    std::vector<VkDeviceSize> voffsets;
+                    for (const auto& attrb : mesh.vertexAttributes) {
+                        vbuffers.push_back(attrb.buffer.buffer);
+                        voffsets.push_back(0);
+                    }
+                    vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
+                                           vbuffers.data(), voffsets.data());
+                    vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
+                                         0, VK_INDEX_TYPE_UINT32);
+
+                    vkCmdBindDescriptorSets(commandBuffer,
+                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                            srsh.pipeline.layout, 1, 1,
+                                            &srmt.descriptor_set, 0, nullptr);
+
+                    vkCmdBindDescriptorSets(
+                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        srsh.pipeline.layout, 0, 1,
+                        &globalDescriptorSets[currentFrame], 0, nullptr);
+
+                    vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
+                                     1, 0, 0, 0);
+                },
+                [&](const std::monostate& empty) {
+
+                }},
+            handle);
+        for (SceneTree* child : visited->getChildren()) {
+            Q.push(child);
         }
-        vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
-                               vbuffers.data(), voffsets.data());
-        vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer, 0,
-                             VK_INDEX_TYPE_UINT32);
-        if (not textures.empty()) {
-            vkCmdBindDescriptorSets(
-                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                2, 1, &inmutableDescriptorSet, 0, nullptr);
-            vkCmdBindDescriptorSets(
-                commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-                1, 1, materialDescSets.data(), 0, nullptr);
-        }
-
-        vkCmdBindDescriptorSets(
-            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0,
-            1, &globalDescriptorSets[currentFrame], 0, nullptr);
-
-        vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4, 1, 0, 0, 0);
     }
 
     vkCmdEndRenderPass(commandBuffer);
@@ -1153,7 +1212,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
 void SceneRenderer::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.resize(swapChain.swapChainImages.size());
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
@@ -1166,11 +1225,17 @@ void SceneRenderer::createSyncObjects() {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (vkCreateSemaphore(device.ldevice, &semaphoreInfo, nullptr,
                               &imageAvailableSemaphores[i]) != VK_SUCCESS or
-            vkCreateSemaphore(device.ldevice, &semaphoreInfo, nullptr,
-                              &renderFinishedSemaphores[i]) != VK_SUCCESS or
+
             vkCreateFence(device.ldevice, &fenceInfo, nullptr,
                           &inFlightFences[i]) != VK_SUCCESS) {
             throw std::runtime_error("failed to create semaphores!");
+        }
+    }
+
+    for (int i = 0; i < renderFinishedSemaphores.size(); i++) {
+        if (vkCreateSemaphore(device.ldevice, &semaphoreInfo, nullptr,
+                              &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create render semaphores!");
         }
     }
 }
@@ -1226,7 +1291,7 @@ void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
 }
 
 void SceneRenderer::drawFrame() {
-    // esperem que s'hagi acabat de renderitzar l'últim frame coucurrent amb
+    // esperem que s'hagi acabat de renderitzar l'últim frame concurrent amb
     // el que toca renderitzar (els si els altres no han acabat no importa)
     vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame], VK_TRUE,
                     UINT64_MAX);
@@ -1267,7 +1332,7 @@ void SceneRenderer::drawFrame() {
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
 
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[imageIndex]};
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 

@@ -55,7 +55,7 @@ class srPool {
             : _index(index), _data(data), _rids(rids) {}
 
         iterator& operator++() {
-            while (_rids[++_index] == 0) {
+            while (_index < _data.size() and _rids[_index++] == 0) {
             }
             return *this;
         }

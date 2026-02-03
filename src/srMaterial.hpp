@@ -1,4 +1,4 @@
-
+#pragma once
 #include <vulkan/vulkan_core.h>
 
 #include "Material.hpp"
@@ -7,7 +7,7 @@
 namespace gbg {
 
 struct srParameterValues {
-    void* data;
+    unsigned char* data;
     size_t size;
 };
 
@@ -18,5 +18,7 @@ struct srMaterial {
 };
 
 srParameterValues allocateParameterValues(Material& model);
+
+void destroySrMaterial(const vkDevice& device, const srMaterial& mat);
 
 }  // namespace gbg

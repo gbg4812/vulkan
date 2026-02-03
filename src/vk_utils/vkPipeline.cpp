@@ -58,13 +58,14 @@ VkShaderModule createShaderModule(const vkDevice& device,
     return shaderModule;
 }
 
-VkPipeline createGraphicsPipeline(
+vkPipeline createGraphicsPipeline(
     const vkDevice& device, std::string_view vertShaderCode,
     std::string_view fragShaderCode,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass) {
+    vkPipeline pipeline{};
     VkShaderModule vertShaderModule =
         createShaderModule(device, vertShaderCode);
     VkShaderModule fragShaderModule =
@@ -200,10 +201,8 @@ VkPipeline createGraphicsPipeline(
     layoutCreateInfo.pushConstantRangeCount = 0;
     layoutCreateInfo.pPushConstantRanges = nullptr;
 
-    VkPipelineLayout pipelineLayout;
-
     if (vkCreatePipelineLayout(device.ldevice, &layoutCreateInfo, nullptr,
-                               &pipelineLayout) != VK_SUCCESS) {
+                               &pipeline.layout) != VK_SUCCESS) {
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
@@ -220,24 +219,22 @@ VkPipeline createGraphicsPipeline(
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
 
-    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.layout = pipeline.layout;
     pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
 
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     // pipelineInfo.basePipelineIndex = -1;
 
-    VkPipeline graphicsPipeline;
-
     if (vkCreateGraphicsPipelines(device.ldevice, VK_NULL_HANDLE, 1,
                                   &pipelineInfo, nullptr,
-                                  &graphicsPipeline) != VK_SUCCESS) {
+                                  &pipeline.pipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
 
     vkDestroyShaderModule(device.ldevice, fragShaderModule, nullptr);
     vkDestroyShaderModule(device.ldevice, vertShaderModule, nullptr);
 
-    return graphicsPipeline;
+    return pipeline;
 }
 }  // namespace gbg

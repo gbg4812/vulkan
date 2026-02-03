@@ -5,8 +5,6 @@
 
 #include <memory>
 
-#include "srModel.hpp"
-
 #define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
@@ -56,13 +54,11 @@ class SceneRenderer {
     SceneRenderer()
         : meshes(10, (uint8_t)ResourceTypes::MESH),
           materials(1, (uint8_t)ResourceTypes::MATERIAL),
-          shaders(1, (uint8_t)ResourceTypes::SHADER),
-          models(10, (uint8_t)ResourceTypes::MODEL) {}
+          shaders(1, (uint8_t)ResourceTypes::SHADER) {}
 
    private:
     enum class ResourceTypes {
-        MODEL = 0,
-        MESH,
+        MESH = 0,
         MATERIAL,
         SHADER,
         TEXTURE,
@@ -76,18 +72,12 @@ class SceneRenderer {
     VkDescriptorPool globalDescriptorPool;
     VkDescriptorPool materialDescPool;
     VkDescriptorPool modelDescPool;
-    // Descriptors diferent for each material
-    std::vector<VkDescriptorSetLayout> materialDescSetLayouts;
-    // Descriptors for objects that all shaders have but can´t change
-    VkDescriptorSetLayout inmutableDescriptorSetLayout;
+
     // Descriptors that change in a frame basis but not per-material
     VkDescriptorSetLayout globalDescriptorSetLayout;
     VkDescriptorSetLayout modelDescriptorSetLayout;
 
     std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> globalDescriptorSets;
-
-    VkPipelineLayout pipelineLayout;
-    VkPipeline graphicsPipeline;
 
     gbg::vkSwapChain swapChain;
     std::vector<VkFramebuffer> swapChainFramebuffers;
@@ -101,7 +91,6 @@ class SceneRenderer {
     srPool<gbg::srShader> shaders;
     srPool<gbg::srMaterial> materials;
     srPool<gbg::vkMesh> meshes;
-    srPool<gbg::srModel> models;
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
     const uint32_t max_tex = 1000;
@@ -174,8 +163,6 @@ class SceneRenderer {
 
     static std::vector<char> readFile(const std::string& filename);
 
-    VkShaderModule createShaderModule(const std::vector<char>& code);
-
     void createRenderPass();
 
     void createGlobalDescriptorSetLayouts();
@@ -213,7 +200,7 @@ class SceneRenderer {
 
     void createGlobalDescriptorSets();
 
-    void createMaterialDescriptorSets();
+    void createMaterialDescriptorSet(srMaterial& srmat, Material& mat);
 
     void createModelDescriptorSets();
 

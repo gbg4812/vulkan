@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <print>
 
 #include "Mesh.hpp"
 #include "Scene.hpp"
@@ -13,7 +14,14 @@ const std::string MODEL_PATH = "./data/models/EasyModels/scene.obj";
 const std::string TEXTURE_PATH =
     "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
 
-int main() {
+int main(int argc, char* argv[]) {
+    std::span arguments(argv, argc);
+
+    if (arguments.size() < 2) {
+        std::println("Usage: app obj-file-name");
+        exit(1);
+    }
+
     const auto& scene = std::make_shared<gbg::Scene>();
     gbg::SceneRenderer renderer;
     auto sc = std::make_shared<gbg::Scene>();
@@ -26,13 +34,16 @@ int main() {
     gbg::Material& mt = mt_mg.get(mth);
 
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
-    gbg::Shader sh = sh_mg.get(shh);
+    gbg::Shader& sh = sh_mg.get(shh);
     sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
     sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
+    //
+    sh.loadVertShaderCode("./data/shaders/vert.spv");
+    sh.loadFragShaderCode("./data/shaders/frag.spv");
 
     mt.setShader(shh, sh);
 
-    gbg::objLoader(MODEL_PATH, sc.get(), st.get(), mth);
+    gbg::objLoader(arguments[1], sc.get(), st.get(), mth);
 
     renderer.setScene(sc, st);
     renderer.init();
