@@ -23,7 +23,9 @@ int main(int argc, char* argv[]) {
     }
 
     const auto& scene = std::make_shared<gbg::Scene>();
+
     gbg::SceneRenderer renderer;
+
     auto sc = std::make_shared<gbg::Scene>();
     auto st = std::make_shared<gbg::SceneTree>();
 
