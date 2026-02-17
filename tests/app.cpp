@@ -39,6 +39,8 @@ int main(int argc, char* argv[]) {
     gbg::Shader& sh = sh_mg.get(shh);
     sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
     sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
+    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);  // normal
+    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);  // texture
     //
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");

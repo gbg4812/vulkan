@@ -199,7 +199,7 @@ void SceneRenderer::addShader(Shader& shader) {
     for (const auto& type : shader.getAttributes()) {
         vkVertexInputDescription desc;
         switch (type.second) {
-            case gbg::AttributeTypes::FLOAT_ATTR:
+            case FLOAT_ATTR:
                 desc = getVertexFloatInputDescription(type.first);
                 break;
             case VEC2_ATTR:
