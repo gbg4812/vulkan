@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
-#include <print>
+#include <ostream>
+#include <span>
 
 #include "Mesh.hpp"
 #include "Scene.hpp"
@@ -18,7 +19,7 @@ int main(int argc, char* argv[]) {
     std::span arguments(argv, argc);
 
     if (arguments.size() < 2) {
-        std::println("Usage: app obj-file-name");
+        std::cout << "Usage: app obj-file-name" << std::endl;
         exit(1);
     }
 

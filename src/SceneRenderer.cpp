@@ -265,6 +265,8 @@ void SceneRenderer::processScene() {
 void SceneRenderer::mainLoop() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        // draw ui and modify scene
+        // i will end up with a component system...
         drawFrame();
     }
 
