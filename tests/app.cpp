@@ -6,7 +6,6 @@
 #include "Mesh.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
-#include "SceneTree.hpp"
 #include "Shader.hpp"
 #include "loaders/objLoader.hpp"
 
@@ -28,7 +27,6 @@ int main(int argc, char* argv[]) {
     gbg::SceneRenderer renderer;
 
     auto sc = std::make_shared<gbg::Scene>();
-    auto st = std::make_shared<gbg::SceneTree>();
 
     auto& mt_mg = sc->getMaterialManager();
     auto& sh_mg = sc->getShaderManager();
@@ -48,9 +46,11 @@ int main(int argc, char* argv[]) {
 
     mt.setShader(shh, sh);
 
-    gbg::objLoader(arguments[1], sc.get(), st.get(), mth);
+    gbg::SceneTreeHandle rooth = scene->getSceneTreeManger().create("Root");
 
-    renderer.setScene(sc, st);
+    gbg::objLoader(arguments[1], sc.get(), rooth, mth);
+
+    renderer.setScene(sc);
     renderer.init();
 
     try {

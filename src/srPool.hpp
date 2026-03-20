@@ -1,8 +1,10 @@
 #pragma once
 
+#include <list>
 #include <stdexcept>
+#include <vector>
 
-#include "SceneTree.hpp"
+#include "DepDataHandle.hpp"
 
 namespace gbg {
 template <typename T, typename... Args>

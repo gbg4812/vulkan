@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "DepDataHandle.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -58,10 +59,8 @@ void SceneRenderer::init() {
     initVulkan();
 }
 
-void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene,
-                             std::shared_ptr<SceneTree> st) {
+void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
     this->scene = scene;
-    this->scene_tree = st;
 }
 
 void SceneRenderer::run() {
@@ -1146,7 +1145,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     auto& mt_mg = scene->getMaterialManager();
     auto& sh_mg = scene->getShaderManager();
 
-    std::queue<SceneTree*> Q;
+    std::queue<SceneTreeHandle> Q;
     Q.push(scene_tree.get());
     while (not Q.empty()) {
         SceneTree* visited = Q.front();

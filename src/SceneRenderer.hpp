@@ -18,7 +18,6 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "GLFW/glfw3.h"
 #include "Scene.hpp"
-#include "SceneTree.hpp"
 #include "srMaterial.hpp"
 #include "srPool.hpp"
 #include "srShader.hpp"
@@ -48,8 +47,7 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     void init();
-    void setScene(std::shared_ptr<gbg::Scene> scene,
-                  std::shared_ptr<gbg::SceneTree> st);
+    void setScene(std::shared_ptr<gbg::Scene> scene);
     void run();
     SceneRenderer()
         : meshes(10, (uint8_t)ResourceTypes::MESH),
@@ -108,7 +106,6 @@ class SceneRenderer {
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     std::shared_ptr<Scene> scene;
-    std::shared_ptr<SceneTree> scene_tree;
 
    private:
     void setupGlfwCallbacks();
