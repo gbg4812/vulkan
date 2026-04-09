@@ -1144,14 +1144,17 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     auto& msh_mg = scene->getMeshManager();
     auto& mt_mg = scene->getMaterialManager();
     auto& sh_mg = scene->getShaderManager();
+    auto& st_mg = scene->getSceneTreeManager();
 
     std::queue<SceneTreeHandle> Q;
-    Q.push(scene_tree.get());
+    Q.push(scene());
     while (not Q.empty()) {
-        SceneTree* visited = Q.front();
+        SceneTreeHandle visited = Q.front();
         Q.pop();
 
-        auto& handle = visited->getResourceHandle();
+        auto& vnode = st_mg.get(visited);
+
+        auto& rhandle = vnode.getResourceH();
 
         std::visit(
             overloads{
@@ -1199,8 +1202,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
                 }},
             handle);
-        for (SceneTree* child : visited->getChildren()) {
-            Q.push(child);
+        while (vnode.nextH) {
+            Q.push(vnode.nextH);
+            vnode = st_mg.get(vnode.nextH);
         }
     }
 

@@ -59,7 +59,7 @@ add_subdirectory(./external)
 
 set(LIBS "Vulkan::Vulkan;glfw;glm::glm;stbimage;fmt::fmt;SceneEquipament")
 
-target_link_libraries(${PROJECT_NAME} ${LIBS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
 
 ###########
 # Testing #
@@ -83,6 +83,3 @@ file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLI
 add_executable(app tests/app.cpp)
 
 target_link_libraries(app PRIVATE ${PROJECT_NAME})
-
-
-

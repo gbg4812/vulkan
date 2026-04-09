@@ -46,7 +46,7 @@ int main(int argc, char* argv[]) {
 
     mt.setShader(shh, sh);
 
-    gbg::SceneTreeHandle rooth = scene->getSceneTreeManger().create("Root");
+    gbg::SceneTreeHandle rooth = scene->getSceneTreeManager().create("Root");
 
     gbg::objLoader(arguments[1], sc.get(), rooth, mth);
 
