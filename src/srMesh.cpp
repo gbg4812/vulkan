@@ -1,17 +1,17 @@
-#include "vkMesh.hh"
+#include "srMesh.hh"
 
 #include <string.h>
 #include <vulkan/vulkan_core.h>
 
 #include <list>
 
-#include "Logger.hpp"
+#include "vk_utils/Logger.hpp"
 #include "Mesh.hpp"
 #include "glm/glm.hpp"
-#include "vkBuffer.hh"
+#include "vk_utils/vkBuffer.hh"
 
 namespace gbg {
-vkAttribute::vkAttribute(vkDevice device, uint attrib_id, size_t size,
+srAttribute::srAttribute(vkDevice device, uint attrib_id, size_t size,
                          AttributeTypes type, void* data)
     : attrib_id(attrib_id), type(type) {
     switch (type) {
@@ -51,7 +51,7 @@ vkAttribute::vkAttribute(vkDevice device, uint attrib_id, size_t size,
 }
 
 std::pair<VkVertexInputBindingDescription, VkVertexInputAttributeDescription>
-vkAttribute::getAttributeDescriptions() const {
+srAttribute::getAttributeDescriptions() const {
     VkVertexInputBindingDescription description{};
     VkVertexInputAttributeDescription attributeDescription{};
     switch (type) {
@@ -115,7 +115,7 @@ vkBuffer createIndexBuffer(vkDevice device,
     return indexBuffer;
 }
 
-void destroyMesh(const vkDevice& device, const vkMesh& mesh) {
+void destroyMesh(const vkDevice& device, const srMesh& mesh) {
     destroyBuffer(device, mesh.indexBuffer);
     for (const auto& attrb : mesh.vertexAttributes) {
         destroyBuffer(device, attrb.buffer);

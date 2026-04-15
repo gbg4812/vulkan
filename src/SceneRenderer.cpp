@@ -5,14 +5,14 @@
 
 #include <memory>
 
-#include "DepDataHandle.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
+#include "SceneTree.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "srShader.hpp"
 #include "traits/traits.hpp"
 #include "vk_utils/vkBuffer.hh"
-#include "vk_utils/vkMesh.hh"
+#include "srMesh.hh"
 #include "vk_utils/vkPipeline.hh"
 
 #define GLFW_INCLUDE_VULKAN
@@ -142,14 +142,13 @@ void SceneRenderer::initResources() {
 void SceneRenderer::addMesh(Mesh& mesh) {
     LOG("Adding mesh!")
 
-    DepDataHandle vkmh = meshes.alloc();
-    mesh.setDepDataHandle(vkmh);
-    vkMesh& vkmesh = meshes.get(vkmh);
+    srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
+    srMesh& vkmesh = meshes.get(vkmh);
 
     for (auto& attr : mesh.getAttributes()) {
-        vkAttribute attrib = std::visit<vkAttribute>(
-            [&](auto&& arg) -> vkAttribute {
-                return vkAttribute(device, attr.first, arg.size(),
+        srAttribute attrib = std::visit<srAttribute>(
+            [&](auto&& arg) -> srAttribute {
+                return srAttribute(device, attr.first, arg.size(),
                                    (AttributeTypes)attr.second.index(),
                                    (void*)arg.data());
             },
@@ -161,8 +160,7 @@ void SceneRenderer::addMesh(Mesh& mesh) {
 }
 
 void SceneRenderer::addShader(Shader& shader) {
-    DepDataHandle shh = shaders.alloc();
-    shader.setDepDataHandle(shh);
+    srShaderHandle shh = shaders.create("srShader::" + shader.getName());
     srShader& sr_sh = shaders.get(shh);
     VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
     matParmsLayoutBinding.binding = 0;
@@ -219,8 +217,7 @@ void SceneRenderer::addShader(Shader& shader) {
 }
 
 void SceneRenderer::addMaterial(Material& mat) {
-    DepDataHandle mth = materials.alloc();
-    mat.setDepDataHandle(mth);
+    srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
 
     // TODO: easy to leak memory
     srMaterial& srmt = materials.get(mth);
@@ -1012,11 +1009,9 @@ void SceneRenderer::createGlobalDescriptorSets() {
 
 void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
                                                 Material& mat) {
-    auto& sh_mg = scene->getShaderManager();
-    Shader& shader = sh_mg.get(mat.getShaderHandle());
+    ShaderHandle shh = mat.getShaderHandle();
 
-    DepDataHandle shh = shader.getDepDataHandle();
-    srShader& srsh = shaders.get(shh);
+    srShader& srsh = shaders.get(srShaderHandle(shh.getIndex(), shh.getRID()));
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1147,14 +1142,14 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     auto& st_mg = scene->getSceneTreeManager();
 
     std::queue<SceneTreeHandle> Q;
-    Q.push(scene());
+    Q.push(scene->root);
     while (not Q.empty()) {
         SceneTreeHandle visited = Q.front();
         Q.pop();
 
-        auto& vnode = st_mg.get(visited);
+        SceneTreeNode& stn = st_mg.get(visited);
 
-        auto& rhandle = vnode.getResourceH();
+        auto handle = stn.getResourceH();
 
         std::visit(
             overloads{
@@ -1162,11 +1157,11 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     Model& md = md_mg.get(mh);
                     Material& mt = mt_mg.get(md.getMaterial());
                     Shader& sh = sh_mg.get(mt.getShaderHandle());
-                    srShader& srsh = shaders.get(sh.getDepDataHandle());
-                    srMaterial& srmt = materials.get(mt.getDepDataHandle());
+                    srShader& srsh = shaders.getRelated((ResourceHandle)mt.getShaderHandle());
+                    srMaterial& srmt = materials.getRelated(md.getMaterial());
 
-                    vkMesh& mesh =
-                        meshes.get(msh_mg.get(md.getMesh()).getDepDataHandle());
+                    srMesh& mesh =
+                        meshes.getRelated(md.getMesh());
                     vkCmdBindPipeline(commandBuffer,
                                       VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       srsh.pipeline.pipeline);
@@ -1202,9 +1197,12 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
                 }},
             handle);
-        while (vnode.nextH) {
-            Q.push(vnode.nextH);
-            vnode = st_mg.get(vnode.nextH);
+
+
+        SceneTreeHandle child = stn.childH;
+        while (child) {
+            Q.push(child);
+            child = st_mg.get(child).nextH;
         }
     }
 
