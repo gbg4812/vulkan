@@ -13,15 +13,17 @@ struct srParameterValues {
 };
 
 struct srMaterial : public Resource {
-    srMaterial(std::string name, uint32_t rid) : Resource(name, rid){};
+    srMaterial() : Resource() {};
+    srMaterial(std::string name, uint32_t rid) : Resource(name, rid) {};
     VkDescriptorSet descriptor_set;
     vkBuffer paramBuffer;
     srParameterValues parameter_values;
 };
 
 struct srMaterialHandle : public ResourceHandle {
-    srMaterialHandle() : ResourceHandle(){};
-    srMaterialHandle(uint32_t rid, size_t index) : ResourceHandle(rid, index){};
+    srMaterialHandle() : ResourceHandle() {};
+    srMaterialHandle(uint32_t rid, size_t index)
+        : ResourceHandle(rid, index) {};
 };
 
 srParameterValues allocateParameterValues(Material& model);

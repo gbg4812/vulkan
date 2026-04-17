@@ -4,15 +4,16 @@
 #include <vulkan/vulkan_core.h>
 
 #include <memory>
+#include <set>
 
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "srMesh.hh"
 #include "srShader.hpp"
 #include "traits/traits.hpp"
 #include "vk_utils/vkBuffer.hh"
-#include "srMesh.hh"
 #include "vk_utils/vkPipeline.hh"
 
 #define GLFW_INCLUDE_VULKAN
@@ -23,9 +24,8 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
-#include <map>
 #include <optional>
-#include <set>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -245,15 +245,15 @@ void SceneRenderer::processScene() {
     auto& mt_mg = scene->getMaterialManager();
     auto& sh_mg = scene->getShaderManager();
 
-    for (Mesh& mesh : ms_mg.getAll()) {
+    for (Mesh& mesh : ms_mg) {
         addMesh(mesh);
     }
 
-    for (Shader& sh : sh_mg.getAll()) {
+    for (Shader& sh : sh_mg) {
         addShader(sh);
     }
 
-    for (Material& mat : mt_mg.getAll()) {
+    for (Material& mat : mt_mg) {
         addMaterial(mat);
     }
 }
@@ -1011,7 +1011,7 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
                                                 Material& mat) {
     ShaderHandle shh = mat.getShaderHandle();
 
-    srShader& srsh = shaders.get(srShaderHandle(shh.getIndex(), shh.getRID()));
+    srShader& srsh = shaders.getRelated(shh);
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1157,11 +1157,11 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     Model& md = md_mg.get(mh);
                     Material& mt = mt_mg.get(md.getMaterial());
                     Shader& sh = sh_mg.get(mt.getShaderHandle());
-                    srShader& srsh = shaders.getRelated((ResourceHandle)mt.getShaderHandle());
+                    srShader& srsh = shaders.getRelated(
+                        (ResourceHandle)mt.getShaderHandle());
                     srMaterial& srmt = materials.getRelated(md.getMaterial());
 
-                    srMesh& mesh =
-                        meshes.getRelated(md.getMesh());
+                    srMesh& mesh = meshes.getRelated(md.getMesh());
                     vkCmdBindPipeline(commandBuffer,
                                       VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       srsh.pipeline.pipeline);
@@ -1197,7 +1197,6 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
                 }},
             handle);
-
 
         SceneTreeHandle child = stn.childH;
         while (child) {

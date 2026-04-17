@@ -1,0 +1,19 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "label": "Debug app",
+    "build": {
+      "command": "make",
+      "args": ["-j8"],
+      "cwd": "$ZED_WORKTREE_ROOT/build/",
+    },
+    "program": "$ZED_WORKTREE_ROOT/build/app",
+    "args": ["data/models/EasyModels/scene.obj"],
+    "cwd": "$ZED_WORKTREE_ROOT/tests/",
+    "request": "launch",
+    "adapter": "CodeLLDB",
+  },
+]

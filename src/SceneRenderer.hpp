@@ -4,6 +4,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <memory>
+
 #include "srMesh.hh"
 
 #define GLFW_INCLUDE_VULKAN
@@ -48,10 +49,7 @@ class SceneRenderer {
     void init();
     void setScene(std::shared_ptr<gbg::Scene> scene);
     void run();
-    SceneRenderer()
-        : meshes(10),
-          materials(10),
-          shaders(10) {}
+    SceneRenderer() : meshes(10), materials(10), shaders(10) {}
 
    private:
     enum class ResourceTypes {
