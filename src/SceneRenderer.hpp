@@ -5,6 +5,8 @@
 
 #include <memory>
 
+#include "srMesh.hh"
+
 #define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
@@ -18,15 +20,12 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include "GLFW/glfw3.h"
 #include "Scene.hpp"
-#include "SceneTree.hpp"
 #include "srMaterial.hpp"
-#include "srPool.hpp"
 #include "srShader.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
 #include "vk_utils/vkInstance.hh"
-#include "vk_utils/vkMesh.hh"
 #include "vk_utils/vkSwapChain.h"
 #include "vk_utils/vkTexture.h"
 
@@ -48,13 +47,9 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     void init();
-    void setScene(std::shared_ptr<gbg::Scene> scene,
-                  std::shared_ptr<gbg::SceneTree> st);
+    void setScene(std::shared_ptr<gbg::Scene> scene);
     void run();
-    SceneRenderer()
-        : meshes(10, (uint8_t)ResourceTypes::MESH),
-          materials(1, (uint8_t)ResourceTypes::MATERIAL),
-          shaders(1, (uint8_t)ResourceTypes::SHADER) {}
+    SceneRenderer() : meshes(10), materials(10), shaders(10) {}
 
    private:
     enum class ResourceTypes {
@@ -88,9 +83,9 @@ class SceneRenderer {
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
 
-    srPool<gbg::srShader> shaders;
-    srPool<gbg::srMaterial> materials;
-    srPool<gbg::vkMesh> meshes;
+    ResourceManager<gbg::srShader, gbg::srShaderHandle> shaders;
+    ResourceManager<gbg::srMaterial, gbg::srMaterialHandle> materials;
+    ResourceManager<gbg::srMesh, gbg::srMeshHandle> meshes;
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
     const uint32_t max_tex = 1000;
@@ -108,7 +103,6 @@ class SceneRenderer {
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     std::shared_ptr<Scene> scene;
-    std::shared_ptr<SceneTree> scene_tree;
 
    private:
     void setupGlfwCallbacks();
