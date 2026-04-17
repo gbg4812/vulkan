@@ -1035,7 +1035,7 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
     bufferInfo.offset = 0;
     bufferInfo.range = VK_WHOLE_SIZE;
 
-    VkWriteDescriptorSet descriptorWrite;
+    VkWriteDescriptorSet descriptorWrite{};
     descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     descriptorWrite.dstSet = srmat.descriptor_set;
     descriptorWrite.dstBinding = 0;
