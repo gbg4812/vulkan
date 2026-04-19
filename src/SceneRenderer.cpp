@@ -6,6 +6,7 @@
 #include <memory>
 #include <set>
 
+#include "GlfwCreateRendererContext.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -16,13 +17,11 @@
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkPipeline.hh"
 
-#define GLFW_INCLUDE_VULKAN
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
-#include <iostream>
 #include <limits>
 #include <optional>
 #include <queue>
@@ -30,7 +29,6 @@
 #include <string>
 #include <vector>
 
-#include "GLFW/glfw3.h"
 #include "vk_utils/Logger.hpp"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
@@ -40,71 +38,22 @@
 
 namespace gbg {
 
-const std::vector<const char*> validationLayers = {
-    "VK_LAYER_KHRONOS_validation",
-};
+SceneRenderer::SceneRenderer(RendererContext context) : meshes(10), materials(10), shaders(10),
+   instance(context.instance), surface(context.surface), device(context.device) {
+       initVulkan();
+   }
 
-const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
-
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
-
-void SceneRenderer::init() {
-    initWindow();
-    initVulkan();
-}
 
 void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
     this->scene = scene;
-}
-
-void SceneRenderer::run() {
+    vkDeviceWaitIdle(device.ldevice);
     initResources();
-    mainLoop();
-    cleanup();
 }
 
-void SceneRenderer::setupGlfwCallbacks() {
-    glfwSetWindowUserPointer(window, this);
-    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-    glfwSetKeyCallback(window, keyCallback);
-}
 
-void SceneRenderer::framebufferResizeCallback(GLFWwindow* window, int width,
-                                              int height) {
-    auto app =
-        reinterpret_cast<SceneRenderer*>(glfwGetWindowUserPointer(window));
-    app->frameBufferResized = true;
-}
-
-void SceneRenderer::keyCallback(GLFWwindow* window, int key, int scancode,
-                                int action, int mods) {
-    auto app =
-        reinterpret_cast<SceneRenderer*>(glfwGetWindowUserPointer(window));
-    if (key == GLFW_KEY_W && action == GLFW_PRESS) {
-        std::cout << "W key pressed" << std::endl;
-    }
-}
-
-void SceneRenderer::initWindow() {
-    glfwInit();
-
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-    window =
-        glfwCreateWindow(WIDTH, HEIGHT, "Hello Triangle", nullptr, nullptr);
-    setupGlfwCallbacks();
-}
 
 void SceneRenderer::initVulkan() {
-    createInstance();
-    createSurface();
-    createLogicalDevice();
+    msaaSamples = getMaxUsableSampleCount(device.pdevice);
     createSwapChain();
     createImageViews();
     createRenderPass();
@@ -258,18 +207,8 @@ void SceneRenderer::processScene() {
     }
 }
 
-void SceneRenderer::mainLoop() {
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-        // draw ui and modify scene
-        // i will end up with a component system...
-        drawFrame();
-    }
-
-    vkDeviceWaitIdle(device.ldevice);
-}
-
 void SceneRenderer::cleanup() {
+    vkDeviceWaitIdle(device.ldevice);
     cleanupSwapChain();
 
     // global desc set
@@ -320,8 +259,6 @@ void SceneRenderer::cleanup() {
 
     vkDestroySurfaceKHR(instance.instance, surface, nullptr);
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
 }
 
 VkExtent2D SceneRenderer::chooseSwapExtent(
@@ -333,11 +270,8 @@ VkExtent2D SceneRenderer::chooseSwapExtent(
         std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-
-        VkExtent2D actualExtent = {static_cast<uint32_t>(width),
-                                   static_cast<uint32_t>(height)};
+        VkExtent2D actualExtent = {static_cast<uint32_t>(capabilities.currentExtent.width),
+                                   static_cast<uint32_t>(capabilities.currentExtent.height)};
 
         actualExtent.width =
             std::clamp(actualExtent.width, capabilities.minImageExtent.width,
@@ -364,12 +298,12 @@ void SceneRenderer::createSwapChain() {
 }
 
 void SceneRenderer::recreateSwapChain() {
-    int width = 0, height = 0;
-    glfwGetFramebufferSize(window, &width, &height);
-    while (width == 0 || height == 0) {
-        glfwGetFramebufferSize(window, &width, &height);
-        glfwWaitEvents();
-    }
+    // int width = 0, height = 0;
+    // glfwGetFramebufferSize(window, &width, &height);
+    // while (width == 0 || height == 0) {
+    //     glfwGetFramebufferSize(window, &width, &height);
+    //     glfwWaitEvents();
+    // }
 
     vkDeviceWaitIdle(device.ldevice);
 
@@ -382,102 +316,9 @@ void SceneRenderer::recreateSwapChain() {
     createFrameBuffers();
 }
 
-// creates an instance. the instance is the object that stores the
-// information about the application that needs to be passed to the
-// implementation to "configure it".
-void SceneRenderer::createInstance() {
-    instance = gbg::createInstance(validationLayers, enableValidationLayers);
-}
 
-void SceneRenderer::createSurface() {
-    if (glfwCreateWindowSurface(instance.instance, window, nullptr, &surface) !=
-        VK_SUCCESS) {
-        throw std::runtime_error("failed to create window surface!");
-    }
-}
 
-VkPhysicalDevice SceneRenderer::pickPhysicalDevice() {
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(instance.instance, &deviceCount, nullptr);
-    if (deviceCount == 0) {
-        throw std::runtime_error("failed to find GPUs with vulkan suport!");
-    }
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    std::multimap<uint32_t, VkPhysicalDevice> scoredDevices;
-    vkEnumeratePhysicalDevices(instance.instance, &deviceCount, devices.data());
-    for (const auto& pdevice : devices) {
-        uint32_t score = deviceScore(pdevice);
-        if (score) {
-            scoredDevices.emplace(score, pdevice);
-        }
-    }
 
-    if (scoredDevices.empty()) {
-        throw std::runtime_error("failed to find a suitable GPU!");
-    }
-
-    return scoredDevices.rbegin()->second;
-}
-
-uint32_t SceneRenderer::deviceScore(VkPhysicalDevice device) {
-    VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties);
-
-    VkPhysicalDeviceFeatures deviceFeatures;
-    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-    uint32_t score = 100;
-    if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        score += 10;
-    }
-    if (deviceFeatures.geometryShader) {
-        score += 1;
-    }
-
-    if (getDeviceQueueCompatibility(device, surface) and
-        checkDeviceExtensionSupport(device)) {
-        gbg::SwapChainSupportDetails swapChainDetails =
-            gbg::querySwapChainSupport(device, surface);
-        if (swapChainDetails.formats.empty() or
-            swapChainDetails.presentModes.empty()) {
-            score = 0;
-        }
-
-    } else {
-        score = 0;
-    }
-
-    return score;
-}
-
-bool SceneRenderer::checkDeviceExtensionSupport(VkPhysicalDevice device) {
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount,
-                                         nullptr);
-
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount,
-                                         availableExtensions.data());
-
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(),
-                                             deviceExtensions.end());
-
-    for (const auto& extension : availableExtensions) {
-        requiredExtensions.erase(extension.extensionName);
-    }
-
-    return requiredExtensions.empty();
-}
-
-// the logical device is the abstract device that will be responsable for
-// reciving commands (like graphic commands). It is an interface with the
-// physical device
-void SceneRenderer::createLogicalDevice() {
-    VkPhysicalDevice physicalDevice = pickPhysicalDevice();
-    device = createDevice(physicalDevice, deviceExtensions,
-                          enableValidationLayers, validationLayers, surface);
-    msaaSamples = getMaxUsableSampleCount(device.pdevice);
-}
 
 void SceneRenderer::cleanupSwapChain() {
     gbg::destoryImage(colorImage, device.ldevice);

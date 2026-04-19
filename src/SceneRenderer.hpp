@@ -5,9 +5,9 @@
 
 #include <memory>
 
+#include "GlfwCreateRendererContext.hpp"
 #include "srMesh.hh"
 
-#define GLFW_INCLUDE_VULKAN
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -18,7 +18,6 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
-#include "GLFW/glfw3.h"
 #include "Scene.hpp"
 #include "srMaterial.hpp"
 #include "srShader.hpp"
@@ -31,9 +30,15 @@
 
 namespace gbg {
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+const std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation",
+};
+
+const std::vector<const char*> deviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
 
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
@@ -44,21 +49,16 @@ struct UniformBufferObjects {
     alignas(16) glm::mat4 proj;
 };
 
+
 class SceneRenderer {
    public:
-    void init();
+    SceneRenderer(RendererContext context);
     void setScene(std::shared_ptr<gbg::Scene> scene);
     void run();
-    SceneRenderer() : meshes(10), materials(10), shaders(10) {}
+    void cleanup();
+    void drawFrame();
 
    private:
-    enum class ResourceTypes {
-        MESH = 0,
-        MATERIAL,
-        SHADER,
-        TEXTURE,
-    };
-    GLFWwindow* window;
     vkInstance instance;
     VkSurfaceKHR surface;
     vkDevice device;
@@ -105,25 +105,12 @@ class SceneRenderer {
     std::shared_ptr<Scene> scene;
 
    private:
-    void setupGlfwCallbacks();
-
-    static void framebufferResizeCallback(GLFWwindow* window, int width,
-                                          int height);
-
-    static void keyCallback(GLFWwindow* window, int key, int scancode,
-                            int action, int mods);
-
-    void initWindow();
-
     void initVulkan();
 
     void initResources();
 
     void processScene();
 
-    void mainLoop();
-
-    void cleanup();
 
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
@@ -131,12 +118,6 @@ class SceneRenderer {
 
     void recreateSwapChain();
 
-    // creates an instance. the instance is the object that stores the
-    // information about the application that needs to be passed to the
-    // implementation to "configure it".
-    void createInstance();
-
-    void createSurface();
 
     VkPhysicalDevice pickPhysicalDevice();
 
@@ -209,7 +190,6 @@ class SceneRenderer {
 
     void updateVaryingDescriptorSets(uint32_t currentImage);
 
-    void drawFrame();
 
     void addMesh(Mesh& mesh);
     void addShader(Shader& shader);

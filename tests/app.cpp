@@ -2,17 +2,63 @@
 #include <memory>
 #include <ostream>
 #include <span>
+#include "GlfwCreateRendererContext.hpp"
+#define GLFW_INCLUDE_VULKAN
+#include "GLFW/glfw3.h"
 
 #include "Mesh.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
 #include "loaders/objLoader.hpp"
+#include "vk_utils/vkInstance.hh"
 
-const std::string MODEL_PATH = "./data/models/EasyModels/scene.obj";
-// const std::string MODEL_PATH = "./data/models/pony-cartoon/Pony_cartoon.obj";
 const std::string TEXTURE_PATH =
     "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
+
+#ifdef NDEBUG
+const bool enableValidationLayers = false;
+#else
+const bool enableValidationLayers = true;
+#endif
+
+
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
+
+void framebufferResizeCallback(GLFWwindow* window, int width,
+                                              int height) {
+    auto app =
+        reinterpret_cast<gbg::SceneRenderer*>(glfwGetWindowUserPointer(window));
+    app->frameBufferResized = true;
+}
+
+void keyCallback(GLFWwindow* window, int key, int scancode,
+                                int action, int mods) {
+    auto app =
+        reinterpret_cast<gbg::SceneRenderer*>(glfwGetWindowUserPointer(window));
+    if (key == GLFW_KEY_W && action == GLFW_PRESS) {
+        std::cout << "W key pressed" << std::endl;
+    }
+}
+
+void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
+    glfwSetWindowUserPointer(window, userPointer);
+    glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetKeyCallback(window, keyCallback);
+}
+
+GLFWwindow* createWindow(int width, int height, std::string name) {
+    glfwInit();
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    GLFWwindow* window =
+        glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
+    return window;
+}
+
+
 
 int main(int argc, char* argv[]) {
     std::span arguments(argv, argc);
@@ -22,7 +68,12 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    gbg::SceneRenderer renderer;
+
+    GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
+
+    gbg::RendererContext context = gbg::glfwCreateRendererContext(window, gbg::validationLayers, enableValidationLayers, gbg::deviceExtensions);
+
+    gbg::SceneRenderer renderer(context);
 
     auto sc = std::make_shared<gbg::Scene>();
 
@@ -48,14 +99,15 @@ int main(int argc, char* argv[]) {
     gbg::objLoader(arguments[1], sc.get(), sc->root, mth);
 
     renderer.setScene(sc);
-    renderer.init();
 
-    try {
-        renderer.run();
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+        // draw ui and modify scene
+        // i will end up with a component system...
+        renderer.drawFrame();
     }
 
+    glfwDestroyWindow(window);
+    glfwTerminate();
     return EXIT_SUCCESS;
 }
