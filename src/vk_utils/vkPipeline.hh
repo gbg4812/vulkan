@@ -28,6 +28,7 @@ vkPipeline createGraphicsPipeline(
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
+    const std::vector<VkPushConstantRange>& push_constants,
     VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass);
 
 VkShaderModule createShaderModule(const std::vector<char>& code);

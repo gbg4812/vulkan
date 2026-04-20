@@ -3,15 +3,14 @@
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
+#include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "GlfwCreateRendererContext.hpp"
 #include "srMesh.hh"
-
-#include <cstdint>
-#include <cstring>
-#include <string>
-#include <vector>
 
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
@@ -40,21 +39,24 @@ const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
+struct PerObjectPushConstant {
+    glm::mat4 model;
+};
+
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
     // a vec4 to 4N. The alignas operator does this for us!
-    alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
-
 
 class SceneRenderer {
    public:
     SceneRenderer(RendererContext context);
     void setScene(std::shared_ptr<gbg::Scene> scene);
     void run();
+    void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
     void drawFrame();
 
@@ -62,6 +64,9 @@ class SceneRenderer {
     vkInstance instance;
     VkSurfaceKHR surface;
     vkDevice device;
+    uint32_t width;
+    uint32_t height;
+
     VkRenderPass renderPass;
 
     VkDescriptorPool globalDescriptorPool;
@@ -111,19 +116,11 @@ class SceneRenderer {
 
     void processScene();
 
-
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
     void createSwapChain();
 
     void recreateSwapChain();
-
-
-    VkPhysicalDevice pickPhysicalDevice();
-
-    uint32_t deviceScore(VkPhysicalDevice device);
-
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
 
     // the logical device is the abstract device that will be responsable for
     // reciving commands (like graphic commands). It is an interface with the
@@ -189,7 +186,6 @@ class SceneRenderer {
     VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice);
 
     void updateVaryingDescriptorSets(uint32_t currentImage);
-
 
     void addMesh(Mesh& mesh);
     void addShader(Shader& shader);

@@ -2,10 +2,14 @@
 #include <memory>
 #include <ostream>
 #include <span>
+
 #include "GlfwCreateRendererContext.hpp"
+#include "Resource.hpp"
+#include "SceneTree.hpp"
+#include "glm/ext/matrix_transform.hpp"
+#include "glm/glm.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
-
 #include "Mesh.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
@@ -22,19 +26,22 @@ const bool enableValidationLayers = false;
 const bool enableValidationLayers = true;
 #endif
 
-
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-void framebufferResizeCallback(GLFWwindow* window, int width,
-                                              int height) {
+void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app =
         reinterpret_cast<gbg::SceneRenderer*>(glfwGetWindowUserPointer(window));
-    app->frameBufferResized = true;
+
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+    app->resizeSwapchain(width, height);
 }
 
-void keyCallback(GLFWwindow* window, int key, int scancode,
-                                int action, int mods) {
+void keyCallback(GLFWwindow* window, int key, int scancode, int action,
+                 int mods) {
     auto app =
         reinterpret_cast<gbg::SceneRenderer*>(glfwGetWindowUserPointer(window));
     if (key == GLFW_KEY_W && action == GLFW_PRESS) {
@@ -58,8 +65,6 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
     return window;
 }
 
-
-
 int main(int argc, char* argv[]) {
     std::span arguments(argv, argc);
 
@@ -68,10 +73,11 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
 
-    gbg::RendererContext context = gbg::glfwCreateRendererContext(window, gbg::validationLayers, enableValidationLayers, gbg::deviceExtensions);
+    gbg::RendererContext context = gbg::glfwCreateRendererContext(
+        window, gbg::validationLayers, enableValidationLayers,
+        gbg::deviceExtensions);
 
     gbg::SceneRenderer renderer(context);
 
@@ -95,7 +101,6 @@ int main(int argc, char* argv[]) {
 
     mt.setShader(shh, sh);
 
-
     gbg::objLoader(arguments[1], sc.get(), sc->root, mth);
 
     renderer.setScene(sc);
@@ -104,8 +109,22 @@ int main(int argc, char* argv[]) {
         glfwPollEvents();
         // draw ui and modify scene
         // i will end up with a component system...
+
+        float time = glfwGetTime();
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            auto& st_mg = sc->getSceneTreeManager();
+            gbg::SceneTreeNode& root = st_mg.get(sc->root);
+            if (root.childH) {
+                gbg::SceneTreeNode& modeln = st_mg.get(root.childH);
+                float delta = time - glfwGetTime();
+                time = glfwGetTime();
+                modeln.transform = glm::rotate(modeln.transform, delta,
+                                               glm::vec3(0.f, 1.f, 0.f));
+            }
+        }
         renderer.drawFrame();
     }
+    renderer.cleanup();
 
     glfwDestroyWindow(window);
     glfwTerminate();

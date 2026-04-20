@@ -3,8 +3,19 @@
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <queue>
 #include <set>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "GlfwCreateRendererContext.hpp"
 #include "Mesh.hpp"
@@ -14,22 +25,8 @@
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "traits/traits.hpp"
-#include "vk_utils/vkBuffer.hh"
-#include "vk_utils/vkPipeline.hh"
-
-#include <algorithm>
-#include <array>
-#include <chrono>
-#include <cstdint>
-#include <cstring>
-#include <limits>
-#include <optional>
-#include <queue>
-#include <stdexcept>
-#include <string>
-#include <vector>
-
 #include "vk_utils/Logger.hpp"
+#include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.h"
 #include "vk_utils/vkInstance.hh"
@@ -38,19 +35,23 @@
 
 namespace gbg {
 
-SceneRenderer::SceneRenderer(RendererContext context) : meshes(10), materials(10), shaders(10),
-   instance(context.instance), surface(context.surface), device(context.device) {
-       initVulkan();
-   }
-
+SceneRenderer::SceneRenderer(RendererContext context)
+    : meshes(10),
+      materials(10),
+      shaders(10),
+      instance(context.instance),
+      surface(context.surface),
+      device(context.device) {
+    width = static_cast<uint32_t>(context.width);
+    height = static_cast<uint32_t>(context.height);
+    initVulkan();
+}
 
 void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
     this->scene = scene;
     vkDeviceWaitIdle(device.ldevice);
     initResources();
 }
-
-
 
 void SceneRenderer::initVulkan() {
     msaaSamples = getMaxUsableSampleCount(device.pdevice);
@@ -159,10 +160,18 @@ void SceneRenderer::addShader(Shader& shader) {
         attributeDescriptions.push_back(desc.attrib_desc);
     }
 
+    // for the model matrix
+    VkPushConstantRange mdl_rg{};
+    mdl_rg.offset = 0;
+    mdl_rg.size = sizeof(PerObjectPushConstant);
+    mdl_rg.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    std::vector<VkPushConstantRange> push_constants = {mdl_rg};
+
     sr_sh.pipeline = createGraphicsPipeline(
         device, shader.getVertShaderCode(), shader.getFragShaderCode(),
         desc_sets_layouts, bindingDescriptions, attributeDescriptions,
-        msaaSamples, renderPass);
+        push_constants, msaaSamples, renderPass);
 }
 
 void SceneRenderer::addMaterial(Material& mat) {
@@ -258,7 +267,6 @@ void SceneRenderer::cleanup() {
     vkDestroyDevice(device.ldevice, nullptr);
 
     vkDestroySurfaceKHR(instance.instance, surface, nullptr);
-
 }
 
 VkExtent2D SceneRenderer::chooseSwapExtent(
@@ -270,8 +278,8 @@ VkExtent2D SceneRenderer::chooseSwapExtent(
         std::numeric_limits<uint32_t>::max()) {
         return capabilities.currentExtent;
     } else {
-        VkExtent2D actualExtent = {static_cast<uint32_t>(capabilities.currentExtent.width),
-                                   static_cast<uint32_t>(capabilities.currentExtent.height)};
+        VkExtent2D actualExtent = {static_cast<uint32_t>(width),
+                                   static_cast<uint32_t>(height)};
 
         actualExtent.width =
             std::clamp(actualExtent.width, capabilities.minImageExtent.width,
@@ -297,14 +305,13 @@ void SceneRenderer::createSwapChain() {
                                      extent, gfamily.value(), pfamily.value());
 }
 
-void SceneRenderer::recreateSwapChain() {
-    // int width = 0, height = 0;
-    // glfwGetFramebufferSize(window, &width, &height);
-    // while (width == 0 || height == 0) {
-    //     glfwGetFramebufferSize(window, &width, &height);
-    //     glfwWaitEvents();
-    // }
+void SceneRenderer::resizeSwapchain(uint32_t width, uint32_t height) {
+    frameBufferResized = true;
+    this->width = width;
+    this->height = height;
+}
 
+void SceneRenderer::recreateSwapChain() {
     vkDeviceWaitIdle(device.ldevice);
 
     cleanupSwapChain();
@@ -315,10 +322,6 @@ void SceneRenderer::recreateSwapChain() {
     createDepthResources();
     createFrameBuffers();
 }
-
-
-
-
 
 void SceneRenderer::cleanupSwapChain() {
     gbg::destoryImage(colorImage, device.ldevice);
@@ -982,6 +985,8 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     auto& sh_mg = scene->getShaderManager();
     auto& st_mg = scene->getSceneTreeManager();
 
+    glm::mat4 accumulated_transform = glm::mat4(1.0f);
+
     std::queue<SceneTreeHandle> Q;
     Q.push(scene->root);
     while (not Q.empty()) {
@@ -991,6 +996,8 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
         SceneTreeNode& stn = st_mg.get(visited);
 
         auto handle = stn.getResourceH();
+
+        accumulated_transform = accumulated_transform * stn.transform;
 
         std::visit(
             overloads{
@@ -1003,6 +1010,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     srMaterial& srmt = materials.getRelated(md.getMaterial());
 
                     srMesh& mesh = meshes.getRelated(md.getMesh());
+
                     vkCmdBindPipeline(commandBuffer,
                                       VK_PIPELINE_BIND_POINT_GRAPHICS,
                                       srsh.pipeline.pipeline);
@@ -1016,6 +1024,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                         vbuffers.push_back(attrb.buffer.buffer);
                         voffsets.push_back(0);
                     }
+
                     vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
                                            vbuffers.data(), voffsets.data());
                     vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
@@ -1030,6 +1039,12 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                         commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                         srsh.pipeline.layout, 0, 1,
                         &globalDescriptorSets[currentFrame], 0, nullptr);
+
+                    PerObjectPushConstant pc{};
+                    pc.model = accumulated_transform;
+                    vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                                       VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                       sizeof(PerObjectPushConstant), &pc);
 
                     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
                                      1, 0, 0, 0);
@@ -1115,11 +1130,6 @@ void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
                      .count();
 
     UniformBufferObjects ubo{};
-    ubo.model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
-    ubo.model = glm::rotate(ubo.model, glm::radians(90.0f),
-                            glm::vec3(1.0f, 0.0f, 0.0f));
-    ubo.model = glm::rotate(ubo.model, time * glm::radians(90.0f),
-                            glm::vec3(0.0f, 1.0f, 0.0f));
     ubo.view =
         glm::lookAt(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                     glm::vec3(0.0f, 0.0f, 1.0f));

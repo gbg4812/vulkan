@@ -64,6 +64,7 @@ vkPipeline createGraphicsPipeline(
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
+    const std::vector<VkPushConstantRange>& push_constants,
     VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass) {
     vkPipeline pipeline{};
     VkShaderModule vertShaderModule =
@@ -198,8 +199,9 @@ vkPipeline createGraphicsPipeline(
     layoutCreateInfo.setLayoutCount =
         static_cast<uint32_t>(desc_sets_layouts.size());
     layoutCreateInfo.pSetLayouts = desc_sets_layouts.data();
-    layoutCreateInfo.pushConstantRangeCount = 0;
-    layoutCreateInfo.pPushConstantRanges = nullptr;
+    layoutCreateInfo.pushConstantRangeCount =
+        static_cast<uint32_t>(push_constants.size());
+    layoutCreateInfo.pPushConstantRanges = push_constants.data();
 
     if (vkCreatePipelineLayout(device.ldevice, &layoutCreateInfo, nullptr,
                                &pipeline.layout) != VK_SUCCESS) {
