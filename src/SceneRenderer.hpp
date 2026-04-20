@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "GlfwCreateRendererContext.hpp"
+#include "SceneTree.hpp"
 #include "srMesh.hh"
 
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
@@ -58,6 +59,7 @@ class SceneRenderer {
     void run();
     void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
+    void setActiveCamera(SceneTreeHandle activeCameraNode);
     void drawFrame();
 
    private:
@@ -108,6 +110,7 @@ class SceneRenderer {
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
     std::shared_ptr<Scene> scene;
+    SceneTreeHandle activeCameraNode;
 
    private:
     void initVulkan();

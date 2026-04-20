@@ -1,3 +1,4 @@
+#include <vulkan/vulkan_core.h>
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -74,6 +75,8 @@ int main(int argc, char* argv[]) {
     }
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
+    glfwMaximizeWindow(window);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
@@ -91,7 +94,7 @@ int main(int argc, char* argv[]) {
 
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
     gbg::Shader& sh = sh_mg.get(shh);
-    sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
+    size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
     sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
     sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);  // normal
     sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);  // texture
@@ -100,28 +103,60 @@ int main(int argc, char* argv[]) {
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
     mt.setShader(shh, sh);
+    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp, glm::vec3(0.0f, 1.0f, 1.0f));
+
+    auto& cm_mg = sc->getCameraManager();
+    auto& st_mg = sc->getSceneTreeManager();
+    gbg::CameraHandle camh = cm_mg.create("Camera");
+    gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
+
+    st_mg.get(cm_nh).transform = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 10.0f});
+
+    st_mg.get(cm_nh).setResource(camh);
+    st_mg.prependChild(sc->root, cm_nh);
+
 
     gbg::objLoader(arguments[1], sc.get(), sc->root, mth);
 
     renderer.setScene(sc);
+    renderer.setActiveCamera(cm_nh);
 
+    double time = glfwGetTime();
+    double xpos = 0.0, ypos = 0.0;
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         // draw ui and modify scene
         // i will end up with a component system...
 
-        float time = glfwGetTime();
+        float delta =  glfwGetTime() - time;
+        time = glfwGetTime();
+
+        gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-            auto& st_mg = sc->getSceneTreeManager();
-            gbg::SceneTreeNode& root = st_mg.get(sc->root);
-            if (root.childH) {
-                gbg::SceneTreeNode& modeln = st_mg.get(root.childH);
-                float delta = time - glfwGetTime();
-                time = glfwGetTime();
-                modeln.transform = glm::rotate(modeln.transform, delta,
-                                               glm::vec3(0.f, 1.f, 0.f));
-            }
+            cam_node.transform = glm::translate(cam_node.transform, {0.0, 0.0, -2.0f*delta});
         }
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            cam_node.transform = glm::translate(cam_node.transform, {0.0, 0.0, 2.0f*delta});
+        }
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            cam_node.transform = glm::translate(cam_node.transform, {-2.0f*delta, 0.0, 0.0});
+        }
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            cam_node.transform = glm::translate(cam_node.transform, {2.0f*delta, 0.0, 0.0 });
+        }
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            break;
+        }
+
+        double xnew, ynew;
+        glfwGetCursorPos(window, &xnew, &ynew);
+        float xdelta = xnew - xpos;
+        float ydelta = ynew - ypos;
+        cam_node.transform = cam_node.transform * glm::rotate(glm::mat4(1.0f), -0.001f*xdelta, {0.0, 1.0, 0.0}) ;
+        cam_node.transform = cam_node.transform * glm::rotate(glm::mat4(1.0f), -0.001f*ydelta, {1.0, 0.0, 0.0}) ;
+        xpos = xnew;
+        ypos = ynew;
+
         renderer.drawFrame();
     }
     renderer.cleanup();

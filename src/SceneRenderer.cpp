@@ -21,7 +21,9 @@
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
+#include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/glm.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "traits/traits.hpp"
@@ -51,6 +53,10 @@ void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
     this->scene = scene;
     vkDeviceWaitIdle(device.ldevice);
     initResources();
+}
+
+void SceneRenderer::setActiveCamera(SceneTreeHandle activeCameraNode) {
+    this->activeCameraNode = activeCameraNode;
 }
 
 void SceneRenderer::initVulkan() {
@@ -1049,6 +1055,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
                                      1, 0, 0, 0);
                 },
+                [&](const CameraHandle& empty) {
+
+                },
                 [&](const std::monostate& empty) {
 
                 }},
@@ -1130,9 +1139,8 @@ void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
                      .count();
 
     UniformBufferObjects ubo{};
-    ubo.view =
-        glm::lookAt(glm::vec3(10.0f, 10.0f, 10.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 0.0f, 1.0f));
+    auto& st_mg = scene->getSceneTreeManager();
+    ubo.view = glm::inverse(st_mg.getTransform(activeCameraNode));
     ubo.proj =
         glm::perspective(glm::radians(45.0f),
                          swapChain.swapChainImageExtent.width /
