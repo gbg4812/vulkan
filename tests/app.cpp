@@ -5,6 +5,7 @@
 #include <span>
 
 #include "GlfwCreateRendererContext.hpp"
+#include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "glm/ext/matrix_transform.hpp"
@@ -16,7 +17,9 @@
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
 #include "loaders/objLoader.hpp"
-#include "vk_utils/vkInstance.hh"
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
 
 const std::string TEXTURE_PATH =
     "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
@@ -63,8 +66,16 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
 
     GLFWwindow* window =
         glfwCreateWindow(width, height, name.c_str(), nullptr, nullptr);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
     return window;
 }
+
 
 int main(int argc, char* argv[]) {
     std::span arguments(argv, argc);
@@ -74,9 +85,12 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+    bool ui_mode = false;
+
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
@@ -110,7 +124,7 @@ int main(int argc, char* argv[]) {
     gbg::CameraHandle camh = cm_mg.create("Camera");
     gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
 
-    st_mg.get(cm_nh).transform = glm::translate(glm::mat4(1.0f), {0.0f, 0.0f, 10.0f});
+    st_mg.get(cm_nh).translation += glm::vec3{0.0f, 0.0f, 10.0f};
 
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc->root, cm_nh);
@@ -122,40 +136,57 @@ int main(int argc, char* argv[]) {
     renderer.setActiveCamera(cm_nh);
 
     double time = glfwGetTime();
-    double xpos = 0.0, ypos = 0.0;
+
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         // draw ui and modify scene
         // i will end up with a component system...
 
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
         float delta =  glfwGetTime() - time;
         time = glfwGetTime();
 
         gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
+        glm::vec3 offset{};
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-            cam_node.transform = glm::translate(cam_node.transform, {0.0, 0.0, -2.0f*delta});
+             offset.z += -2.0f*delta;
         }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-            cam_node.transform = glm::translate(cam_node.transform, {0.0, 0.0, 2.0f*delta});
+            offset.z += 2.0f*delta;
         }
         if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-            cam_node.transform = glm::translate(cam_node.transform, {-2.0f*delta, 0.0, 0.0});
+            offset.x += -2.0f*delta;
         }
         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-            cam_node.transform = glm::translate(cam_node.transform, {2.0f*delta, 0.0, 0.0 });
+            offset.x += 2.0f*delta;
         }
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-            break;
+            if(not ui_mode) {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                ui_mode = true;
+            } else {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                ui_mode = false;
+            }
         }
+
+        cam_node.localTranslate(offset);
 
         double xnew, ynew;
         glfwGetCursorPos(window, &xnew, &ynew);
-        float xdelta = xnew - xpos;
-        float ydelta = ynew - ypos;
-        cam_node.transform = cam_node.transform * glm::rotate(glm::mat4(1.0f), -0.001f*xdelta, {0.0, 1.0, 0.0}) ;
-        cam_node.transform = cam_node.transform * glm::rotate(glm::mat4(1.0f), -0.001f*ydelta, {1.0, 0.0, 0.0}) ;
+        double xdelta = xnew - xpos;
+        double ydelta = ynew - ypos;
         xpos = xnew;
         ypos = ynew;
+        cam_node.rotation.y += -0.001f*(float)xdelta;
+        cam_node.rotation.x += -0.001f*(float)ydelta;
+
 
         renderer.drawFrame();
     }

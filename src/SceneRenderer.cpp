@@ -21,9 +21,11 @@
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
+#include "backends/imgui_impl_vulkan.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/glm.hpp"
+#include "imgui.h"
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "traits/traits.hpp"
@@ -47,6 +49,23 @@ SceneRenderer::SceneRenderer(RendererContext context)
     width = static_cast<uint32_t>(context.width);
     height = static_cast<uint32_t>(context.height);
     initVulkan();
+    initImgui();
+}
+
+void SceneRenderer::initImgui() {
+    ImGui_ImplVulkan_InitInfo info{};
+    info.Instance = instance.instance;
+    info.PhysicalDevice = device.pdevice;
+    info.Device = device.ldevice;
+    info.QueueFamily = getGraphicQueueFamilyIndex(device.pdevice).value();
+    info.Queue = device.gqueue;
+    info.DescriptorPoolSize = 1000;
+    info.MinImageCount = gbg::MAX_FRAMES_IN_FLIGHT;
+    info.ImageCount = gbg::MAX_FRAMES_IN_FLIGHT;
+    info.PipelineInfoMain.RenderPass = renderPass;
+    info.PipelineInfoMain.Subpass = 0;
+    info.PipelineInfoMain.MSAASamples = msaaSamples;
+    ImGui_ImplVulkan_Init(&info);
 }
 
 void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
@@ -270,9 +289,12 @@ void SceneRenderer::cleanup() {
 
     vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
+    ImGui_ImplVulkan_Shutdown();
+
     vkDestroyDevice(device.ldevice, nullptr);
 
     vkDestroySurfaceKHR(instance.instance, surface, nullptr);
+
 }
 
 VkExtent2D SceneRenderer::chooseSwapExtent(
@@ -1003,7 +1025,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
         auto handle = stn.getResourceH();
 
-        accumulated_transform = accumulated_transform * stn.transform;
+        accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
         std::visit(
             overloads{
@@ -1069,6 +1091,10 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
             child = st_mg.get(child).nextH;
         }
     }
+
+    // ImGui
+    ImGui::Render();
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -1140,7 +1166,7 @@ void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
 
     UniformBufferObjects ubo{};
     auto& st_mg = scene->getSceneTreeManager();
-    ubo.view = glm::inverse(st_mg.getTransform(activeCameraNode));
+    ubo.view = glm::inverse(st_mg.getGlobalTransform(activeCameraNode));
     ubo.proj =
         glm::perspective(glm::radians(45.0f),
                          swapChain.swapChainImageExtent.width /

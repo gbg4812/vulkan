@@ -114,6 +114,7 @@ class SceneRenderer {
 
    private:
     void initVulkan();
+    void initImgui();
 
     void initResources();
 

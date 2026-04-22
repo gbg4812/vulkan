@@ -23,7 +23,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC src/)
 find_package(Vulkan REQUIRED)
 
 if(LOCAL_SEQ)
-    fetchcontent_declare(
+  fetchcontent_declare(
   sceneeq
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SceneEquipament/)
 endif()
@@ -57,7 +57,7 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;glfw;glm::glm;stbimage;fmt::fmt;SceneEquipament")
+set(LIBS "Vulkan::Vulkan;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
 
@@ -82,4 +82,4 @@ file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLI
 
 add_executable(app tests/app.cpp)
 
-target_link_libraries(app PRIVATE ${PROJECT_NAME})
+target_link_libraries(app PRIVATE "${PROJECT_NAME}")
