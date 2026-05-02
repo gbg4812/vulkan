@@ -5,9 +5,9 @@
 
 #include <list>
 
-#include "vk_utils/Logger.hpp"
 #include "Mesh.hpp"
 #include "glm/glm.hpp"
+#include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
 
 namespace gbg {
@@ -29,7 +29,6 @@ srAttribute::srAttribute(vkDevice device, uint attrib_id, size_t size,
     this->size = size;
 
     VkDeviceSize dsize = size;
-    LOG("Creating attrib!")
 
     gbg::vkBuffer stagingBuffer =
         gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -91,8 +90,6 @@ vkBuffer createIndexBuffer(vkDevice device,
         }
     }
     VkDeviceSize size = indices.size() * sizeof(indices[0]);
-    LOG("Index Buffer Size: ")
-    LOG_VAR(size)
 
     gbg::vkBuffer stagingBuffer =
         gbg::createBuffer(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,

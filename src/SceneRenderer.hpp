@@ -37,8 +37,7 @@ const std::vector<const char*> validationLayers = {
 };
 
 const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-};
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
 struct PerObjectPushConstant {
     glm::mat4 model;

@@ -27,15 +27,15 @@ struct srAttribute {
 };
 
 struct srMesh : public Resource {
-    srMesh() : Resource() {};
-    srMesh(std::string name, uint32_t rid) : Resource(name, rid) {};
+    srMesh() : Resource(){};
+    srMesh(std::string name, uint32_t rid) : Resource(name, rid){};
     std::vector<srAttribute> vertexAttributes;
     gbg::vkBuffer indexBuffer;
 };
 
 struct srMeshHandle : public ResourceHandle {
-    srMeshHandle() : ResourceHandle() {};
-    srMeshHandle(size_t index, uint32_t rid) : ResourceHandle(index, rid) {};
+    srMeshHandle() : ResourceHandle(){};
+    srMeshHandle(size_t index, uint32_t rid) : ResourceHandle(index, rid){};
 };
 
 vkBuffer createIndexBuffer(vkDevice device,

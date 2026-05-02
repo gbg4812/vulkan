@@ -18,7 +18,9 @@ srParameterValues allocateParameterValues(Material& material) {
             overloads{
                 [&parm_values](auto&& val) {
                     size_t val_size = sizeof(decltype(val));
-                    size_t padd = val_size - (parm_values.size % val_size);
+                    size_t padd = 0;
+                    if (parm_values.size % val_size)
+                        padd = val_size - (parm_values.size % val_size);
                     parm_values.size += padd;
                     parm_values.size += val_size;
                 },
@@ -33,6 +35,7 @@ srParameterValues allocateParameterValues(Material& material) {
         throw std::runtime_error("Failed to allocate parameter values!");
     }
 
+    //
     // copy
     size_t addr_offset = 0;
     for (auto& value : values) {
@@ -40,7 +43,9 @@ srParameterValues allocateParameterValues(Material& material) {
             overloads{
                 [&](const auto& val) {
                     size_t val_size = sizeof(decltype(val));
-                    size_t padd = val_size - (addr_offset % val_size);
+                    size_t padd = 0;
+                    if (addr_offset % val_size)
+                        padd = val_size - (addr_offset % val_size);
                     addr_offset += padd;
                     std::memcpy((parm_values.data + addr_offset), &val,
                                 val_size);

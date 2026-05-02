@@ -1,4 +1,5 @@
 #include <vulkan/vulkan_core.h>
+
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -16,10 +17,10 @@
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
-#include "loaders/objLoader.hpp"
-#include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
+#include "imgui.h"
+#include "loaders/objLoader.hpp"
 
 const std::string TEXTURE_PATH =
     "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
@@ -56,7 +57,6 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action,
 void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
     glfwSetWindowUserPointer(window, userPointer);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-    glfwSetKeyCallback(window, keyCallback);
 }
 
 GLFWwindow* createWindow(int width, int height, std::string name) {
@@ -76,7 +76,6 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
     return window;
 }
 
-
 int main(int argc, char* argv[]) {
     std::span arguments(argv, argc);
 
@@ -91,12 +90,13 @@ int main(int argc, char* argv[]) {
     glfwMaximizeWindow(window);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
         gbg::deviceExtensions);
 
     gbg::SceneRenderer renderer(context);
+
+    setupGlfwCallbacks(window, &renderer);
 
     auto sc = std::make_shared<gbg::Scene>();
 
@@ -108,16 +108,17 @@ int main(int argc, char* argv[]) {
 
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
     gbg::Shader& sh = sh_mg.get(shh);
-    size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
-    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
-    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);  // normal
-    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);  // texture
+    size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);  // color
+    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);               // pos
+    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);               // normal
+    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);               // texture
 
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
     mt.setShader(shh, sh);
-    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp, glm::vec3(0.0f, 1.0f, 1.0f));
+    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+        colorp, glm::vec3(0.0f, 1.0f, 1.0f));
 
     auto& cm_mg = sc->getCameraManager();
     auto& st_mg = sc->getSceneTreeManager();
@@ -129,7 +130,7 @@ int main(int argc, char* argv[]) {
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc->root, cm_nh);
 
-
+    std::cout << arguments[1] << std::endl;
     gbg::objLoader(arguments[1], sc.get(), sc->root, mth);
 
     renderer.setScene(sc);
@@ -149,25 +150,43 @@ int main(int argc, char* argv[]) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        float delta =  glfwGetTime() - time;
+        float delta = glfwGetTime() - time;
         time = glfwGetTime();
 
         gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
         glm::vec3 offset{};
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-             offset.z += -2.0f*delta;
+        if (not ui_mode) {
+            if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+                offset.z += -2.0f * delta;
+            }
+            if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+                offset.z += 2.0f * delta;
+            }
+            if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+                offset.x += -2.0f * delta;
+            }
+            if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+                offset.x += 2.0f * delta;
+            }
         }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-            offset.z += 2.0f*delta;
+
+        cam_node.localTranslate(offset);
+
+        if (not ui_mode) {
+            double xnew, ynew;
+            glfwGetCursorPos(window, &xnew, &ynew);
+            double xdelta = xnew - xpos;
+            double ydelta = ynew - ypos;
+            xpos = xnew;
+            ypos = ynew;
+            cam_node.rotation.y += -0.001f * (float)xdelta;
+            cam_node.rotation.x += -0.001f * (float)ydelta;
         }
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-            offset.x += -2.0f*delta;
-        }
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-            offset.x += 2.0f*delta;
-        }
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-            if(not ui_mode) {
+
+        renderer.drawFrame();
+
+        if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Escape)) {
+            if (not ui_mode) {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
                 ui_mode = true;
             } else {
@@ -175,20 +194,6 @@ int main(int argc, char* argv[]) {
                 ui_mode = false;
             }
         }
-
-        cam_node.localTranslate(offset);
-
-        double xnew, ynew;
-        glfwGetCursorPos(window, &xnew, &ynew);
-        double xdelta = xnew - xpos;
-        double ydelta = ynew - ypos;
-        xpos = xnew;
-        ypos = ynew;
-        cam_node.rotation.y += -0.001f*(float)xdelta;
-        cam_node.rotation.x += -0.001f*(float)ydelta;
-
-
-        renderer.drawFrame();
     }
     renderer.cleanup();
 

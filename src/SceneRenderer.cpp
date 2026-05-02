@@ -23,8 +23,8 @@
 #include "SceneTree.hpp"
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/ext/matrix_transform.hpp"
-#include "glm/gtc/matrix_transform.hpp"
 #include "glm/glm.hpp"
+#include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
 #include "srMesh.hh"
 #include "srShader.hpp"
@@ -115,8 +115,6 @@ void SceneRenderer::initResources() {
 }
 
 void SceneRenderer::addMesh(Mesh& mesh) {
-    LOG("Adding mesh!")
-
     srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
     srMesh& vkmesh = meshes.get(vkmh);
 
@@ -129,9 +127,9 @@ void SceneRenderer::addMesh(Mesh& mesh) {
             },
             attr.second);
 
-        vkmesh.vertexAttributes.push_back(std::move(attrib));
-        vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
+        vkmesh.vertexAttributes.push_back(attrib);
     }
+    vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
 }
 
 void SceneRenderer::addShader(Shader& shader) {
@@ -294,7 +292,6 @@ void SceneRenderer::cleanup() {
     vkDestroyDevice(device.ldevice, nullptr);
 
     vkDestroySurfaceKHR(instance.instance, surface, nullptr);
-
 }
 
 VkExtent2D SceneRenderer::chooseSwapExtent(
