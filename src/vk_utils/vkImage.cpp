@@ -1,4 +1,4 @@
-#include "vkImage.h"
+#include "vkImage.hh"
 
 #include <stdexcept>
 

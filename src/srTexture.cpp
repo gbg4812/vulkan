@@ -1,8 +1,8 @@
-#include "vkTexture.h"
+#include "srTexture.hpp"
 
 #include <stdexcept>
 
-#include "vkCommandBuffer.hh"
+#include "vk_utils/vkCommandBuffer.hh"
 namespace gbg {
 void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
                      int32_t texWidth, int32_t texHeight, uint32_t mipLevels) {

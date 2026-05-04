@@ -21,12 +21,12 @@
 #include "Scene.hpp"
 #include "srMaterial.hpp"
 #include "srShader.hpp"
+#include "srTexture.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
-#include "vk_utils/vkImage.h"
+#include "vk_utils/vkImage.hh"
 #include "vk_utils/vkInstance.hh"
 #include "vk_utils/vkSwapChain.h"
-#include "vk_utils/vkTexture.h"
 
 namespace gbg {
 
@@ -92,11 +92,12 @@ class SceneRenderer {
     ResourceManager<gbg::srShader, gbg::srShaderHandle> shaders;
     ResourceManager<gbg::srMaterial, gbg::srMaterialHandle> materials;
     ResourceManager<gbg::srMesh, gbg::srMeshHandle> meshes;
+    ResourceManager<gbg::srTexture, gbg::srTextureHandle> textures;
+
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
     const uint32_t max_tex = 1000;
 
-    std::vector<gbg::vkTexture> textures;
     VkSampler textureSampler;
 
     std::vector<gbg::vkBuffer> globalBuffers;
@@ -193,5 +194,6 @@ class SceneRenderer {
     void addMesh(Mesh& mesh);
     void addShader(Shader& shader);
     void addMaterial(Material& shader);
+    void addTexture(Texture& texture);
 };
 }  // namespace gbg

@@ -12,27 +12,28 @@
 #include <memory>
 #include <optional>
 #include <queue>
-#include <set>
+#include <ranges>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
-#include "GlfwCreateRendererContext.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
+#include "Shader.hpp"
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
+#include "macros.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
+#include "srTexture.hpp"
 #include "traits/traits.hpp"
 #include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
-#include "vk_utils/vkImage.h"
+#include "vk_utils/vkImage.hh"
 #include "vk_utils/vkInstance.hh"
 #include "vk_utils/vkPipeline.hh"
 #include "vk_utils/vkSwapChain.h"
@@ -108,7 +109,7 @@ void SceneRenderer::initResources() {
     processScene();
 
     // createTexturesImageViews();
-    // createTextureSampler();
+    createTextureSampler();
 
     createCommandBuffer();
     createSyncObjects();
@@ -132,6 +133,44 @@ void SceneRenderer::addMesh(Mesh& mesh) {
     vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
 }
 
+void SceneRenderer::addTexture(Texture& texture) {
+    CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
+
+    tex.textureImage = createImage(
+        device.pdevice, device.ldevice, static_cast<uint32_t>(texture.width),
+        static_cast<uint32_t>(texture.height),
+        static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
+        VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    tex.mipLevels = texture.mip_levels;
+    tex.sampler = textureSampler;
+
+    addImageView(tex.textureImage, device.ldevice, VK_FORMAT_R8G8B8A8_SRGB,
+                 VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
+
+    VkDeviceSize dsize = texture.data.size();
+
+    gbg::vkBuffer stagingBuffer =
+        gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                              VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    void* sdata;
+    vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
+    memcpy(sdata, texture.data.data(), texture.data.size());
+    vkUnmapMemory(device.ldevice, stagingBuffer.memory);
+
+    copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
+                      texture.width, texture.height);
+    vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
+    vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
+
+    transitionImageLayout(tex.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
+                          VK_IMAGE_LAYOUT_UNDEFINED,
+                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                          static_cast<uint32_t>(tex.mipLevels));
+}
+
 void SceneRenderer::addShader(Shader& shader) {
     srShaderHandle shh = shaders.create("srShader::" + shader.getName());
     srShader& sr_sh = shaders.get(shh);
@@ -143,8 +182,26 @@ void SceneRenderer::addShader(Shader& shader) {
     matParmsLayoutBinding.stageFlags =
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 1> materialBindings = {
+    std::vector<VkDescriptorSetLayoutBinding> materialBindings = {
         matParmsLayoutBinding};
+
+    auto texFilter = [](ParameterTypes p) {
+        return p == ParameterTypes::TEXTURE_PARM;
+    };
+
+    size_t count = 1;
+    // creates a binding for each texture
+    for (ParameterTypes p :
+         shader.getParameters() | std::ranges::views::filter(texFilter)) {
+        VkDescriptorSetLayoutBinding texBinding{};
+        texBinding.binding = count++;
+        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        texBinding.stageFlags =
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        texBinding.descriptorCount = 1;
+        texBinding.pImmutableSamplers = nullptr;
+        materialBindings.push_back(texBinding);
+    }
 
     VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
     materialLayoutInfo.sType =
@@ -225,9 +282,14 @@ void SceneRenderer::processScene() {
     auto& ms_mg = scene->getMeshManager();
     auto& mt_mg = scene->getMaterialManager();
     auto& sh_mg = scene->getShaderManager();
+    auto& tx_mg = scene->getTextureManager();
 
     for (Mesh& mesh : ms_mg) {
         addMesh(mesh);
+    }
+
+    for (Texture& texture : tx_mg) {
+        addTexture(texture);
     }
 
     for (Shader& sh : sh_mg) {
@@ -729,13 +791,13 @@ void SceneRenderer::copyBufferToImage(VkBuffer buffer, VkImage image,
                                device.tqueue);
 }
 
-void SceneRenderer::createTexturesImageViews() {
-    for (gbg::vkTexture& texture : textures) {
+/*void SceneRenderer::createTexturesImageViews() {
+    for (gbg::srTexture& texture : textures) {
         gbg::addImageView(texture.textureImage, device.ldevice,
                           VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT,
                           textures[0].mipLevels);
     }
-}
+}*/
 
 void SceneRenderer::createTextureSampler() {
     VkSamplerCreateInfo createInfo{};
@@ -758,7 +820,7 @@ void SceneRenderer::createTextureSampler() {
 
     createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
     createInfo.minLod = 0.0f;
-    createInfo.maxLod = static_cast<float>(textures[0].mipLevels);
+    createInfo.maxLod = static_cast<float>(3);  // TODO: define constant
     createInfo.mipLodBias = 0.0f;
 
     if (vkCreateSampler(device.ldevice, &createInfo, nullptr,
@@ -892,12 +954,32 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
                                  &srmat.descriptor_set) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor sets");
     }
-    /*
-    VkDescriptorImageInfo imageInfo{};
-    imageInfo.sampler = textureSampler;
-    imageInfo.imageView = textures[i].textureImage.view.value();
-    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    */
+
+    std::vector<VkDescriptorImageInfo> imageInfos;
+
+    // fun range stuff!
+    for (const parm_vt& val : mat.getValues()) {
+        if (auto th = std::get_if<TextureHandle>(&val)) {
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.sampler = textureSampler;
+            imageInfo.imageView =
+                textures.getRelated(*th).textureImage.view.value();
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfos.push_back(imageInfo);
+        }
+    }
+    VkWriteDescriptorSet textureDescriptorWrite{};
+    textureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    textureDescriptorWrite.dstSet = srmat.descriptor_set;
+    textureDescriptorWrite.dstBinding = 1;
+    textureDescriptorWrite.dstArrayElement = 0;
+    textureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    textureDescriptorWrite.descriptorCount =
+        static_cast<uint32_t>(imageInfos.size());
+    textureDescriptorWrite.pImageInfo = imageInfos.data();
+    // Only needed for other types of textureDescriptors
+    textureDescriptorWrite.pTexelBufferView = nullptr;
+    textureDescriptorWrite.pBufferInfo = nullptr;
 
     VkDescriptorBufferInfo bufferInfo{};
     bufferInfo.buffer = srmat.paramBuffer.buffer;
@@ -916,7 +998,9 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
     descriptorWrite.pTexelBufferView = nullptr;
     descriptorWrite.pBufferInfo = &bufferInfo;
 
-    vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
+    VkWriteDescriptorSet writes[2] = {textureDescriptorWrite, descriptorWrite};
+
+    vkUpdateDescriptorSets(device.ldevice, 2, writes, 0, nullptr);
 }
 
 /*

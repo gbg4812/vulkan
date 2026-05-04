@@ -3,11 +3,7 @@
 
 #include <vulkan/vulkan_core.h>
 
-#include <ios>
 #include <stdexcept>
-#include <string>
-
-#include "vk_utils/Logger.hpp"
 
 namespace gbg {
 vkBuffer createBuffer(vkDevice device, VkDeviceSize size,
