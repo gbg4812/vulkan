@@ -6,6 +6,7 @@
 
 #define RESOURCE_HANDLE(x)                                            \
     struct x : public ResourceHandle {                                \
+        public:                                                       \
         x() : ResourceHandle(){};                                     \
         x(uint32_t rid, size_t index) : ResourceHandle(rid, index){}; \
     }

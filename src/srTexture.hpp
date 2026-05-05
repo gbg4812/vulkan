@@ -19,6 +19,8 @@ struct srTexture : public Resource {
 void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
                      int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
+void destroySrTexture(const vkDevice& device, const srTexture& texture);
+
 RESOURCE_HANDLE(srTextureHandle);
 
 }  // namespace gbg

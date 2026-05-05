@@ -96,20 +96,19 @@ void SceneRenderer::initResources() {
     // Camera and light buffers;
     createGlobalShaderResources();
     createGlobalDescriptorPool();
+
+    createTextureSampler();
+
     createGlobalDescriptorSets();
 
     // Per Material pool and sets
     createMaterialDescriptorPool();  // TODO: crear descriptor pool i
 
-    // Per Model pool and sets
-    createModelDescriptorPool();
 
     // Material DSLs created
     // Material UBO and Textures created also
     processScene();
 
-    // createTexturesImageViews();
-    createTextureSampler();
 
     createCommandBuffer();
     createSyncObjects();
@@ -141,7 +140,7 @@ void SceneRenderer::addTexture(Texture& texture) {
         static_cast<uint32_t>(texture.height),
         static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
         VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     tex.mipLevels = texture.mip_levels;
     tex.sampler = textureSampler;
@@ -160,13 +159,18 @@ void SceneRenderer::addTexture(Texture& texture) {
     memcpy(sdata, texture.data.data(), texture.data.size());
     vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
+    transitionImageLayout(tex.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
+                          VK_IMAGE_LAYOUT_UNDEFINED,
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          static_cast<uint32_t>(tex.mipLevels));
+
     copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
                       texture.width, texture.height);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 
     transitionImageLayout(tex.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
-                          VK_IMAGE_LAYOUT_UNDEFINED,
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                           static_cast<uint32_t>(tex.mipLevels));
 }
@@ -316,6 +320,8 @@ void SceneRenderer::cleanup() {
     vkDestroyDescriptorSetLayout(device.ldevice, globalDescriptorSetLayout,
                                  nullptr);
 
+    vkDestroySampler(device.ldevice, textureSampler, nullptr);
+
     for (const auto& shader : shaders) {
         destroySrShader(device, shader);
     }
@@ -324,14 +330,15 @@ void SceneRenderer::cleanup() {
         destroySrMaterial(device, material);
     }
 
+    for (const auto& texture : textures) {
+        destroySrTexture(device, texture);
+    }
+
     for (const auto& mesh : meshes) {
         destroyMesh(device, mesh);
     }
 
     vkDestroyDescriptorPool(device.ldevice, materialDescPool, nullptr);
-    vkDestroyDescriptorPool(device.ldevice, modelDescPool, nullptr);
-    vkDestroyDescriptorSetLayout(device.ldevice, modelDescriptorSetLayout,
-                                 nullptr);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
@@ -344,12 +351,13 @@ void SceneRenderer::cleanup() {
                            nullptr);
     }
 
+    ImGui_ImplVulkan_Shutdown();
+
     vkDestroyCommandPool(device.ldevice, device.graphicsCmdPool, nullptr);
     vkDestroyCommandPool(device.ldevice, device.transferCmdPool, nullptr);
 
-    vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
-    ImGui_ImplVulkan_Shutdown();
+    vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
     vkDestroyDevice(device.ldevice, nullptr);
 
@@ -540,8 +548,15 @@ void SceneRenderer::createGlobalDescriptorSetLayouts() {
     uboLayoutBinding.pImmutableSamplers = nullptr;
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 1> globalBindings = {
-        uboLayoutBinding};
+    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
+    samplerLayoutBinding.binding = 1;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    samplerLayoutBinding.pImmutableSamplers = nullptr;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    std::array<VkDescriptorSetLayoutBinding, 2> globalBindings = {
+        uboLayoutBinding, samplerLayoutBinding};
 
     VkDescriptorSetLayoutCreateInfo globalLayoutInfo{};
     globalLayoutInfo.sType =
@@ -555,50 +570,7 @@ void SceneRenderer::createGlobalDescriptorSetLayouts() {
         throw std::runtime_error("failed to create descriptor set layout!");
     }
 
-    VkDescriptorSetLayoutBinding modelLayoutBinding{};
-    uboLayoutBinding.binding = 1;
-    uboLayoutBinding.descriptorCount = 1;
-    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    uboLayoutBinding.pImmutableSamplers = nullptr;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    std::array<VkDescriptorSetLayoutBinding, 1> modelBindings = {
-        modelLayoutBinding};
-
-    VkDescriptorSetLayoutCreateInfo modelLayoutInfo{};
-    modelLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    modelLayoutInfo.bindingCount = static_cast<uint32_t>(modelBindings.size());
-    modelLayoutInfo.pBindings = modelBindings.data();
-
-    if (vkCreateDescriptorSetLayout(device.ldevice, &modelLayoutInfo, nullptr,
-                                    &modelDescriptorSetLayout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor set layout!");
-    }
-
     /*
-    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-    samplerLayoutBinding.binding = 0;
-    samplerLayoutBinding.descriptorCount = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    samplerLayoutBinding.pImmutableSamplers = nullptr;
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    std::array<VkDescriptorSetLayoutBinding, 1> inmutableBindings = {
-        samplerLayoutBinding};
-
-    VkDescriptorSetLayoutCreateInfo inmutableLayoutInfo{};
-    inmutableLayoutInfo.sType =
-        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    inmutableLayoutInfo.bindingCount =
-        static_cast<uint32_t>(inmutableBindings.size());
-    inmutableLayoutInfo.pBindings = inmutableBindings.data();
-
-    if (vkCreateDescriptorSetLayout(device.ldevice, &inmutableLayoutInfo,
-                                    nullptr, &inmutableDescriptorSetLayout) !=
-        VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor set layout!");
-    }
-
     // TODO: Create descriptor layout from material description
     if (textures.empty()) {
         return;
@@ -846,9 +818,12 @@ void SceneRenderer::createGlobalShaderResources() {
 }
 
 void SceneRenderer::createGlobalDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 1> descriptorPoolSizes{};
+    std::array<VkDescriptorPoolSize, 2> descriptorPoolSizes{};
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount =
+        static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
+    descriptorPoolSizes[1].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -882,22 +857,6 @@ void SceneRenderer::createMaterialDescriptorPool() {
     }
 }
 
-void SceneRenderer::createModelDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 1> descriptorPoolSizes{};
-    descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorPoolSizes[0].descriptorCount = static_cast<uint32_t>(max_obj);
-
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
-    poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(max_obj);
-
-    if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
-                               &modelDescPool) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor pool!");
-    }
-}
 
 void SceneRenderer::createGlobalDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
@@ -920,7 +879,12 @@ void SceneRenderer::createGlobalDescriptorSets() {
         bufferInfo.range = sizeof(UniformBufferObjects);
         bufferInfo.offset = 0;
 
-        std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
+        // Can it be because bouth frames sample sampler?
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.sampler = textureSampler;
+
+
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrites[0].dstSet = globalDescriptorSets[i];
         descriptorWrites[0].dstBinding = 0;
@@ -931,6 +895,17 @@ void SceneRenderer::createGlobalDescriptorSets() {
         // Only needed for other types of descriptors
         descriptorWrites[0].pImageInfo = nullptr;
         descriptorWrites[0].pTexelBufferView = nullptr;
+
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = globalDescriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = nullptr;
+        // Only needed for other types of descriptors
+        descriptorWrites[1].pImageInfo = &imageInfo;
+        descriptorWrites[1].pTexelBufferView = nullptr;
 
         vkUpdateDescriptorSets(device.ldevice,
                                static_cast<uint32_t>(descriptorWrites.size()),
@@ -955,6 +930,26 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
         throw std::runtime_error("failed to create descriptor sets");
     }
 
+    std::array<VkWriteDescriptorSet, 2> descWrites = {};
+    uint32_t descWritesSize = 1;
+
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = srmat.paramBuffer.buffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = VK_WHOLE_SIZE;
+
+    descWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descWrites[0].dstSet = srmat.descriptor_set;
+    descWrites[0].dstBinding = 0;
+    descWrites[0].dstArrayElement = 0;
+    descWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descWrites[0].descriptorCount = 1;
+    descWrites[0].pImageInfo = nullptr;
+    // Only needed for other types of descriptors
+    descWrites[0].pTexelBufferView = nullptr;
+    descWrites[0].pBufferInfo = &bufferInfo;
+
+
     std::vector<VkDescriptorImageInfo> imageInfos;
 
     // fun range stuff!
@@ -968,39 +963,25 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
             imageInfos.push_back(imageInfo);
         }
     }
-    VkWriteDescriptorSet textureDescriptorWrite{};
-    textureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    textureDescriptorWrite.dstSet = srmat.descriptor_set;
-    textureDescriptorWrite.dstBinding = 1;
-    textureDescriptorWrite.dstArrayElement = 0;
-    textureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    textureDescriptorWrite.descriptorCount =
-        static_cast<uint32_t>(imageInfos.size());
-    textureDescriptorWrite.pImageInfo = imageInfos.data();
-    // Only needed for other types of textureDescriptors
-    textureDescriptorWrite.pTexelBufferView = nullptr;
-    textureDescriptorWrite.pBufferInfo = nullptr;
 
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = srmat.paramBuffer.buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = VK_WHOLE_SIZE;
 
-    VkWriteDescriptorSet descriptorWrite{};
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = srmat.descriptor_set;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pImageInfo = nullptr;
-    // Only needed for other types of descriptors
-    descriptorWrite.pTexelBufferView = nullptr;
-    descriptorWrite.pBufferInfo = &bufferInfo;
+    if(imageInfos.size() > 0) {
+        descWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descWrites[1].dstSet = srmat.descriptor_set;
+        descWrites[1].dstBinding = 1;
+        descWrites[1].dstArrayElement = 0;
+        descWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        descWrites[1].descriptorCount =
+            static_cast<uint32_t>(imageInfos.size());
+        descWrites[1].pImageInfo = imageInfos.data();
+        // Only needed for other types of textureDescriptors
+        descWrites[1].pTexelBufferView = nullptr;
+        descWrites[1].pBufferInfo = nullptr;
 
-    VkWriteDescriptorSet writes[2] = {textureDescriptorWrite, descriptorWrite};
+        descWritesSize++;
+    }
 
-    vkUpdateDescriptorSets(device.ldevice, 2, writes, 0, nullptr);
+    vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0, nullptr);
 }
 
 /*

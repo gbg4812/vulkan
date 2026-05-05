@@ -1,4 +1,5 @@
 #include "srTexture.hpp"
+#include <vulkan/vulkan_core.h>
 
 #include <stdexcept>
 
@@ -91,4 +92,14 @@ void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
     endSingleTimeCommands(device, commandBuffer, device.graphicsCmdPool,
                           device.gqueue);
 }
+
+
+void destroySrTexture(const vkDevice& device, const srTexture& texture) {
+    vkFreeMemory(device.ldevice, texture.textureImage.memory, nullptr);
+    if(texture.textureImage.view) {
+        vkDestroyImageView(device.ldevice, texture.textureImage.view.value(), nullptr);
+    }
+    vkDestroyImage(device.ldevice, texture.textureImage.image, nullptr);
+}
+
 }  // namespace gbg

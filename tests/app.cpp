@@ -21,9 +21,10 @@
 #include "backends/imgui_impl_vulkan.h"
 #include "imgui.h"
 #include "loaders/objLoader.hpp"
+#include "loaders/texLoader.hpp"
 
 const std::string TEXTURE_PATH =
-    "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
+    "data/textures/plank_texture/raw_plank_wall_diff_1k.png";
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -88,7 +89,7 @@ int main(int argc, char* argv[]) {
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
@@ -103,12 +104,20 @@ int main(int argc, char* argv[]) {
     auto& mt_mg = sc->getMaterialManager();
     auto& sh_mg = sc->getShaderManager();
 
+    auto& tx_mg = sc->getTextureManager();
+    auto tx_h = tx_mg.create("DiffuseTexture");
+
+    loadTexture(TEXTURE_PATH, sc.get(), tx_h); // loads texture
+
     gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
     gbg::Material& mt = mt_mg.get(mth);
 
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
     gbg::Shader& sh = sh_mg.get(shh);
+
     size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);  // color
+    size_t texp = sh.addParameter(gbg::TEXTURE_PARM); // texture
+
     sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);               // pos
     sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);               // normal
     sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);               // texture
@@ -119,6 +128,8 @@ int main(int argc, char* argv[]) {
     mt.setShader(shh, sh);
     mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
         colorp, glm::vec3(0.0f, 1.0f, 1.0f));
+    mt.setParameterValue<gbg::TEXTURE_PARM>(
+        texp, tx_h);
 
     auto& cm_mg = sc->getCameraManager();
     auto& st_mg = sc->getSceneTreeManager();
