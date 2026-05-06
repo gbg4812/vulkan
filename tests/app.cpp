@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
-    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
@@ -99,52 +99,80 @@ int main(int argc, char* argv[]) {
 
     setupGlfwCallbacks(window, &renderer);
 
-    auto sc = std::make_shared<gbg::Scene>();
+    gbg::Scene sc;
 
-    auto& mt_mg = sc->getMaterialManager();
-    auto& sh_mg = sc->getShaderManager();
+    auto& sh_mg = sc.getShaderManager();
 
-    auto& tx_mg = sc->getTextureManager();
-    auto tx_h = tx_mg.create("DiffuseTexture");
-
-    loadTexture(TEXTURE_PATH, sc.get(), tx_h); // loads texture
-
-    gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
-    gbg::Material& mt = mt_mg.get(mth);
-
+    // Shader Creation
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
     gbg::Shader& sh = sh_mg.get(shh);
 
     size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);  // color
-    size_t texp = sh.addParameter(gbg::TEXTURE_PARM); // texture
+    size_t texp = sh.addParameter(gbg::TEXTURE_PARM);                 // texture
 
-    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);               // pos
-    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);               // normal
-    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);               // texture
+    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
+    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);  // normal
+    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);  // texture
 
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
-    mt.setShader(shh, sh);
-    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
-        colorp, glm::vec3(0.0f, 1.0f, 1.0f));
-    mt.setParameterValue<gbg::TEXTURE_PARM>(
-        texp, tx_h);
+    // Material Creation
+    auto& mt_mg = sc.getMaterialManager();
 
-    auto& cm_mg = sc->getCameraManager();
-    auto& st_mg = sc->getSceneTreeManager();
+    gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
+    gbg::MaterialHandle gmth = mt_mg.create("GreenMaterial");
+    gbg::MaterialHandle rmth = mt_mg.create("RedMaterial");
+    gbg::Material& mt = mt_mg.get(mth);
+    gbg::Material& gmt = mt_mg.get(gmth);
+    gbg::Material& rmt = mt_mg.get(rmth);
+
+    mt.setShader(shh, sh);
+    gmt.setShader(shh, sh);
+    rmt.setShader(shh, sh);
+
+    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+        colorp, glm::vec3(0.0f, 0.0f, 1.0f));
+    gmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+        colorp, glm::vec3(0.0f, 1.0f, .0f));
+    rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+        colorp, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    auto& tx_mg = sc.getTextureManager();
+    auto tx_h = tx_mg.create("DiffuseTexture");
+
+    loadTexture(TEXTURE_PATH, &sc, tx_h);  // loads texture
+
+    mt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
+    gmt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
+    rmt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
+
+    // Other entities
+    auto& st_mg = sc.getSceneTreeManager();
+    auto& cm_mg = sc.getCameraManager();
     gbg::CameraHandle camh = cm_mg.create("Camera");
     gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
 
     st_mg.get(cm_nh).translation += glm::vec3{0.0f, 0.0f, 10.0f};
 
     st_mg.get(cm_nh).setResource(camh);
-    st_mg.prependChild(sc->root, cm_nh);
+    st_mg.prependChild(sc.root, cm_nh);
 
     std::cout << arguments[1] << std::endl;
-    gbg::objLoader(arguments[1], sc.get(), sc->root, mth);
 
-    renderer.setScene(sc);
+    gbg::objLoader(arguments[1], &sc, sc.root, mth);
+
+    sc.getModelManager()
+        .get(st_mg.get(st_mg.get(sc.root).childH)
+                 .getResourceH<gbg::SceneObjectTypes::MODEL>())
+        .setMaterial(rmth);
+
+    sc.getModelManager()
+        .get(st_mg.get(st_mg.get(st_mg.get(sc.root).childH).nextH)
+                 .getResourceH<gbg::SceneObjectTypes::MODEL>())
+        .setMaterial(gmth);
+
+    renderer.setScene(&sc);
     renderer.setActiveCamera(cm_nh);
 
     double time = glfwGetTime();
@@ -179,20 +207,33 @@ int main(int argc, char* argv[]) {
             if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
                 offset.x += 2.0f * delta;
             }
+        } else {
+            ImGui::BeginGroup();
+            int i = 0;
+            for (auto& sn : st_mg) {
+                ImGui::PushID(i);
+                ImGui::Text(sn.getName().c_str());
+                ImGui::InputFloat3("Translation", (float*)&sn.translation);
+                ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
+                ImGui::InputFloat3("Scale", (float*)&sn.scale);
+                ImGui::PopID();
+                i++;
+            }
+            ImGui::EndGroup();
         }
 
         cam_node.localTranslate(offset);
 
+        double xnew, ynew;
+        glfwGetCursorPos(window, &xnew, &ynew);
         if (not ui_mode) {
-            double xnew, ynew;
-            glfwGetCursorPos(window, &xnew, &ynew);
             double xdelta = xnew - xpos;
             double ydelta = ynew - ypos;
-            xpos = xnew;
-            ypos = ynew;
             cam_node.rotation.y += -0.001f * (float)xdelta;
             cam_node.rotation.x += -0.001f * (float)ydelta;
         }
+        xpos = xnew;
+        ypos = ynew;
 
         renderer.drawFrame();
 

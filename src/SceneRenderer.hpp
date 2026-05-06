@@ -54,7 +54,7 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     SceneRenderer(RendererContext context);
-    void setScene(std::shared_ptr<gbg::Scene> scene);
+    void setScene(gbg::Scene* scene);
     void run();
     void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
@@ -109,7 +109,7 @@ class SceneRenderer {
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    std::shared_ptr<Scene> scene;
+    Scene* scene;
     SceneTreeHandle activeCameraNode;
 
    private:

@@ -69,7 +69,7 @@ void SceneRenderer::initImgui() {
     ImGui_ImplVulkan_Init(&info);
 }
 
-void SceneRenderer::setScene(std::shared_ptr<gbg::Scene> scene) {
+void SceneRenderer::setScene(Scene* scene) {
     this->scene = scene;
     vkDeviceWaitIdle(device.ldevice);
     initResources();
@@ -104,11 +104,9 @@ void SceneRenderer::initResources() {
     // Per Material pool and sets
     createMaterialDescriptorPool();  // TODO: crear descriptor pool i
 
-
     // Material DSLs created
     // Material UBO and Textures created also
     processScene();
-
 
     createCommandBuffer();
     createSyncObjects();
@@ -140,7 +138,8 @@ void SceneRenderer::addTexture(Texture& texture) {
         static_cast<uint32_t>(texture.height),
         static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
         VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     tex.mipLevels = texture.mip_levels;
     tex.sampler = textureSampler;
@@ -355,7 +354,6 @@ void SceneRenderer::cleanup() {
 
     vkDestroyCommandPool(device.ldevice, device.graphicsCmdPool, nullptr);
     vkDestroyCommandPool(device.ldevice, device.transferCmdPool, nullptr);
-
 
     vkDestroyRenderPass(device.ldevice, renderPass, nullptr);
 
@@ -857,7 +855,6 @@ void SceneRenderer::createMaterialDescriptorPool() {
     }
 }
 
-
 void SceneRenderer::createGlobalDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
                                                globalDescriptorSetLayout);
@@ -873,16 +870,17 @@ void SceneRenderer::createGlobalDescriptorSets() {
         throw std::runtime_error("failed to create descriptor sets");
     }
 
+    // Can it be because bouth frames sample sampler?
+    VkDescriptorImageInfo imageInfo{};
+    imageInfo.sampler = textureSampler;
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.imageView = VK_NULL_HANDLE;
+
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = globalBuffers[i].buffer;
         bufferInfo.range = sizeof(UniformBufferObjects);
         bufferInfo.offset = 0;
-
-        // Can it be because bouth frames sample sampler?
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.sampler = textureSampler;
-
 
         std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -949,7 +947,6 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
     descWrites[0].pTexelBufferView = nullptr;
     descWrites[0].pBufferInfo = &bufferInfo;
 
-
     std::vector<VkDescriptorImageInfo> imageInfos;
 
     // fun range stuff!
@@ -964,8 +961,7 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
         }
     }
 
-
-    if(imageInfos.size() > 0) {
+    if (imageInfos.size() > 0) {
         descWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descWrites[1].dstSet = srmat.descriptor_set;
         descWrites[1].dstBinding = 1;
@@ -981,7 +977,8 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
         descWritesSize++;
     }
 
-    vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0, nullptr);
+    vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0,
+                           nullptr);
 }
 
 /*
@@ -1077,10 +1074,11 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
-    std::queue<SceneTreeHandle> Q;
-    Q.push(scene->root);
+    std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
+    Q.push({scene->root, glm::mat4(1.f)});
     while (not Q.empty()) {
-        SceneTreeHandle visited = Q.front();
+        SceneTreeHandle visited = Q.front().first;
+        accumulated_transform = Q.front().second;
         Q.pop();
 
         SceneTreeNode& stn = st_mg.get(visited);
@@ -1149,7 +1147,7 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
         SceneTreeHandle child = stn.childH;
         while (child) {
-            Q.push(child);
+            Q.push({child, accumulated_transform});
             child = st_mg.get(child).nextH;
         }
     }
