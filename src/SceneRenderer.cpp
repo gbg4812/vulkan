@@ -112,7 +112,7 @@ void SceneRenderer::initResources() {
     createSyncObjects();
 }
 
-void SceneRenderer::addMesh(Mesh& mesh) {
+void SceneRenderer::updateMesh(Mesh& mesh) {
     srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
     srMesh& vkmesh = meshes.get(vkmh);
 
@@ -130,7 +130,7 @@ void SceneRenderer::addMesh(Mesh& mesh) {
     vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
 }
 
-void SceneRenderer::addTexture(Texture& texture) {
+void SceneRenderer::updateTexture(Texture& texture) {
     CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
 
     tex.textureImage = createImage(
@@ -174,7 +174,7 @@ void SceneRenderer::addTexture(Texture& texture) {
                           static_cast<uint32_t>(tex.mipLevels));
 }
 
-void SceneRenderer::addShader(Shader& shader) {
+void SceneRenderer::updateShader(Shader& shader) {
     srShaderHandle shh = shaders.create("srShader::" + shader.getName());
     srShader& sr_sh = shaders.get(shh);
     VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
@@ -257,8 +257,9 @@ void SceneRenderer::addShader(Shader& shader) {
         push_constants, msaaSamples, renderPass);
 }
 
-void SceneRenderer::addMaterial(Material& mat) {
-    srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
+void SceneRenderer::updateMaterial(Material& mat) {
+    if (mat.getFlags() | ResourceFlags::NEW)
+        srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
 
     // TODO: easy to leak memory
     srMaterial& srmt = materials.get(mth);
@@ -288,19 +289,19 @@ void SceneRenderer::processScene() {
     auto& tx_mg = scene->getTextureManager();
 
     for (Mesh& mesh : ms_mg) {
-        addMesh(mesh);
+        updateMesh(mesh);
     }
 
     for (Texture& texture : tx_mg) {
-        addTexture(texture);
+        updateTexture(texture);
     }
 
     for (Shader& sh : sh_mg) {
-        addShader(sh);
+        updateShader(sh);
     }
 
     for (Material& mat : mt_mg) {
-        addMaterial(mat);
+        updateMaterial(mat);
     }
 }
 

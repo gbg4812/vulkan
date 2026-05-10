@@ -191,9 +191,9 @@ class SceneRenderer {
 
     void updateVaryingDescriptorSets(uint32_t currentImage);
 
-    void addMesh(Mesh& mesh);
-    void addShader(Shader& shader);
-    void addMaterial(Material& shader);
-    void addTexture(Texture& texture);
+    void updateMesh(Mesh& mesh);
+    void updateShader(Shader& shader);
+    void updateMaterial(Material& shader);
+    void updateTexture(Texture& texture);
 };
 }  // namespace gbg

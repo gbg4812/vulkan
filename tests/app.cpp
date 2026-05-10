@@ -23,9 +23,6 @@
 #include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 
-const std::string TEXTURE_PATH =
-    "data/textures/plank_texture/raw_plank_wall_diff_1k.png";
-
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -140,12 +137,22 @@ int main(int argc, char* argv[]) {
 
     auto& tx_mg = sc.getTextureManager();
     auto tx_h = tx_mg.create("DiffuseTexture");
+    auto gtx_h = tx_mg.create("StoneTex");
+    auto btx_h = tx_mg.create("WoolTex");
 
-    loadTexture(TEXTURE_PATH, &sc, tx_h);  // loads texture
+    loadTexture("data/textures/plank_texture/raw_plank_wall_diff_1k.png", &sc,
+                tx_h);  // loads texture
+    loadTexture(
+        "data/textures/plaster_stone_wall_02_1k/"
+        "plaster_stone_wall_02_diff_1k.jpg",
+        &sc,
+        gtx_h);  // loads texture
+    loadTexture("data/textures/wool_boucle_1k/wool_boucle_diff_1k.png", &sc,
+                btx_h);  // loads texture
 
     mt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
-    gmt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
-    rmt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
+    gmt.setParameterValue<gbg::TEXTURE_PARM>(texp, gtx_h);
+    rmt.setParameterValue<gbg::TEXTURE_PARM>(texp, btx_h);
 
     // Other entities
     auto& st_mg = sc.getSceneTreeManager();
