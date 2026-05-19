@@ -193,7 +193,7 @@ class SceneRenderer {
 
     void updateMesh(Mesh& mesh);
     void updateShader(Shader& shader);
-    void updateMaterial(Material& shader);
+    void updateMaterial(MaterialHandle math);
     void updateTexture(Texture& texture);
 };
 }  // namespace gbg

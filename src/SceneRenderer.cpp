@@ -26,6 +26,7 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
 #include "macros.hpp"
+#include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "srTexture.hpp"
@@ -113,21 +114,21 @@ void SceneRenderer::initResources() {
 }
 
 void SceneRenderer::updateMesh(Mesh& mesh) {
-    srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
-    srMesh& vkmesh = meshes.get(vkmh);
+        srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
+        srMesh& vkmesh = meshes.get(vkmh);
 
-    for (auto& attr : mesh.getAttributes()) {
-        srAttribute attrib = std::visit<srAttribute>(
-            [&](auto&& arg) -> srAttribute {
-                return srAttribute(device, attr.first, arg.size(),
-                                   (AttributeTypes)attr.second.index(),
-                                   (void*)arg.data());
-            },
-            attr.second);
+        for (auto& attr : mesh.getAttributes()) {
+            srAttribute attrib = std::visit<srAttribute>(
+                [&](auto&& arg) -> srAttribute {
+                    return srAttribute(device, attr.first, arg.size(),
+                                    (AttributeTypes)attr.second.index(),
+                                    (void*)arg.data());
+                },
+                attr.second);
 
-        vkmesh.vertexAttributes.push_back(attrib);
-    }
-    vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
+            vkmesh.vertexAttributes.push_back(attrib);
+        }
+        vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
 }
 
 void SceneRenderer::updateTexture(Texture& texture) {
@@ -257,29 +258,36 @@ void SceneRenderer::updateShader(Shader& shader) {
         push_constants, msaaSamples, renderPass);
 }
 
-void SceneRenderer::updateMaterial(Material& mat) {
-    if (mat.getFlags() | ResourceFlags::NEW)
+void SceneRenderer::updateMaterial(MaterialHandle math) {
+    Material& mat = scene->getMaterialManager().get(math);
+    if (mat.getFlags() & ResourceFlags::NEW)
         srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
 
-    // TODO: easy to leak memory
-    srMaterial& srmt = materials.get(mth);
+    if(mat.getFlags() & (ResourceFlags::NEW | ResourceFlags::DIRTY)  ) {
+        // TODO: easy to leak memory
+        srMaterial& srmt = materials.getRelated(math);
 
-    // we have the data layed out
-    srmt.parameter_values = gbg::allocateParameterValues(mat);
+        // we have the data layed out
+        srParameterValues values = gbg::allocateParameterValues(mat);
 
-    srmt.paramBuffer = gbg::createBuffer(
-        device, srmt.parameter_values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-            VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    void* data;
-    vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
-                srmt.paramBuffer.size, 0, &data);
-    std::memcpy(data, srmt.parameter_values.data, srmt.parameter_values.size);
-    vkUnmapMemory(device.ldevice, srmt.paramBuffer.memory);
+        srmt.paramBuffer = gbg::createBuffer(
+            device, values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        void* data;
+        vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
+                    srmt.paramBuffer.size, 0, &data);
+        std::memcpy(data, values.data, values.size);
+        vkUnmapMemory(device.ldevice, srmt.paramBuffer.memory);
 
-    // create descriptor sets
+        delete values.data;
 
-    createMaterialDescriptorSet(srmt, mat);
+        // create descriptor sets
+        createMaterialDescriptorSet(srmt, mat);
+        updateMaterialDescriptorSet(srmt, mat);
+
+    }
+
 }
 
 void SceneRenderer::processScene() {
@@ -288,20 +296,20 @@ void SceneRenderer::processScene() {
     auto& sh_mg = scene->getShaderManager();
     auto& tx_mg = scene->getTextureManager();
 
-    for (Mesh& mesh : ms_mg) {
-        updateMesh(mesh);
+    for (MeshHandle mesh : ms_mg) {
+        updateMesh(ms_mg.get(mesh));
     }
 
-    for (Texture& texture : tx_mg) {
-        updateTexture(texture);
+    for (TextureHandle texh : tx_mg) {
+        updateTexture(tx_mg.get(texh));
     }
 
-    for (Shader& sh : sh_mg) {
-        updateShader(sh);
+    for (ShaderHandle shh : sh_mg) {
+        updateShader(sh_mg.get(shh));
     }
 
-    for (Material& mat : mt_mg) {
-        updateMaterial(mat);
+    for (MaterialHandle math : mt_mg) {
+        updateMaterial(math);
     }
 }
 

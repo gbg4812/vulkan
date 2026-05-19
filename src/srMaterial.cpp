@@ -86,7 +86,6 @@ void createTextureDescriptors(const vkDevice& device, srMaterial& sr_material,
 }
 
 void destroySrMaterial(const vkDevice& device, const srMaterial& mat) {
-    delete[] mat.parameter_values.data;
     destroyBuffer(device, mat.paramBuffer);
 }
 

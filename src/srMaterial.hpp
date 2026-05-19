@@ -8,8 +8,8 @@
 namespace gbg {
 
 struct srParameterValues {
-    unsigned char* data;
-    size_t size;
+    unsigned char* data = nullptr;
+    size_t size = 0;
 };
 
 struct srMaterial : public Resource {
@@ -18,7 +18,6 @@ struct srMaterial : public Resource {
     VkDescriptorSet descriptor_set;
     std::vector<VkDescriptorSet> texture_descriptors;
     vkBuffer paramBuffer;
-    srParameterValues parameter_values;
 };
 
 struct srMaterialHandle : public ResourceHandle {
