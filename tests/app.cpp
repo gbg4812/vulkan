@@ -1,5 +1,6 @@
 #include <vulkan/vulkan_core.h>
 
+#include "SPIRV-Reflect/spirv_reflect.h"
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -114,6 +115,10 @@ int main(int argc, char* argv[]) {
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
+    SpvReflectShaderModule fragmod;
+    spvReflectCreateShaderModule(sh.getFragShaderCode().size(), sh.getFragShaderCode().data(), &fragmod);
+
+
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
 
@@ -180,6 +185,12 @@ int main(int argc, char* argv[]) {
         .setMaterial(gmth);
 
     renderer.setScene(&sc);
+
+    for (auto mth : mt_mg) {
+        auto& mt = mt_mg.get(mth);
+        mt.unsetFlag(gbg::ResourceFlags::NEW);
+    }
+
     renderer.setActiveCamera(cm_nh);
 
     double time = glfwGetTime();
@@ -217,7 +228,8 @@ int main(int argc, char* argv[]) {
         } else {
             ImGui::BeginGroup();
             int i = 0;
-            for (auto& sn : st_mg) {
+            for (auto snh : st_mg) {
+                auto& sn = st_mg.get(snh);
                 ImGui::PushID(i);
                 ImGui::Text(sn.getName().c_str());
                 ImGui::InputFloat3("Translation", (float*)&sn.translation);
@@ -226,6 +238,20 @@ int main(int argc, char* argv[]) {
                 ImGui::PopID();
                 i++;
             }
+            ImGui::EndGroup();
+
+            ImGui::BeginGroup();
+
+            rmt.unsetFlag(gbg::ResourceFlags::DIRTY);
+
+            static glm::vec3 col;
+            ImGui::ColorPicker3("Pick Cube Material Color", (float*)&col);
+            if(col != rmt.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp))
+            {
+                rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp, col);
+                rmt.setFlags(gbg::ResourceFlags::DIRTY);
+            }
+
             ImGui::EndGroup();
         }
 

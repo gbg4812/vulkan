@@ -7,8 +7,12 @@
     "label": "Debug app",
     "build": {
       "command": "make",
-      "args": ["-j8"],
+      "args": ["-j32"],
       "cwd": "$ZED_WORKTREE_ROOT/build/",
+      "use_new_terminal": true,
+      "shell": {
+        "program": "zsh",
+      },
     },
     "program": "$ZED_WORKTREE_ROOT/build/app",
     "args": ["data/models/EasyModels/scene.obj"],

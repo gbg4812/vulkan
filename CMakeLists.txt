@@ -20,7 +20,7 @@ add_library(${PROJECT_NAME} ${sources})
 target_include_directories(${PROJECT_NAME} PUBLIC src/)
 
 # External dependencies
-find_package(Vulkan REQUIRED)
+find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
 
 if(LOCAL_SEQ)
   fetchcontent_declare(
@@ -48,7 +48,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glm)
 
-
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG master)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -57,7 +56,7 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
+set(LIBS "Vulkan::Vulkan;Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
 

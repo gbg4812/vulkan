@@ -270,10 +270,12 @@ void SceneRenderer::updateMaterial(MaterialHandle math) {
         // we have the data layed out
         srParameterValues values = gbg::allocateParameterValues(mat);
 
-        srmt.paramBuffer = gbg::createBuffer(
-            device, values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if(mat.getFlags() & ResourceFlags::NEW) {
+            srmt.paramBuffer = gbg::createBuffer(
+                device, values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        }
         void* data;
         vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
                     srmt.paramBuffer.size, 0, &data);
@@ -282,11 +284,13 @@ void SceneRenderer::updateMaterial(MaterialHandle math) {
 
         delete values.data;
 
-        // create descriptor sets
-        createMaterialDescriptorSet(srmt, mat);
-        updateMaterialDescriptorSet(srmt, mat);
+        // create descriptor sets if new
+        if(mat.getFlags() & ResourceFlags::NEW)
+            createMaterialDescriptorSet(srmt, mat);
 
+        updateMaterialDescriptorSet(srmt, mat);
     }
+
 
 }
 
@@ -330,20 +334,22 @@ void SceneRenderer::cleanup() {
 
     vkDestroySampler(device.ldevice, textureSampler, nullptr);
 
+
+
     for (const auto& shader : shaders) {
-        destroySrShader(device, shader);
+        destroySrShader(device, shaders.get(shader));
     }
 
     for (const auto& material : materials) {
-        destroySrMaterial(device, material);
+        destroySrMaterial(device, materials.get(material));
     }
 
     for (const auto& texture : textures) {
-        destroySrTexture(device, texture);
+        destroySrTexture(device, textures.get(texture));
     }
 
     for (const auto& mesh : meshes) {
-        destroyMesh(device, mesh);
+        destroyMesh(device, meshes.get(mesh));
     }
 
     vkDestroyDescriptorPool(device.ldevice, materialDescPool, nullptr);
@@ -920,6 +926,66 @@ void SceneRenderer::createGlobalDescriptorSets() {
     }
 }
 
+void SceneRenderer::updateMaterialDescriptorSet(srMaterial& srmat,
+    Material& mat) {
+            // no volem cap frame dibuixant-se
+            if(not inFlightFences.empty())
+                vkWaitForFences(device.ldevice, inFlightFences.size(), inFlightFences.data(), VK_TRUE,UINT64_MAX);
+
+            std::array<VkWriteDescriptorSet, 2> descWrites = {};
+            uint32_t descWritesSize = 1;
+
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = srmat.paramBuffer.buffer;
+            bufferInfo.offset = 0;
+            bufferInfo.range = VK_WHOLE_SIZE;
+
+            descWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descWrites[0].dstSet = srmat.descriptor_set;
+            descWrites[0].dstBinding = 0;
+            descWrites[0].dstArrayElement = 0;
+            descWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descWrites[0].descriptorCount = 1;
+            descWrites[0].pImageInfo = nullptr;
+            // Only needed for other types of descriptors
+            descWrites[0].pTexelBufferView = nullptr;
+            descWrites[0].pBufferInfo = &bufferInfo;
+
+            std::vector<VkDescriptorImageInfo> imageInfos;
+
+            // fun range stuff!
+            for (const parm_vt& val : mat.getValues()) {
+                if (auto th = std::get_if<TextureHandle>(&val)) {
+                    VkDescriptorImageInfo imageInfo{};
+                    imageInfo.sampler = textureSampler;
+                    imageInfo.imageView =
+                        textures.getRelated(*th).textureImage.view.value();
+                    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    imageInfos.push_back(imageInfo);
+                }
+            }
+
+            if (imageInfos.size() > 0) {
+                descWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descWrites[1].dstSet = srmat.descriptor_set;
+                descWrites[1].dstBinding = 1;
+                descWrites[1].dstArrayElement = 0;
+                descWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+                descWrites[1].descriptorCount =
+                    static_cast<uint32_t>(imageInfos.size());
+                descWrites[1].pImageInfo = imageInfos.data();
+                // Only needed for other types of textureDescriptors
+                descWrites[1].pTexelBufferView = nullptr;
+                descWrites[1].pBufferInfo = nullptr;
+
+                descWritesSize++;
+            }
+
+            vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0,
+                                   nullptr);
+
+}
+
 void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
                                                 Material& mat) {
     ShaderHandle shh = mat.getShaderHandle();
@@ -937,57 +1003,6 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
         throw std::runtime_error("failed to create descriptor sets");
     }
 
-    std::array<VkWriteDescriptorSet, 2> descWrites = {};
-    uint32_t descWritesSize = 1;
-
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = srmat.paramBuffer.buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = VK_WHOLE_SIZE;
-
-    descWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descWrites[0].dstSet = srmat.descriptor_set;
-    descWrites[0].dstBinding = 0;
-    descWrites[0].dstArrayElement = 0;
-    descWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descWrites[0].descriptorCount = 1;
-    descWrites[0].pImageInfo = nullptr;
-    // Only needed for other types of descriptors
-    descWrites[0].pTexelBufferView = nullptr;
-    descWrites[0].pBufferInfo = &bufferInfo;
-
-    std::vector<VkDescriptorImageInfo> imageInfos;
-
-    // fun range stuff!
-    for (const parm_vt& val : mat.getValues()) {
-        if (auto th = std::get_if<TextureHandle>(&val)) {
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.sampler = textureSampler;
-            imageInfo.imageView =
-                textures.getRelated(*th).textureImage.view.value();
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfos.push_back(imageInfo);
-        }
-    }
-
-    if (imageInfos.size() > 0) {
-        descWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descWrites[1].dstSet = srmat.descriptor_set;
-        descWrites[1].dstBinding = 1;
-        descWrites[1].dstArrayElement = 0;
-        descWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        descWrites[1].descriptorCount =
-            static_cast<uint32_t>(imageInfos.size());
-        descWrites[1].pImageInfo = imageInfos.data();
-        // Only needed for other types of textureDescriptors
-        descWrites[1].pTexelBufferView = nullptr;
-        descWrites[1].pBufferInfo = nullptr;
-
-        descWritesSize++;
-    }
-
-    vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0,
-                           nullptr);
 }
 
 /*
@@ -1263,6 +1278,11 @@ void SceneRenderer::drawFrame() {
         throw std::runtime_error("failed to recreate swapchain image!");
     }
 
+    auto& mt_mg = scene->getMaterialManager();
+    for (MaterialHandle math : mt_mg) {
+        updateMaterial(math);
+    }
+
     updateVaryingDescriptorSets(currentFrame);
 
     // Only reset fence if we know that work is going to be submitted
@@ -1301,7 +1321,7 @@ void SceneRenderer::drawFrame() {
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
+    presentInfo.pWaitSemaphores = signalSemaphores; // esperem que acabi el render
 
     VkSwapchainKHR swapChains[] = {swapChain.swapChain};
     presentInfo.swapchainCount = 1;

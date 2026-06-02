@@ -177,6 +177,7 @@ class SceneRenderer {
     void createGlobalDescriptorSets();
 
     void createMaterialDescriptorSet(srMaterial& srmat, Material& mat);
+    void updateMaterialDescriptorSet(srMaterial& srmat, Material& mat);
 
     void createModelDescriptorSets();
 
