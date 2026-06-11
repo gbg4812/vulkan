@@ -22,6 +22,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC src/)
 # External dependencies
 find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
 
+find_library(SPIRV_REFLECT_LIB
+    NAMES spirv-reflect-static spirv_reflect
+    PATHS "$ENV{VULKAN_SDK}/lib"
+)
+
 if(LOCAL_SEQ)
   fetchcontent_declare(
   sceneeq
@@ -56,9 +61,10 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
+set(LIBS "Vulkan::Vulkan;${SPIRV_REFLECT_LIB};Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
+
 
 ###########
 # Testing #
