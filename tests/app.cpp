@@ -110,7 +110,6 @@ int main(int argc, char* argv[]) {
 
     gbg::initShader(shh, sc);
 
-    size_t texp = sh.addParameter(gbg::ParameterTypes::TEXTURE_PARM);
 
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
@@ -141,9 +140,9 @@ int main(int argc, char* argv[]) {
     loadTexture("data/textures/wool_boucle_1k/wool_boucle_diff_1k.png", &sc,
                 btx_h);  // loads texture
 
-    mt.setParameterValue<gbg::TEXTURE_PARM>(texp, tx_h);
-    gmt.setParameterValue<gbg::TEXTURE_PARM>(texp, gtx_h);
-    rmt.setParameterValue<gbg::TEXTURE_PARM>(texp, btx_h);
+    mt.setParameterValue<gbg::TEXTURE_PARM>(2, tx_h);
+    gmt.setParameterValue<gbg::TEXTURE_PARM>(2, gtx_h);
+    rmt.setParameterValue<gbg::TEXTURE_PARM>(2, btx_h);
 
     // Other entities
     auto& st_mg = sc.getSceneTreeManager();
@@ -217,26 +216,32 @@ int main(int argc, char* argv[]) {
             for (auto snh : st_mg) {
                 auto& sn = st_mg.get(snh);
                 ImGui::PushID(i);
-                ImGui::Text(sn.getName().c_str());
-                ImGui::InputFloat3("Translation", (float*)&sn.translation);
-                ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
-                ImGui::InputFloat3("Scale", (float*)&sn.scale);
+                if(ImGui::CollapsingHeader(sn.getName().c_str())) {
+                    ImGui::InputFloat3("Translation", (float*)&sn.translation);
+                    ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
+                    ImGui::InputFloat3("Scale", (float*)&sn.scale);
+                }
                 ImGui::PopID();
                 i++;
             }
-            ImGui::EndGroup();
 
-            ImGui::BeginGroup();
+            i = 0;
+            for (auto math : mt_mg) {
+                ImGui::PushID(i);
+                auto& mat =  mt_mg.get(math);
+                if(ImGui::CollapsingHeader(mat.getName().c_str())) {
+                    mat.unsetFlag(gbg::ResourceFlags::DIRTY);
 
-            rmt.unsetFlag(gbg::ResourceFlags::DIRTY);
-
-            static glm::vec3 col;
-            ImGui::ColorPicker3("Pick Cube Material Color", (float*)&col);
-            if (col !=
-                rmt.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(0)) {
-                rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(0, col);
-                rmt.setFlags(gbg::ResourceFlags::DIRTY);
+                    glm::vec3 col = mat.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(0);
+                    if(ImGui::ColorPicker3("Material Color", (float*)&col)){
+                        mat.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(0, col);
+                        mat.setFlags(gbg::ResourceFlags::DIRTY);
+                    }
+                }
+                ImGui::PopID();
+                i++;
             }
+
 
             ImGui::EndGroup();
         }
