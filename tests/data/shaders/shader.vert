@@ -11,6 +11,7 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
 
 layout(set = 1, binding = 0) uniform MatParms {
     vec3 color;
+    float intensity;
 };
 
 layout(location = 0) in vec3 inPosition;
@@ -26,6 +27,6 @@ void main() {
     // proj matrix aplies perspective deformation
     gl_Position = ubo.proj * ubo.view * model * vec4(inPosition, 1.0);
     //gl_Position = vec4(inPosition, 1.0);
-    fragColor = color;
+    fragColor = color * intensity;
     fragTexCoord = inTexCoord;
 }

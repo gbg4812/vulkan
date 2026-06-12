@@ -1,6 +1,5 @@
 #include <vulkan/vulkan_core.h>
 
-#include "SPIRV-Reflect/spirv_reflect.h"
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -23,6 +22,7 @@
 #include "imgui.h"
 #include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
+#include "shaderReflexion.hpp"
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -105,19 +105,12 @@ int main(int argc, char* argv[]) {
     gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
     gbg::Shader& sh = sh_mg.get(shh);
 
-    size_t colorp = sh.addParameter(gbg::ParameterTypes::VEC3_PARM);  // color
-    size_t texp = sh.addParameter(gbg::TEXTURE_PARM);                 // texture
-
-    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
-    sh.addAttribute(1, gbg::AttributeTypes::VEC3_ATTR);  // normal
-    sh.addAttribute(2, gbg::AttributeTypes::VEC2_ATTR);  // texture
-
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
-    SpvReflectShaderModule fragmod;
-    spvReflectCreateShaderModule(sh.getFragShaderCode().size(), sh.getFragShaderCode().data(), &fragmod);
+    gbg::initShader(shh, sc);
 
+    size_t texp = sh.addParameter(gbg::ParameterTypes::TEXTURE_PARM);
 
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
@@ -132,13 +125,6 @@ int main(int argc, char* argv[]) {
     mt.setShader(shh, sh);
     gmt.setShader(shh, sh);
     rmt.setShader(shh, sh);
-
-    mt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
-        colorp, glm::vec3(0.0f, 0.0f, 1.0f));
-    gmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
-        colorp, glm::vec3(0.0f, 1.0f, .0f));
-    rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
-        colorp, glm::vec3(1.0f, 0.0f, 0.0f));
 
     auto& tx_mg = sc.getTextureManager();
     auto tx_h = tx_mg.create("DiffuseTexture");
@@ -246,9 +232,9 @@ int main(int argc, char* argv[]) {
 
             static glm::vec3 col;
             ImGui::ColorPicker3("Pick Cube Material Color", (float*)&col);
-            if(col != rmt.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp))
-            {
-                rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(colorp, col);
+            if (col !=
+                rmt.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(0)) {
+                rmt.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(0, col);
                 rmt.setFlags(gbg::ResourceFlags::DIRTY);
             }
 
