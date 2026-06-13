@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "Light.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -1161,7 +1162,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                 },
                 [&](const std::monostate& empty) {
 
-                }},
+                },
+                [&](const LightHandle& empty) {}},
+
             handle);
 
         SceneTreeHandle child = stn.childH;

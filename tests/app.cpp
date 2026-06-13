@@ -3,14 +3,18 @@
 #include <iostream>
 #include <memory>
 #include <ostream>
+#include <ranges>
 #include <span>
+#include <variant>
 
 #include "GlfwCreateRendererContext.hpp"
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
+#include "Texture.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
+#include "traits/traits.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
 #include "Mesh.hpp"
@@ -102,14 +106,13 @@ int main(int argc, char* argv[]) {
     auto& sh_mg = sc.getShaderManager();
 
     // Shader Creation
-    gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
+    gbg::ShaderHandle shh = sh_mg.create("DefaultShader");
     gbg::Shader& sh = sh_mg.get(shh);
 
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
 
     gbg::initShader(shh, sc);
-
 
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
@@ -120,10 +123,6 @@ int main(int argc, char* argv[]) {
     gbg::Material& mt = mt_mg.get(mth);
     gbg::Material& gmt = mt_mg.get(gmth);
     gbg::Material& rmt = mt_mg.get(rmth);
-
-    mt.setShader(shh, sh);
-    gmt.setShader(shh, sh);
-    rmt.setShader(shh, sh);
 
     auto& tx_mg = sc.getTextureManager();
     auto tx_h = tx_mg.create("DiffuseTexture");
@@ -140,9 +139,9 @@ int main(int argc, char* argv[]) {
     loadTexture("data/textures/wool_boucle_1k/wool_boucle_diff_1k.png", &sc,
                 btx_h);  // loads texture
 
-    mt.setParameterValue<gbg::TEXTURE_PARM>(2, tx_h);
-    gmt.setParameterValue<gbg::TEXTURE_PARM>(2, gtx_h);
-    rmt.setParameterValue<gbg::TEXTURE_PARM>(2, btx_h);
+    mt.setShader(shh, sh, tx_h);
+    gmt.setShader(shh, sh, tx_h);
+    rmt.setShader(shh, sh, tx_h);
 
     // Other entities
     auto& st_mg = sc.getSceneTreeManager();
@@ -158,16 +157,6 @@ int main(int argc, char* argv[]) {
     std::cout << arguments[1] << std::endl;
 
     gbg::objLoader(arguments[1], &sc, sc.root, mth);
-
-    sc.getModelManager()
-        .get(st_mg.get(st_mg.get(sc.root).childH)
-                 .getResourceH<gbg::SceneObjectTypes::MODEL>())
-        .setMaterial(rmth);
-
-    sc.getModelManager()
-        .get(st_mg.get(st_mg.get(st_mg.get(sc.root).childH).nextH)
-                 .getResourceH<gbg::SceneObjectTypes::MODEL>())
-        .setMaterial(gmth);
 
     renderer.setScene(&sc);
 
@@ -212,36 +201,85 @@ int main(int argc, char* argv[]) {
             }
         } else {
             ImGui::BeginGroup();
-            int i = 0;
             for (auto snh : st_mg) {
                 auto& sn = st_mg.get(snh);
-                ImGui::PushID(i);
-                if(ImGui::CollapsingHeader(sn.getName().c_str())) {
+                if (ImGui::CollapsingHeader(sn.getName().c_str())) {
                     ImGui::InputFloat3("Translation", (float*)&sn.translation);
                     ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
                     ImGui::InputFloat3("Scale", (float*)&sn.scale);
+
+                    std::visit(
+                        gbg::overloads{
+                            [&](gbg::ModelHandle handle) {
+                                gbg::Model& model = sc.md_mg.get(handle);
+                                if (ImGui::BeginCombo(
+                                        "Material",
+                                        mt_mg.get(model.getMaterial())
+                                            .getName()
+                                            .c_str())) {
+                                    for (auto mth : mt_mg) {
+                                        bool selected =
+                                            model.getMaterial() == mth;
+                                        if (ImGui::Selectable(mt_mg.get(mth)
+                                                                  .getName()
+                                                                  .c_str(),
+                                                              selected)) {
+                                            model.setMaterial(mth);
+                                        }
+                                    }
+                                    ImGui::EndCombo();
+                                }
+                            },
+                            [&](auto&& def) {
+
+                            },
+                        },
+                        sn.getResourceH());
                 }
-                ImGui::PopID();
-                i++;
             }
 
-            i = 0;
+            int i = 0;
             for (auto math : mt_mg) {
-                ImGui::PushID(i);
-                auto& mat =  mt_mg.get(math);
-                if(ImGui::CollapsingHeader(mat.getName().c_str())) {
+                auto& mat = mt_mg.get(math);
+                if (ImGui::CollapsingHeader(mat.getName().c_str())) {
                     mat.unsetFlag(gbg::ResourceFlags::DIRTY);
 
-                    glm::vec3 col = mat.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(0);
-                    if(ImGui::ColorPicker3("Material Color", (float*)&col)){
-                        mat.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(0, col);
+                    glm::vec3 col =
+                        mat.getParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+                            0);
+                    if (ImGui::ColorPicker3("Material Color", (float*)&col)) {
+                        mat.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(
+                            0, col);
                         mat.setFlags(gbg::ResourceFlags::DIRTY);
                     }
+
+                    for (auto [num, value] :
+                         mat.getValues() | std::views::enumerate) {
+                        if (const gbg::TextureHandle* h =
+                                std::get_if<gbg::TextureHandle>(&value)) {
+                            auto& tex = tx_mg.get(*h);
+                            if (ImGui::BeginCombo(
+                                    ("Texture" + std::to_string(num - 1))
+                                        .c_str(),
+                                    tex.getName().c_str())) {
+                                // for every texture
+                                for (auto texh : tx_mg) {
+                                    auto& tex2 = tx_mg.get(texh);
+                                    if (ImGui::Selectable(
+                                            tex2.getName().c_str())) {
+                                        mat.setParameterValue<
+                                            gbg::ParameterTypes::TEXTURE_PARM>(
+                                            num, texh);
+                                        mat.setFlags(gbg::ResourceFlags::DIRTY);
+                                    }
+                                }
+                                ImGui::EndCombo();
+                            }
+                        }
+                    }
                 }
-                ImGui::PopID();
                 i++;
             }
-
 
             ImGui::EndGroup();
         }
