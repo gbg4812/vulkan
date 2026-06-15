@@ -4,3 +4,5 @@ release-build/
 .cache/
 
 *.vpp.bak*
+
+__cmake_systeminformation/
