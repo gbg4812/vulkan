@@ -208,7 +208,8 @@ int main(int argc, char* argv[]) {
             if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
                 offset.x += 2.0f * delta;
             }
-        } else {
+        }
+        else {
             ImGui::BeginGroup();
             for (auto snh : st_mg) {
                 auto& sn = st_mg.get(snh);

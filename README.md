@@ -15,89 +15,126 @@ It uses my other library
 [SceneEquipament](https://github.com/gbg4812/SceneEquipament.git) scene input to
 render.
 
+## Screenshots
+![image](LittleLightingSS.png)
+
 ## To build
 
 ### Prerequisits
 
-- The vulkan sdk.
+- The vulkan sdk
+- Network Connection
 
 ```bash
 cmake -B build
 cmake --build build
-
 ```
 
 ## Code Example
-
 ```cpp
-#include <iostream>
-#include <memory>
-#include <print>
-
-#include "Mesh.hpp"
-#include "Scene.hpp"
-#include "SceneRenderer.hpp"
-#include "SceneTree.hpp"
-#include "Shader.hpp"
-#include "loaders/objLoader.hpp"
-
-const std::string MODEL_PATH = "./data/models/EasyModels/scene.obj";
-const std::string TEXTURE_PATH =
-    "./data/models/pony-cartoon/textures/Body_dDo_d_orange.jpeg";
-
 int main(int argc, char* argv[]) {
-    std::span arguments(argv, argc);
+    ...
+    
+    GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
+    glfwMaximizeWindow(window);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    if (arguments.size() < 2) {
-        std::println("Usage: app obj-file-name");
-        exit(1);
-    }
+    gbg::RendererContext context = gbg::glfwCreateRendererContext(
+        window, gbg::validationLayers, enableValidationLayers,
+        gbg::deviceExtensions);
 
-    // Scene creation
-    const auto& scene = std::make_shared<gbg::Scene>();
+    gbg::SceneRenderer renderer(context);
 
-    auto sc = std::make_shared<gbg::Scene>();
-    auto st = std::make_shared<gbg::SceneTree>();
+    ...
 
-    auto& mt_mg = sc->getMaterialManager();
-    auto& sh_mg = sc->getShaderManager();
+    // Main Scene
+    gbg::Scene sc;
+    
+    // Shader Creation
+    auto& sh_mg = sc.getShaderManager();
+    gbg::ShaderHandle shh = sh_mg.create("DefaultShader");
+    gbg::Shader& sh = sh_mg.get(shh);
+
+    sh.loadVertShaderCode("./data/shaders/vert.spv");
+    sh.loadFragShaderCode("./data/shaders/frag.spv");
+
+    // Shader Reflexion
+    gbg::initShader(shh, sc);
+
+    // Material Creation
+    auto& mt_mg = sc.getMaterialManager();
 
     gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
     gbg::Material& mt = mt_mg.get(mth);
 
-    gbg::ShaderHandle shh = sh_mg.create("DiffuseShader");
-    gbg::Shader& sh = sh_mg.get(shh);
-    sh.addParameter(gbg::ParameterTypes::VEC3_PARM);     // color
-    sh.addAttribute(0, gbg::AttributeTypes::VEC3_ATTR);  // pos
-    //
-    sh.loadVertShaderCode("./data/shaders/vert.spv");
-    sh.loadFragShaderCode("./data/shaders/frag.spv");
+    // Load Texutre
+    auto& tx_mg = sc.getTextureManager();
+    auto tx_h = tx_mg.create("PlankTexture");
+    loadTexture("data/textures/plank_texture/raw_plank_wall_diff_1k.png", &sc,
+                tx_h);  // loads texture
 
-    mt.setShader(shh, sh);
+    // Assign shader to material
+    mt.setShader(shh, sh, tx_h);
 
-    gbg::objLoader(arguments[1], sc.get(), st.get(), mth);
+    // Other important things
+    auto& st_mg = sc.getSceneTreeManager();
+    auto& cm_mg = sc.getCameraManager();
+    gbg::CameraHandle camh = cm_mg.create("Camera");
+    gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
 
-    // Creates the renderer and assigns the scene
-    gbg::SceneRenderer renderer;
-    renderer.setScene(sc, st);
-    renderer.init();
+    st_mg.get(cm_nh).translation += glm::vec3{0.0f, 0.0f, 10.0f};
 
-    try {
-        renderer.run();
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
+    st_mg.get(cm_nh).setResource(camh);
+    st_mg.prependChild(sc.root, cm_nh);
 
+    // Load model
+    gbg::objLoader(arguments[1], &sc, sc.root, mth);
+
+    // Set the active scene
+    renderer.setScene(&sc);
+
+    ...
+
+    renderer.setActiveCamera(cm_nh);
+
+    ...
+
+    while (!glfwWindowShouldClose(window)) {
+        glfwPollEvents();
+
+        ...
+
+        gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
+        glm::vec3 offset{};
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            offset.z += -2.0f * delta;
+        }
+        ...
+
+        cam_node.localTranslate(offset);
+
+        ...
+
+        // Draw commands and updating 
+        renderer.drawFrame();
+
+        ...
+
+    }  // end loop
+    renderer.cleanup();
+    
+    ...
     return EXIT_SUCCESS;
 }
+
 ```
+
 
 ## Organitzation
 
-Directories:
+### Directories:
 
-- src/ where all the source code is.
-- src/external repositoris of external dependencies like stb_image.
-- src/vk_utils vulkan utility functions and structures (my be some day I will
+- **src/** where all the source code is.
+- **src/external** repositoris of external dependencies like stb_image.
+- **src/vk_utils** vulkan utility functions and structures (my be some day I will
   separate them into their own library).
