@@ -1,6 +1,6 @@
 #include <iostream>
-#include <ranges>
 #include <map>
+#include <ranges>
 #include <stdexcept>
 
 #include "Mesh.hpp"
@@ -10,9 +10,9 @@
 
 namespace gbg {
 
-inline void processShaderModule(const SpvReflectShaderModule& shmod, Shader& shader) {
-
-    if(shmod.shader_stage & SPV_REFLECT_SHADER_STAGE_VERTEX_BIT) {
+inline void processShaderModule(const SpvReflectShaderModule& shmod,
+                                Shader& shader) {
+    if (shmod.shader_stage & SPV_REFLECT_SHADER_STAGE_VERTEX_BIT) {
         uint32_t count;
         spvReflectEnumerateInputVariables(&shmod, &count, nullptr);
         std::vector<SpvReflectInterfaceVariable*> ivars(count);
@@ -31,10 +31,12 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod, Shader& sha
         }
     }
 
-    auto nontex = std::views::filter([](ParameterTypes p){ return p != TEXTURE_PARM; });
-    auto tex = std::views::filter([](ParameterTypes p){ return p == TEXTURE_PARM; });
+    auto nontex =
+        std::views::filter([](ParameterTypes p) { return p != TEXTURE_PARM; });
+    auto tex =
+        std::views::filter([](ParameterTypes p) { return p == TEXTURE_PARM; });
 
-    if((shader.getParameters() | nontex).empty()) {
+    if ((shader.getParameters() | nontex).empty()) {
         SpvReflectResult res;
         const SpvReflectDescriptorBinding* bind_matparm =
             spvReflectGetDescriptorBinding(&shmod, 0, 1, &res);
@@ -42,7 +44,6 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod, Shader& sha
             bind_matparm->block.members, bind_matparm->block.member_count);
 
         for (SpvReflectBlockVariable& var : variables) {
-            std::cout << var.name << std::endl;
             SpvReflectTypeFlags flags = var.type_description->type_flags;
             if (flags & SPV_REFLECT_TYPE_FLAG_VECTOR) {
                 if (flags & SPV_REFLECT_TYPE_FLAG_FLOAT) {
@@ -62,19 +63,19 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod, Shader& sha
                 }
             }
         }
-    } // process non texture parms
+    }  // process non texture parms
 
     {
         SpvReflectResult res;
         const SpvReflectDescriptorBinding* bind_matparm =
             spvReflectGetDescriptorBinding(&shmod, 1, 1, &res);
 
-        if (res == SPV_REFLECT_RESULT_SUCCESS and bind_matparm->descriptor_type == SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+        if (res == SPV_REFLECT_RESULT_SUCCESS and
+            bind_matparm->descriptor_type ==
+                SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
             shader.addParameter(ParameterTypes::TEXTURE_PARM);
         }
-
     }
-
 }
 
 inline void initShader(ShaderHandle shh, Scene& scene) {
@@ -89,7 +90,6 @@ inline void initShader(ShaderHandle shh, Scene& scene) {
 
     processShaderModule(vtmod, shader);
     processShaderModule(fgmod, shader);
-
 }
 
 }  // namespace gbg

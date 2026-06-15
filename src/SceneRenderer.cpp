@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <client/TracyScoped.hpp>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -31,6 +32,7 @@
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "srTexture.hpp"
+#include "tracy/Tracy.hpp"
 #include "traits/traits.hpp"
 #include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
@@ -176,90 +178,102 @@ void SceneRenderer::updateTexture(Texture& texture) {
                           static_cast<uint32_t>(tex.mipLevels));
 }
 
-void SceneRenderer::updateShader(Shader& shader) {
-    srShaderHandle shh = shaders.create("srShader::" + shader.getName());
-    srShader& sr_sh = shaders.get(shh);
-    VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
-    matParmsLayoutBinding.binding = 0;
-    matParmsLayoutBinding.descriptorCount = 1;
-    matParmsLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    matParmsLayoutBinding.pImmutableSamplers = nullptr;
-    matParmsLayoutBinding.stageFlags =
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+void SceneRenderer::updateShader(ShaderHandle sh_h) {
+    Shader& shader = scene->sh_mg.get(sh_h);
+    uint32_t flags = shader.getFlags();
+    if (flags & ResourceFlags::NEW)
+        srShaderHandle shh = shaders.create("srShader::" + shader.getName());
+    srShader& sr_sh = shaders.getRelated(sh_h);
 
-    std::vector<VkDescriptorSetLayoutBinding> materialBindings = {
-        matParmsLayoutBinding};
-
-    auto texFilter = [](ParameterTypes p) {
-        return p == ParameterTypes::TEXTURE_PARM;
-    };
-
-    size_t count = 1;
-    // creates a binding for each texture
-    for (ParameterTypes p :
-         shader.getParameters() | std::ranges::views::filter(texFilter)) {
-        VkDescriptorSetLayoutBinding texBinding{};
-        texBinding.binding = count++;
-        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        texBinding.stageFlags =
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        texBinding.descriptorCount = 1;
-        texBinding.pImmutableSamplers = nullptr;
-        materialBindings.push_back(texBinding);
-    }
-
-    VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
-    materialLayoutInfo.sType =
-        VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    materialLayoutInfo.bindingCount =
-        static_cast<uint32_t>(materialBindings.size());
-    materialLayoutInfo.pBindings = materialBindings.data();
-
-    if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
-                                    nullptr, &sr_sh.layout) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor set layout!");
-    }
-
-    std::vector<VkDescriptorSetLayout> desc_sets_layouts = {
-        globalDescriptorSetLayout, sr_sh.layout};
-
-    LOG("Adding input bindings...")
-
-    std::vector<VkVertexInputBindingDescription> bindingDescriptions;
-    std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
-    // TODO: make them a parameter.
-    for (const auto& type : shader.getAttributes()) {
-        vkVertexInputDescription desc;
-        switch (type.second) {
-            case FLOAT_ATTR:
-                desc = getVertexFloatInputDescription(type.first);
-                break;
-            case VEC2_ATTR:
-                desc = getVertexVector2InputDescription(type.first);
-                break;
-            case VEC3_ATTR:
-                desc = getVertexVector3InputDescription(type.first);
-                break;
+    if (flags & (ResourceFlags::NEW | ResourceFlags::DIRTY)) {
+        if (flags & ResourceFlags::DIRTY) {
+            vkDestroyDescriptorSetLayout(device.ldevice, sr_sh.layout, nullptr);
+            vkDestroyPipeline(device.ldevice, sr_sh.pipeline.pipeline, nullptr);
+            vkDestroyPipelineLayout(device.ldevice, sr_sh.pipeline.layout,
+                                    nullptr);
         }
-        bindingDescriptions.push_back(desc.binding_desc);
-        attributeDescriptions.push_back(desc.attrib_desc);
+        VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
+        matParmsLayoutBinding.binding = 0;
+        matParmsLayoutBinding.descriptorCount = 1;
+        matParmsLayoutBinding.descriptorType =
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        matParmsLayoutBinding.pImmutableSamplers = nullptr;
+        matParmsLayoutBinding.stageFlags =
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+        std::vector<VkDescriptorSetLayoutBinding> materialBindings = {
+            matParmsLayoutBinding};
+
+        auto texFilter = [](ParameterTypes p) {
+            return p == ParameterTypes::TEXTURE_PARM;
+        };
+
+        size_t count = 1;
+        // creates a binding for each texture
+        for (ParameterTypes p :
+             shader.getParameters() | std::ranges::views::filter(texFilter)) {
+            VkDescriptorSetLayoutBinding texBinding{};
+            texBinding.binding = count++;
+            texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            texBinding.stageFlags =
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            texBinding.descriptorCount = 1;
+            texBinding.pImmutableSamplers = nullptr;
+            materialBindings.push_back(texBinding);
+        }
+
+        VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
+        materialLayoutInfo.sType =
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        materialLayoutInfo.bindingCount =
+            static_cast<uint32_t>(materialBindings.size());
+        materialLayoutInfo.pBindings = materialBindings.data();
+
+        if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
+                                        nullptr, &sr_sh.layout) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+
+        std::vector<VkDescriptorSetLayout> desc_sets_layouts = {
+            globalDescriptorSetLayout, sr_sh.layout};
+
+        std::vector<VkVertexInputBindingDescription> bindingDescriptions;
+        std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
+        // TODO: make them a parameter.
+        for (const auto& type : shader.getAttributes()) {
+            vkVertexInputDescription desc;
+            switch (type.second) {
+                case FLOAT_ATTR:
+                    desc = getVertexFloatInputDescription(type.first);
+                    break;
+                case VEC2_ATTR:
+                    desc = getVertexVector2InputDescription(type.first);
+                    break;
+                case VEC3_ATTR:
+                    desc = getVertexVector3InputDescription(type.first);
+                    break;
+            }
+            bindingDescriptions.push_back(desc.binding_desc);
+            attributeDescriptions.push_back(desc.attrib_desc);
+        }
+
+        // for the model matrix
+        VkPushConstantRange mdl_rg{};
+        mdl_rg.offset = 0;
+        mdl_rg.size = sizeof(PerObjectPushConstant);
+        mdl_rg.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        std::vector<VkPushConstantRange> push_constants = {mdl_rg};
+
+        sr_sh.pipeline = createGraphicsPipeline(
+            device, shader.getVertShaderCode(), shader.getFragShaderCode(),
+            desc_sets_layouts, bindingDescriptions, attributeDescriptions,
+            push_constants, msaaSamples, renderPass);
     }
-
-    // for the model matrix
-    VkPushConstantRange mdl_rg{};
-    mdl_rg.offset = 0;
-    mdl_rg.size = sizeof(PerObjectPushConstant);
-    mdl_rg.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    std::vector<VkPushConstantRange> push_constants = {mdl_rg};
-
-    sr_sh.pipeline = createGraphicsPipeline(
-        device, shader.getVertShaderCode(), shader.getFragShaderCode(),
-        desc_sets_layouts, bindingDescriptions, attributeDescriptions,
-        push_constants, msaaSamples, renderPass);
 }
 
 void SceneRenderer::updateMaterial(MaterialHandle math) {
+    ZoneScoped;
     Material& mat = scene->getMaterialManager().get(math);
     if (mat.getFlags() & ResourceFlags::NEW)
         srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
@@ -308,7 +322,7 @@ void SceneRenderer::processScene() {
     }
 
     for (ShaderHandle shh : sh_mg) {
-        updateShader(sh_mg.get(shh));
+        updateShader(shh);
     }
 
     for (MaterialHandle math : mt_mg) {
@@ -417,6 +431,7 @@ void SceneRenderer::resizeSwapchain(uint32_t width, uint32_t height) {
 }
 
 void SceneRenderer::recreateSwapChain() {
+    ZoneScoped;
     vkDeviceWaitIdle(device.ldevice);
 
     cleanupSwapChain();
@@ -1048,6 +1063,7 @@ void SceneRenderer::createCommandBuffer() {
 
 void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                         uint32_t imageIndex) {
+    ZoneScoped;
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = 0;
@@ -1260,28 +1276,40 @@ void SceneRenderer::updateVaryingDescriptorSets(uint32_t currentImage) {
 }
 
 void SceneRenderer::drawFrame() {
+    ZoneScoped;
     // esperem que s'hagi acabat de renderitzar l'últim frame concurrent amb
     // el que toca renderitzar (els si els altres no han acabat no importa)
-    vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame], VK_TRUE,
-                    UINT64_MAX);
+    {
+        ZoneScopedN("Wait for Image");
+        vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame],
+                        VK_TRUE, UINT64_MAX);
+    }
 
     uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(
-        device.ldevice, swapChain.swapChain, UINT64_MAX,
-        imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        recreateSwapChain();
-        return;
-    } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
-        throw std::runtime_error("failed to recreate swapchain image!");
-    }
+    {
+        ZoneScopedN("Update GPU Resources");
+        VkResult result = vkAcquireNextImageKHR(
+            device.ldevice, swapChain.swapChain, UINT64_MAX,
+            imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE,
+            &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
+            return;
+        } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("failed to recreate swapchain image!");
+        }
 
-    auto& mt_mg = scene->getMaterialManager();
-    for (MaterialHandle math : mt_mg) {
-        updateMaterial(math);
-    }
+        for (ShaderHandle shh : scene->sh_mg) {
+            updateShader(shh);
+        }
 
-    updateVaryingDescriptorSets(currentFrame);
+        auto& mt_mg = scene->getMaterialManager();
+        for (MaterialHandle math : mt_mg) {
+            updateMaterial(math);
+        }
+
+        updateVaryingDescriptorSets(currentFrame);
+    }
 
     // Only reset fence if we know that work is going to be submitted
     // Per tal que es pugui fer submit work
@@ -1310,32 +1338,38 @@ void SceneRenderer::drawFrame() {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(device.gqueue, 1, &submitInfo,
-                      inFlightFences[currentFrame]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to submit draw command buffer!");
+    {
+        ZoneScopedN("Submit");
+        if (vkQueueSubmit(device.gqueue, 1, &submitInfo,
+                          inFlightFences[currentFrame]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to submit draw command buffer!");
+        }
     }
 
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    {
+        ZoneScopedN("Present");
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores =
-        signalSemaphores;  // esperem que acabi el render
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores =
+            signalSemaphores;  // esperem que acabi el render
 
-    VkSwapchainKHR swapChains[] = {swapChain.swapChain};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
-    presentInfo.pResults = nullptr;
+        VkSwapchainKHR swapChains[] = {swapChain.swapChain};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+        presentInfo.pResults = nullptr;
 
-    result = vkQueuePresentKHR(device.pqueue, &presentInfo);
+        VkResult result = vkQueuePresentKHR(device.pqueue, &presentInfo);
 
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ||
-        frameBufferResized) {
-        frameBufferResized = false;
-        recreateSwapChain();
-    } else if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to present swap chain image!");
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR ||
+            frameBufferResized) {
+            frameBufferResized = false;
+            recreateSwapChain();
+        } else if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to present swap chain image!");
+        }
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

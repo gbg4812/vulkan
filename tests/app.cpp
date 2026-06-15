@@ -28,6 +28,9 @@
 #include "loaders/texLoader.hpp"
 #include "shaderReflexion.hpp"
 
+#define TRACY_ENABLE 1
+#include "tracy/Tracy.hpp"
+
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -63,6 +66,7 @@ void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
 }
 
 GLFWwindow* createWindow(int width, int height, std::string name) {
+    glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwInit();
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -80,6 +84,7 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
 }
 
 int main(int argc, char* argv[]) {
+    ZoneScoped;
     std::span arguments(argv, argc);
 
     if (arguments.size() < 2) {
@@ -154,11 +159,15 @@ int main(int argc, char* argv[]) {
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc.root, cm_nh);
 
-    std::cout << arguments[1] << std::endl;
+    std::cout << "Loading::" << arguments[1] << std::endl;
 
     gbg::objLoader(arguments[1], &sc, sc.root, mth);
 
     renderer.setScene(&sc);
+
+    for (auto shh : sh_mg) {
+        sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::NEW);
+    }
 
     for (auto mth : mt_mg) {
         auto& mt = mt_mg.get(mth);
@@ -299,6 +308,10 @@ int main(int argc, char* argv[]) {
 
         renderer.drawFrame();
 
+        for (auto shh : sh_mg) {
+            sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::DIRTY);
+        }
+
         if (ImGui::IsKeyPressed(ImGuiKey::ImGuiKey_Escape)) {
             if (not ui_mode) {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -308,7 +321,10 @@ int main(int argc, char* argv[]) {
                 ui_mode = false;
             }
         }
-    }
+
+        FrameMark;
+
+    }  // end loop
     renderer.cleanup();
 
     glfwDestroyWindow(window);

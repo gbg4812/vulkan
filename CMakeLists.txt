@@ -20,6 +20,20 @@ add_library(${PROJECT_NAME} ${sources})
 target_include_directories(${PROJECT_NAME} PUBLIC src/)
 
 # External dependencies
+
+
+FetchContent_Declare (
+tracy
+GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+GIT_TAG master
+GIT_SHALLOW TRUE
+GIT_PROGRESS TRUE
+)
+
+option(TRACY_ENABLE " " ON)
+option(TRACY_ON_DEMAND " " ON)
+FetchContent_MakeAvailable(tracy)
+
 find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
 
 find_library(SPIRV_REFLECT_LIB
@@ -61,7 +75,7 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;${SPIRV_REFLECT_LIB};Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw")
+set(LIBS "Vulkan::Vulkan;${SPIRV_REFLECT_LIB};Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw;TracyClient")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
 

@@ -15,7 +15,7 @@
       },
     },
     "program": "$ZED_WORKTREE_ROOT/build/app",
-    "args": ["data/models/EasyModels/scene.obj"],
+    "args": ["data/models/sponza/sponza.obj"],
     "cwd": "$ZED_WORKTREE_ROOT/tests/",
     "request": "launch",
     "adapter": "CodeLLDB",

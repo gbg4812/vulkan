@@ -111,9 +111,7 @@ inline RendererContext glfwCreateRendererContext(
     // physical device
     VkPhysicalDevice physicalDevice =
         pickPhysicalDevice(context.instance, surface, deviceExtensions);
-    vkDevice device =
-        createDevice(physicalDevice, deviceExtensions, enableValidationLayers,
-                     validationLayers, surface);
+    vkDevice device = createDevice(physicalDevice, deviceExtensions, surface);
     context.device = device;
     glfwGetFramebufferSize(window, &context.width, &context.height);
     return context;

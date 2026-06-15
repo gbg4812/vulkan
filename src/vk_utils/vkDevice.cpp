@@ -9,8 +9,6 @@
 namespace gbg {
 vkDevice createDevice(VkPhysicalDevice pdevice,
                       const std::vector<const char*>& deviceExtensions,
-                      bool enableValidationLayers,
-                      const std::vector<const char*>& validationLayers,
                       VkSurfaceKHR surface) {
     // setup queue info struct to pass to the logical device creation who
     // will create the queues for us
@@ -45,14 +43,6 @@ vkDevice createDevice(VkPhysicalDevice pdevice,
     deviceCreateInfo.enabledExtensionCount =
         static_cast<uint32_t>(deviceExtensions.size());
     deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
-
-    if (enableValidationLayers) {
-        deviceCreateInfo.enabledLayerCount =
-            static_cast<uint32_t>(validationLayers.size());
-        deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
-    } else {
-        deviceCreateInfo.enabledLayerCount = 0;
-    }
 
     vkDevice device;
     device.pdevice = pdevice;

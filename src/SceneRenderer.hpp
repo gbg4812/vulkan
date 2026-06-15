@@ -193,7 +193,7 @@ class SceneRenderer {
     void updateVaryingDescriptorSets(uint32_t currentImage);
 
     void updateMesh(Mesh& mesh);
-    void updateShader(Shader& shader);
+    void updateShader(ShaderHandle sh_h);
     void updateMaterial(MaterialHandle math);
     void updateTexture(Texture& texture);
 };

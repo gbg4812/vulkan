@@ -14,8 +14,6 @@ struct vkDevice {
 };
 vkDevice createDevice(VkPhysicalDevice pdevice,
                       const std::vector<const char*>& deviceExtensions,
-                      bool enableValidationLayers,
-                      const std::vector<const char*>& validationLayers,
                       VkSurfaceKHR surface);
 
 }  // namespace gbg
