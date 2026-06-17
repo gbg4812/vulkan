@@ -103,7 +103,6 @@ void SceneRenderer::initResources() {
 
     createTextureSampler();
 
-    createGlobalDescriptorSets();
 
     // Per Material pool and sets
     createMaterialDescriptorPool();  // TODO: crear descriptor pool i
@@ -111,6 +110,8 @@ void SceneRenderer::initResources() {
     // Material DSLs created
     // Material UBO and Textures created also
     processScene();
+    
+    createGlobalDescriptorSets();
 
     createCommandBuffer();
     createSyncObjects();
@@ -307,6 +308,94 @@ void SceneRenderer::updateMaterial(MaterialHandle math) {
     }
 }
 
+// un poco un lio la verdad
+void SceneRenderer::updateLight(LightHandle lh) {
+    auto& light = scene->lh_mg.get(lh);
+    uint32_t flags = light.getFlags();
+    if(flags & (ResourceFlags::NEW | ResourceFlags::DIRTY)) {
+        if(flags & ResourceFlags::NEW) {
+            srLightHandle srlh = lights.create("srLight::" + light.getName());
+        }
+
+        vkLight vklight{};
+        vklight.color = light.color;
+        vklight.direction  = light.direction;
+        vklight.position = glm::vec3(0.0f);
+
+        
+        if(lightsCPUBuffer.size() <= lh.getIndex()) {
+            lightsCPUBuffer.resize(lh.getIndex() + 1);
+        }
+        lightsCPUBuffer[lh.getIndex()] = vklight;
+        lights.getRelated(lh).light_index = lh.getIndex();
+        
+    }
+}
+
+void SceneRenderer::fillLightBuffer() {
+    auto& st_mg = scene->getSceneTreeManager();
+
+    glm::mat4 accumulated_transform = glm::mat4(1.0f);
+
+    std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
+    Q.push({scene->root, glm::mat4(1.f)});
+    while (not Q.empty()) {
+        SceneTreeHandle visited = Q.front().first;
+        accumulated_transform = Q.front().second;
+        Q.pop();
+
+        SceneTreeNode& stn = st_mg.get(visited);
+
+        auto handle = stn.getResourceH();
+
+        accumulated_transform = accumulated_transform * stn.getLocalTransform();
+
+        std::visit(
+            overloads{
+                [&](const ModelHandle& mh) {
+                },
+                [&](const CameraHandle& empty) {
+
+                },
+                [&](const std::monostate& empty) {
+
+                },
+                [&](const LightHandle& lh) {
+                    lightsCPUBuffer[lh.getIndex()].position = glm::vec3(accumulated_transform * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+                }},
+
+            handle);
+
+        SceneTreeHandle child = stn.childH;
+        while (child) {
+            Q.push({child, accumulated_transform});
+            child = st_mg.get(child).nextH;
+        }
+    }
+
+
+            
+        VkDeviceSize dsize = lightsCPUBuffer.size() * sizeof(vkLight);
+    
+        gbg::vkBuffer stagingBuffer =
+            gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+        void* sdata;
+        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
+        memcpy(sdata, lightsCPUBuffer.data(), dsize);
+        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
+    
+        lights_buffer = gbg::createBuffer(
+            device, dsize,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        copyBuffer(device, stagingBuffer, lights_buffer);
+        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
+}
+
 void SceneRenderer::processScene() {
     auto& ms_mg = scene->getMeshManager();
     auto& mt_mg = scene->getMaterialManager();
@@ -328,7 +417,14 @@ void SceneRenderer::processScene() {
     for (MaterialHandle math : mt_mg) {
         updateMaterial(math);
     }
+
+    for (LightHandle lh : scene->lh_mg) {
+        updateLight(lh);
+    }
+
+    fillLightBuffer();
 }
+
 
 void SceneRenderer::cleanup() {
     vkDeviceWaitIdle(device.ldevice);
@@ -571,7 +667,7 @@ void SceneRenderer::createGlobalDescriptorSetLayouts() {
     uboLayoutBinding.descriptorCount = 1;
     uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     uboLayoutBinding.pImmutableSamplers = nullptr;
-    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutBinding samplerLayoutBinding{};
     samplerLayoutBinding.binding = 1;
@@ -579,9 +675,16 @@ void SceneRenderer::createGlobalDescriptorSetLayouts() {
     samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
     samplerLayoutBinding.pImmutableSamplers = nullptr;
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    
+    VkDescriptorSetLayoutBinding lightsLayoutBinding{};
+    samplerLayoutBinding.binding = 2;
+    samplerLayoutBinding.descriptorCount = 1;
+    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    samplerLayoutBinding.pImmutableSamplers = nullptr;
+    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 2> globalBindings = {
-        uboLayoutBinding, samplerLayoutBinding};
+    std::array<VkDescriptorSetLayoutBinding, 3> globalBindings = {
+        uboLayoutBinding, samplerLayoutBinding, lightsLayoutBinding};
 
     VkDescriptorSetLayoutCreateInfo globalLayoutInfo{};
     globalLayoutInfo.sType =
@@ -843,12 +946,15 @@ void SceneRenderer::createGlobalShaderResources() {
 }
 
 void SceneRenderer::createGlobalDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 2> descriptorPoolSizes{};
+    std::array<VkDescriptorPoolSize, 3> descriptorPoolSizes{};
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
     descriptorPoolSizes[1].descriptorCount =
+        static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorPoolSizes[2].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -908,8 +1014,13 @@ void SceneRenderer::createGlobalDescriptorSets() {
         bufferInfo.buffer = globalBuffers[i].buffer;
         bufferInfo.range = sizeof(UniformBufferObjects);
         bufferInfo.offset = 0;
+        
+        VkDescriptorBufferInfo lightBufferInfo{};
+        bufferInfo.buffer = lights_buffer.buffer;
+        bufferInfo.range = lights_buffer.size;
+        bufferInfo.offset = 0;
 
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+        std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrites[0].dstSet = globalDescriptorSets[i];
         descriptorWrites[0].dstBinding = 0;
@@ -931,6 +1042,17 @@ void SceneRenderer::createGlobalDescriptorSets() {
         // Only needed for other types of descriptors
         descriptorWrites[1].pImageInfo = &imageInfo;
         descriptorWrites[1].pTexelBufferView = nullptr;
+        
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = globalDescriptorSets[i];
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &lightBufferInfo;
+        // Only needed for other types of descriptors
+        descriptorWrites[2].pImageInfo = nullptr;
+        descriptorWrites[2].pTexelBufferView = nullptr;
 
         vkUpdateDescriptorSets(device.ldevice,
                                static_cast<uint32_t>(descriptorWrites.size()),
@@ -1016,35 +1138,6 @@ void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
     }
 }
 
-/*
-void SceneRenderer::createStaticDescriptorSets() {
-    if (textures.empty()) return;
-    VkDescriptorSetAllocateInfo setInfo{};
-    setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    setInfo.descriptorPool = descriptorPool;
-    setInfo.descriptorSetCount = 1;
-    setInfo.pSetLayouts = &inmutableDescriptorSetLayout;
-
-    if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
-                                 &inmutableDescriptorSet) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create descriptor sets");
-    }
-
-    VkDescriptorImageInfo samplerInfo{};
-    samplerInfo.sampler = textureSampler;
-
-    VkWriteDescriptorSet descriptorWrite;
-    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrite.dstSet = inmutableDescriptorSet;
-    descriptorWrite.dstBinding = 0;
-    descriptorWrite.dstArrayElement = 0;
-    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorWrite.descriptorCount = 1;
-    descriptorWrite.pImageInfo = &samplerInfo;
-
-    vkUpdateDescriptorSets(device.ldevice, 1, &descriptorWrite, 0, nullptr);
-}
-*/
 
 void SceneRenderer::createCommandBuffer() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);

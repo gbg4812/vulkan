@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "GlfwCreateRendererContext.hpp"
+#include "Light.hpp"
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -39,6 +40,7 @@ const bool enableValidationLayers = true;
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
+bool ui_mode = false;
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app =
@@ -60,9 +62,23 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action,
     }
 }
 
+void window_focus_callback(GLFWwindow* window, int focused)
+{
+    if (focused && not ui_mode)
+    {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    }
+    else
+    {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+}
+
+
 void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
     glfwSetWindowUserPointer(window, userPointer);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    glfwSetWindowFocusCallback(window, window_focus_callback);
 }
 
 GLFWwindow* createWindow(int width, int height, std::string name) {
@@ -92,7 +108,6 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
-    bool ui_mode = false;
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
@@ -153,11 +168,18 @@ int main(int argc, char* argv[]) {
     auto& cm_mg = sc.getCameraManager();
     gbg::CameraHandle camh = cm_mg.create("Camera");
     gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
-
     st_mg.get(cm_nh).translation += glm::vec3{0.0f, 0.0f, 10.0f};
-
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc.root, cm_nh);
+
+    gbg::LightHandle lh = sc.lh_mg.create("Light");
+    gbg::SceneTreeHandle lh_nh = st_mg.create("LightObject");
+
+    st_mg.get(lh_nh).translation += glm::vec3{0.0f, 1.0f, 0.0f};
+    st_mg.get(lh_nh).setResource(lh);
+    st_mg.prependChild(sc.root, lh_nh);
+
+
 
     std::cout << "Loading::" << arguments[1] << std::endl;
 

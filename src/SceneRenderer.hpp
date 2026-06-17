@@ -22,6 +22,7 @@
 #include "srMaterial.hpp"
 #include "srShader.hpp"
 #include "srTexture.hpp"
+#include "srLight.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.hh"
@@ -93,12 +94,17 @@ class SceneRenderer {
     ResourceManager<gbg::srMaterial, gbg::srMaterialHandle> materials;
     ResourceManager<gbg::srMesh, gbg::srMeshHandle> meshes;
     ResourceManager<gbg::srTexture, gbg::srTextureHandle> textures;
+    ResourceManager<gbg::srLight, gbg::srLightHandle> lights;
 
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
     const uint32_t max_tex = 1000;
 
     VkSampler textureSampler;
+
+    // to be created
+    vkBuffer lights_buffer;
+    std::vector<vkLight> lightsCPUBuffer;
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -196,5 +202,8 @@ class SceneRenderer {
     void updateShader(ShaderHandle sh_h);
     void updateMaterial(MaterialHandle math);
     void updateTexture(Texture& texture);
+    void updateLight(LightHandle lh);
+
+    void fillLightBuffer();
 };
 }  // namespace gbg
