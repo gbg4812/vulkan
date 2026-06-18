@@ -28,6 +28,7 @@
 #include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 #include "shaderReflexion.hpp"
+#include "io_utils/watcher.hpp"
 
 #define TRACY_ENABLE 1
 #include "tracy/Tracy.hpp"
@@ -95,6 +96,11 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
 }
 
 int main(int argc, char* argv[]) {
+
+    init_watch();
+
+
+    
     ZoneScoped;
     std::span arguments(argv, argc);
 
@@ -125,6 +131,8 @@ int main(int argc, char* argv[]) {
 
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
+    
+    watch("./data/shaders/vert.spv", (uint32_t)WatchEvents::MODFY, [](){});
 
     gbg::initShader(shh, sc);
 
@@ -132,32 +140,17 @@ int main(int argc, char* argv[]) {
     auto& mt_mg = sc.getMaterialManager();
 
     gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
-    gbg::MaterialHandle gmth = mt_mg.create("GreenMaterial");
-    gbg::MaterialHandle rmth = mt_mg.create("RedMaterial");
     gbg::Material& mt = mt_mg.get(mth);
-    gbg::Material& gmt = mt_mg.get(gmth);
-    gbg::Material& rmt = mt_mg.get(rmth);
 
     auto& tx_mg = sc.getTextureManager();
     auto tx_h = tx_mg.create("DiffuseTexture");
-    auto gtx_h = tx_mg.create("StoneTex");
-    auto btx_h = tx_mg.create("WoolTex");
 
     loadTexture("data/textures/plank_texture/raw_plank_wall_diff_1k.png", &sc,
                 tx_h);  // loads texture
-    loadTexture(
-        "data/textures/plaster_stone_wall_02_1k/"
-        "plaster_stone_wall_02_diff_1k.jpg",
-        &sc,
-        gtx_h);  // loads texture
-    loadTexture("data/textures/wool_boucle_1k/wool_boucle_diff_1k.png", &sc,
-                btx_h);  // loads texture
 
     mt.setShader(shh, sh, tx_h);
-    gmt.setShader(shh, sh, tx_h);
-    rmt.setShader(shh, sh, tx_h);
 
-    // Other entities
+    // Camera
     auto& st_mg = sc.getSceneTreeManager();
     auto& cm_mg = sc.getCameraManager();
     gbg::CameraHandle camh = cm_mg.create("Camera");
@@ -166,6 +159,7 @@ int main(int argc, char* argv[]) {
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc.root, cm_nh);
 
+    // Light
     gbg::LightHandle lh = sc.lh_mg.create("Light");
     gbg::SceneTreeHandle lh_nh = st_mg.create("LightObject");
     sc.lh_mg.get(lh).color = glm::vec3(0.0f, 1.0f, 1.0f);
@@ -198,6 +192,7 @@ int main(int argc, char* argv[]) {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+        poll_watchers();
         // draw ui and modify scene
         // i will end up with a component system...
 
