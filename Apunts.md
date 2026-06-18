@@ -56,3 +56,21 @@ layout(set = 0, binding = 0) uniform UBO0 {
 First i tried inheriting but when i try to convert a vector& to its
 vector_child& it gives undefined behavior... So the best way seems to be
 composition or give up in protecting attrib vectors.
+
+## Lights Lights Lights
+
+My current plan for lights is...? SSBO
+
+### Spot Lights
+
+1. Lights resource in the scene
+   - direction
+   - fov
+   - color
+   - intensity
+2. In the initialization create the descriptor
+   and the buffer -> thats all will be filled afterwards
+
+3. Every Frame
+   - fill the SSBO with the lights info
+   - so 3 buffers for now

@@ -19,10 +19,11 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include "Scene.hpp"
+#include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srShader.hpp"
 #include "srTexture.hpp"
-#include "srLight.hpp"
+#include "tracy/TracyVulkan.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.hh"
@@ -90,21 +91,23 @@ class SceneRenderer {
     uint32_t currentFrame = 0;
     bool frameBufferResized = false;
 
+    std::array<TracyVkCtx, MAX_FRAMES_IN_FLIGHT> tracyCtx;
+
     ResourceManager<gbg::srShader, gbg::srShaderHandle> shaders;
     ResourceManager<gbg::srMaterial, gbg::srMaterialHandle> materials;
     ResourceManager<gbg::srMesh, gbg::srMeshHandle> meshes;
     ResourceManager<gbg::srTexture, gbg::srTextureHandle> textures;
-    ResourceManager<gbg::srLight, gbg::srLightHandle> lights;
 
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
     const uint32_t max_tex = 1000;
+    const uint32_t max_light = 10;
 
     VkSampler textureSampler;
 
     // to be created
-    vkBuffer lights_buffer;
-    std::vector<vkLight> lightsCPUBuffer;
+    std::array<vkBuffer, MAX_FRAMES_IN_FLIGHT> lightsBuffers;
+    std::array<void*, MAX_FRAMES_IN_FLIGHT> lightsBuffersMapped;
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -196,7 +199,7 @@ class SceneRenderer {
 
     VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice);
 
-    void updateVaryingDescriptorSets(uint32_t currentImage);
+    void updateGlobalDescriptorSets(uint32_t currentImage);
 
     void updateMesh(Mesh& mesh);
     void updateShader(ShaderHandle sh_h);
@@ -204,6 +207,6 @@ class SceneRenderer {
     void updateTexture(Texture& texture);
     void updateLight(LightHandle lh);
 
-    void fillLightBuffer();
+    void fillLightBuffer(uint32_t currentImage);
 };
 }  // namespace gbg

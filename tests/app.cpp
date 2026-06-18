@@ -62,18 +62,13 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action,
     }
 }
 
-void window_focus_callback(GLFWwindow* window, int focused)
-{
-    if (focused && not ui_mode)
-    {
+void window_focus_callback(GLFWwindow* window, int focused) {
+    if (focused && not ui_mode) {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    }
-    else
-    {
+    } else {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
 }
-
 
 void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
     glfwSetWindowUserPointer(window, userPointer);
@@ -107,7 +102,6 @@ int main(int argc, char* argv[]) {
         std::cout << "Usage: app obj-file-name" << std::endl;
         exit(1);
     }
-
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
@@ -174,18 +168,17 @@ int main(int argc, char* argv[]) {
 
     gbg::LightHandle lh = sc.lh_mg.create("Light");
     gbg::SceneTreeHandle lh_nh = st_mg.create("LightObject");
-
+    sc.lh_mg.get(lh).color = glm::vec3(0.0f, 1.0f, 1.0f);
     st_mg.get(lh_nh).translation += glm::vec3{0.0f, 1.0f, 0.0f};
     st_mg.get(lh_nh).setResource(lh);
     st_mg.prependChild(sc.root, lh_nh);
-
-
 
     std::cout << "Loading::" << arguments[1] << std::endl;
 
     gbg::objLoader(arguments[1], &sc, sc.root, mth);
 
     renderer.setScene(&sc);
+    std::cout << "Obj loaded" << std::endl;
 
     for (auto shh : sh_mg) {
         sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::NEW);
@@ -215,6 +208,9 @@ int main(int argc, char* argv[]) {
         float delta = glfwGetTime() - time;
         time = glfwGetTime();
 
+        int fps = 1. / delta;
+        ImGui::Text("FPS: %d", fps);
+
         gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
         glm::vec3 offset{};
         if (not ui_mode) {
@@ -230,11 +226,11 @@ int main(int argc, char* argv[]) {
             if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
                 offset.x += 2.0f * delta;
             }
-        }
-        else {
+        } else {
             ImGui::BeginGroup();
             for (auto snh : st_mg) {
                 auto& sn = st_mg.get(snh);
+                ImGui::PushID(sn.getRID());
                 if (ImGui::CollapsingHeader(sn.getName().c_str())) {
                     ImGui::InputFloat3("Translation", (float*)&sn.translation);
                     ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
@@ -268,6 +264,7 @@ int main(int argc, char* argv[]) {
                         },
                         sn.getResourceH());
                 }
+                ImGui::PopID();
             }
 
             int i = 0;
