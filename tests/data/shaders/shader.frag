@@ -18,12 +18,16 @@ layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
     Light lights[];
 } lightData;
 
+layout(set = 1, binding = 0) uniform MatParms {
+    vec3 color;
+};
+
 float ambientI = 0.1;
 
 void main() {
-    vec3 L = normalize(fpos.xyz - lightData.lights[0].position);
+    vec3 L = normalize(lightData.lights[0].position - fpos);
     float diff = dot(L, normalize(fgNormal));
     diff = max(0., diff);
-    vec3 diffColor = texture(sampler2D(_texture, _sampler), texCoord).rgb;
+    vec3 diffColor = texture(sampler2D(_texture, _sampler), texCoord).rgb * color;
     outColor = vec4(diffColor * diff * lightData.lights[0].color + ambientI * diffColor, 1.);
 }
