@@ -51,6 +51,12 @@ struct UniformBufferObjects {
     // a vec4 to 4N. The alignas operator does this for us!
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
+
+    // camera pos
+    alignas(16) glm::vec3 obs;
+
+    // time
+    alignas(16) float time;
 };
 
 class SceneRenderer {

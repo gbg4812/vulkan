@@ -9,6 +9,7 @@
 
 #include "GlfwCreateRendererContext.hpp"
 #include "Light.hpp"
+#include "Material.hpp"
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -25,10 +26,10 @@
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
 #include "imgui.h"
+#include "io_utils/watcher.hpp"
 #include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 #include "shaderReflexion.hpp"
-#include "io_utils/watcher.hpp"
 
 #define TRACY_ENABLE 1
 #include "tracy/Tracy.hpp"
@@ -96,11 +97,8 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
 }
 
 int main(int argc, char* argv[]) {
-
     init_watch();
 
-
-    
     ZoneScoped;
     std::span arguments(argv, argc);
 
@@ -131,10 +129,8 @@ int main(int argc, char* argv[]) {
 
     sh.loadVertShaderCode("./data/shaders/vert.spv");
     sh.loadFragShaderCode("./data/shaders/frag.spv");
-    
-    watch("./data/shaders/vert.spv", (uint32_t)WatchEvents::MODFY, [](){});
 
-    gbg::initShader(shh, sc);
+    gbg::initShader(sh);
 
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
@@ -149,6 +145,19 @@ int main(int argc, char* argv[]) {
                 tx_h);  // loads texture
 
     mt.setShader(shh, sh, tx_h);
+
+    watch({"./data/shaders/vert.spv", "./data/shaders/frag.spv"},
+          (uint32_t)WatchEvents::MODFY, [&]() {
+              sh.loadVertShaderCode("./data/shaders/vert.spv");
+              sh.loadFragShaderCode("./data/shaders/frag.spv");
+              gbg::initShader(sh);
+
+              for (gbg::MaterialHandle mh : sc.mat_mg) {
+                  sc.mat_mg.get(mh).setShader(shh, sh, tx_h);
+                  sc.mat_mg.get(mh).setFlags(gbg::ResourceFlags::DIRTY);
+              }
+              sh.setFlags(gbg::ResourceFlags::DIRTY);
+          });
 
     // Camera
     auto& st_mg = sc.getSceneTreeManager();
@@ -176,11 +185,13 @@ int main(int argc, char* argv[]) {
 
     for (auto shh : sh_mg) {
         sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::NEW);
+        sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::DIRTY);
     }
 
     for (auto mth : mt_mg) {
         auto& mt = mt_mg.get(mth);
         mt.unsetFlag(gbg::ResourceFlags::NEW);
+        mt.unsetFlag(gbg::ResourceFlags::DIRTY);
     }
 
     renderer.setActiveCamera(cm_nh);

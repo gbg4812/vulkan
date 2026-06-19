@@ -40,7 +40,7 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
         SpvReflectResult res;
         const SpvReflectDescriptorBinding* bind_matparm =
             spvReflectGetDescriptorBinding(&shmod, 0, 1, &res);
-        if(bind_matparm != NULL) {
+        if (bind_matparm != NULL) {
             std::span<SpvReflectBlockVariable> variables(
                 bind_matparm->block.members, bind_matparm->block.member_count);
 
@@ -80,8 +80,8 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
     }
 }
 
-inline void initShader(ShaderHandle shh, Scene& scene) {
-    auto& shader = scene.sh_mg.get(shh);
+inline void initShader(Shader& shader) {
+    shader.clear();
     SpvReflectShaderModule vtmod;
     spvReflectCreateShaderModule(shader.getVertShaderCode().size(),
                                  shader.getVertShaderCode().data(), &vtmod);

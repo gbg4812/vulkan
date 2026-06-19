@@ -186,6 +186,7 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
 
     if (flags & (ResourceFlags::NEW | ResourceFlags::DIRTY)) {
         if (flags & ResourceFlags::DIRTY) {
+            vkDeviceWaitIdle(device.ldevice);
             vkDestroyDescriptorSetLayout(device.ldevice, sr_sh.layout, nullptr);
             vkDestroyPipeline(device.ldevice, sr_sh.pipeline.pipeline, nullptr);
             vkDestroyPipelineLayout(device.ldevice, sr_sh.pipeline.layout,
@@ -298,9 +299,16 @@ void SceneRenderer::updateMaterial(MaterialHandle math) {
 
         delete values.data;
 
+        auto& sh = scene->sh_mg.get(mat.getShaderHandle());
         // create descriptor sets if new
         if (mat.getFlags() & ResourceFlags::NEW)
             createMaterialDescriptorSet(srmt, mat);
+        else if (sh.getFlags() & ResourceFlags::DIRTY) {
+            vkDeviceWaitIdle(device.ldevice);
+            vkFreeDescriptorSets(device.ldevice, materialDescPool, 1,
+                                 &srmt.descriptor_set);
+            createMaterialDescriptorSet(srmt, mat);
+        }
 
         updateMaterialDescriptorSet(srmt, mat);
     }
@@ -389,8 +397,8 @@ void SceneRenderer::cleanup() {
 
     // global desc set
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        vkDestroyBuffer(device.ldevice, globalBuffers[i].buffer, nullptr);
-        vkFreeMemory(device.ldevice, globalBuffers[i].memory, nullptr);
+        destroyBuffer(device, globalBuffers[i]);
+        destroyBuffer(device, lightsBuffers[i]);
     }
 
     vkDestroyDescriptorPool(device.ldevice, globalDescriptorPool, nullptr);
@@ -924,6 +932,7 @@ void SceneRenderer::createMaterialDescriptorPool() {
     poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
     poolInfo.pPoolSizes = descriptorPoolSizes.data();
     poolInfo.maxSets = max_mat + max_tex;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
                                &materialDescPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor pool!");
@@ -1317,6 +1326,10 @@ void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
                              (float)swapChain.swapChainImageExtent.height,
                          0.1f, 100.0f);
     ubo.proj[1][1] *= -1;
+
+    ubo.time = time;
+    ubo.obs = st_mg.getGlobalTransform(activeCameraNode) *
+              glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     memcpy(globalBuffersMapped[currentImage], &ubo, sizeof(ubo));
 
