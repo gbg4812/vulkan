@@ -13,7 +13,7 @@ project(
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
-file(GLOB sources src/*.cpp src/vk_utils/*.cpp)
+file(GLOB sources src/*.cpp src/vk_utils/*.cpp src/io_utils/*.cpp)
 
 add_library(${PROJECT_NAME} ${sources})
 
@@ -38,6 +38,10 @@ find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
 
 find_library(SPIRV_REFLECT_LIB
     NAMES spirv-reflect-static spirv_reflect
+    PATHS "$ENV{VULKAN_SDK}/lib"
+)
+find_library(SHADERC_LIB
+    NAMES shaderc_combined
     PATHS "$ENV{VULKAN_SDK}/lib"
 )
 
@@ -75,7 +79,7 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;${SPIRV_REFLECT_LIB};Vulkan::SPIRV-Tools;glm::glm;stbimage;fmt::fmt;SceneEquipament;imgui;glfw;TracyClient")
+set(LIBS "Vulkan::Vulkan;Vulkan::SPIRV-Tools;${SPIRV_REFLECT_LIB};${SHADERC_LIB};glm::glm;stbimage;fmt::fmt;imgui;glfw;TracyClient;SceneEquipament")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
 

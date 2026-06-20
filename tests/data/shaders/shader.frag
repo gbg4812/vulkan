@@ -48,6 +48,6 @@ void main() {
     vec3 V = normalize(ubo.obs - fpos);
 
     vec3 albedo = texture(sampler2D(_texture, _sampler), texCoord).rgb * color;
-
     outColor = vec4(albedo * diffuse(L, fgNormal) * lightData.lights[0].color + ambientI * albedo + vec3(1.0f) * spec(L, fgNormal, V, 64), 1.);
+    //outColor = vec4(fgNormal, 1.);
 }

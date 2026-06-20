@@ -45,10 +45,10 @@ vkVertexInputDescription getVertexFloatInputDescription(uint32_t attrib_id) {
 }
 
 VkShaderModule createShaderModule(const vkDevice& device,
-                                  std::string_view code) {
+                                  std::vector<uint32_t> code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
+    createInfo.codeSize = code.size()*sizeof(uint32_t);
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device.ldevice, &createInfo, nullptr,
@@ -59,8 +59,8 @@ VkShaderModule createShaderModule(const vkDevice& device,
 }
 
 vkPipeline createGraphicsPipeline(
-    const vkDevice& device, std::string_view vertShaderCode,
-    std::string_view fragShaderCode,
+    const vkDevice& device,const std::vector<uint32_t>& vertShaderCode,
+    const std::vector<uint32_t>& fragShaderCode,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,

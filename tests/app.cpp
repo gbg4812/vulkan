@@ -42,7 +42,7 @@ const bool enableValidationLayers = true;
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
-bool ui_mode = false;
+bool ui_mode = true;
 
 void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app =
@@ -109,7 +109,6 @@ int main(int argc, char* argv[]) {
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
         window, gbg::validationLayers, enableValidationLayers,
@@ -127,10 +126,15 @@ int main(int argc, char* argv[]) {
     gbg::ShaderHandle shh = sh_mg.create("DefaultShader");
     gbg::Shader& sh = sh_mg.get(shh);
 
-    sh.loadVertShaderCode("./data/shaders/vert.spv");
-    sh.loadFragShaderCode("./data/shaders/frag.spv");
-
-    gbg::initShader(sh);
+    auto res = gbg::setShaderCode(sh, "./data/shaders/shader.vert", gbg::VERTEX);
+    if(not res.first) {
+        std::cout << res.second << std::endl;
+    }
+    res = gbg::setShaderCode(sh,"./data/shaders/shader.frag", gbg::FRAGMENT);
+    if(not res.first) {
+        std::cout << res.second << std::endl;
+    }
+    gbg::reflectShader(sh);
 
     // Material Creation
     auto& mt_mg = sc.getMaterialManager();
@@ -146,11 +150,22 @@ int main(int argc, char* argv[]) {
 
     mt.setShader(shh, sh, tx_h);
 
-    watch({"./data/shaders/vert.spv", "./data/shaders/frag.spv"},
+    watch({"./data/shaders/shader.frag", "./data/shaders/shader.vert"},
           (uint32_t)WatchEvents::MODFY, [&]() {
-              sh.loadVertShaderCode("./data/shaders/vert.spv");
-              sh.loadFragShaderCode("./data/shaders/frag.spv");
-              gbg::initShader(sh);
+              auto res = gbg::setShaderCode(sh, "./data/shaders/shader.vert", gbg::VERTEX);
+              if(not res.first) {
+                  std::cout << res.second << std::endl;
+              } else {
+                  std::cout << "Shader recompiled successfuly" << std::endl;
+              }
+              res = gbg::setShaderCode(sh,"./data/shaders/shader.frag", gbg::FRAGMENT);
+              if(not res.first) {
+                  std::cout << res.second << std::endl;
+            } else {
+                std::cout << "Shader recompiled successfuly" << std::endl;
+            }
+              
+              gbg::reflectShader(sh);
 
               for (gbg::MaterialHandle mh : sc.mat_mg) {
                   sc.mat_mg.get(mh).setShader(shh, sh, tx_h);

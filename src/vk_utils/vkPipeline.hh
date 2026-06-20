@@ -2,6 +2,7 @@
 #pragma once
 #include <vulkan/vulkan_core.h>
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -23,14 +24,14 @@ vkVertexInputDescription getVertexVector2InputDescription(uint32_t attrib_id);
 vkVertexInputDescription getVertexFloatInputDescription(uint32_t attrib_id);
 
 vkPipeline createGraphicsPipeline(
-    const vkDevice& device, std::string_view vertShaderCode,
-    std::string_view fragShaderCode,
+    const vkDevice& device,const std::vector<uint32_t>& vertShaderCode,
+    const std::vector<uint32_t>& fragShaderCode,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     const std::vector<VkPushConstantRange>& push_constants,
     VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass);
 
-VkShaderModule createShaderModule(const std::vector<char>& code);
+VkShaderModule createShaderModule(const std::vector<uint32_t>& code);
 
 }  // namespace gbg

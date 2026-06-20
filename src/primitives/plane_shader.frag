@@ -10,9 +10,6 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     float time;
 } ubo;
 
-
-
 void main() {
-
     outColor = vec4(fragColor, 1.0f);
 }
