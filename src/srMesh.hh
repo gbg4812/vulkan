@@ -38,9 +38,11 @@ struct srMeshHandle : public ResourceHandle {
     srMeshHandle(size_t index, uint32_t rid) : ResourceHandle(index, rid){};
 };
 
-vkBuffer createIndexBuffer(vkDevice device,
+std::vector<uint32_t> createIndexBuffer(vkDevice device,
                            const std::vector<std::list<uint>>& faces);
 
+std::vector<glm::vec3> createTangentBuffer(vkDevice device, const std::vector<glm::vec3>& pos,
+                             const std::vector<glm::vec2> tex_coord, const std::vector<uint32_t> indices);
 void destroyMesh(const vkDevice& device, const srMesh& mesh);
 
 }  // namespace gbg

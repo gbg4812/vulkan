@@ -210,7 +210,7 @@ class SceneRenderer {
     void updateMesh(Mesh& mesh);
     void updateShader(ShaderHandle sh_h);
     void updateMaterial(MaterialHandle math);
-    void updateTexture(Texture& texture);
+    void updateTexture(TextureHandle texture);
     void updateLight(LightHandle lh);
 
     void fillLightBuffer(uint32_t currentImage);

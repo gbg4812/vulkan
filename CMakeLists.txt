@@ -99,10 +99,18 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
 
+FetchContent_Declare(
+  nfd
+  GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
+  GIT_TAG v1.3.0
+)
+
+FetchContent_MakeAvailable(nfd)
+
 enable_testing()
 
 file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLIC)
 
 add_executable(app tests/app.cpp)
 
-target_link_libraries(app PRIVATE "${PROJECT_NAME}")
+target_link_libraries(app PRIVATE "${PROJECT_NAME};nfd")

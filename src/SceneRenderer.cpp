@@ -21,6 +21,7 @@
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "Shader.hpp"
+#include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
@@ -130,51 +131,91 @@ void SceneRenderer::updateMesh(Mesh& mesh) {
 
         vkmesh.vertexAttributes.push_back(attrib);
     }
-    vkmesh.indexBuffer = gbg::createIndexBuffer(device, mesh.getFaces());
-}
 
-void SceneRenderer::updateTexture(Texture& texture) {
-    CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
-
-    tex.textureImage = createImage(
-        device.pdevice, device.ldevice, static_cast<uint32_t>(texture.width),
-        static_cast<uint32_t>(texture.height),
-        static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
-        VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    tex.mipLevels = texture.mip_levels;
-    tex.sampler = textureSampler;
-
-    addImageView(tex.textureImage, device.ldevice, VK_FORMAT_R8G8B8A8_SRGB,
-                 VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
-
-    VkDeviceSize dsize = texture.data.size();
+    std::vector<uint32_t> indices =  createIndexBuffer(device, mesh.getFaces());
+    
+    VkDeviceSize size = indices.size() * sizeof(indices[0]);
 
     gbg::vkBuffer stagingBuffer =
-        gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        gbg::createBuffer(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-    void* sdata;
-    vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
-    memcpy(sdata, texture.data.data(), texture.data.size());
+
+    void* data;
+    vkMapMemory(device.ldevice, stagingBuffer.memory, 0, size, 0, &data);
+    memcpy(data, indices.data(), size);
     vkUnmapMemory(device.ldevice, stagingBuffer.memory);
 
-    transitionImageLayout(tex.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
-                          VK_IMAGE_LAYOUT_UNDEFINED,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          static_cast<uint32_t>(tex.mipLevels));
-
-    copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
-                      texture.width, texture.height);
+    vkBuffer indexBuffer = gbg::createBuffer(
+        device, size,
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    copyBuffer(device, stagingBuffer, indexBuffer);
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 
-    transitionImageLayout(tex.textureImage.image, VK_FORMAT_R8G8B8A8_SRGB,
-                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                          static_cast<uint32_t>(tex.mipLevels));
+    
+    vkmesh.indexBuffer = indexBuffer; 
+
+    auto tangents = createTangentBuffer(device, mesh.getAttribute<AttributeTypes::VEC3_ATTR>(0), mesh.getAttribute<AttributeTypes::VEC2_ATTR>(2), indices);
+    
+    auto tangentAttr = srAttribute(device, mesh.getAttributes().size(), tangents.size(),
+                    AttributeTypes::VEC3_ATTR,
+                    (void*)tangents.data());
+    vkmesh.vertexAttributes.push_back(tangentAttr);
+    
+}
+
+void SceneRenderer::updateTexture(TextureHandle h) {
+    auto& texture = scene->tx_mg.get(h);
+    auto flags = texture.getFlags();
+    if(flags & NEW) {
+        CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
+
+        VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+        if(texture.raw)
+            format = VK_FORMAT_R8G8B8A8_UNORM;
+    
+        tex.textureImage = createImage(
+            device.pdevice, device.ldevice, static_cast<uint32_t>(texture.width),
+            static_cast<uint32_t>(texture.height),
+            static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
+            format, VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    
+        tex.mipLevels = texture.mip_levels;
+        tex.sampler = textureSampler;
+    
+        addImageView(tex.textureImage, device.ldevice, format,
+                    VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
+    
+        VkDeviceSize dsize = texture.data.size();
+    
+        gbg::vkBuffer stagingBuffer =
+            gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        void* sdata;
+        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
+        memcpy(sdata, texture.data.data(), texture.data.size());
+        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
+    
+        transitionImageLayout(tex.textureImage.image, format,
+                            VK_IMAGE_LAYOUT_UNDEFINED,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            static_cast<uint32_t>(tex.mipLevels));
+    
+        copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
+                        texture.width, texture.height);
+        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
+    
+        transitionImageLayout(tex.textureImage.image, format,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                            static_cast<uint32_t>(tex.mipLevels));
+    }
 }
 
 void SceneRenderer::updateShader(ShaderHandle sh_h) {
@@ -208,19 +249,22 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             return p == ParameterTypes::TEXTURE_PARM;
         };
 
-        size_t count = 1;
+        
         // creates a binding for each texture
+        int textureCount = 0;
         for (ParameterTypes p :
              shader.getParameters() | std::ranges::views::filter(texFilter)) {
-            VkDescriptorSetLayoutBinding texBinding{};
-            texBinding.binding = count++;
-            texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-            texBinding.stageFlags =
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-            texBinding.descriptorCount = 1;
-            texBinding.pImmutableSamplers = nullptr;
-            materialBindings.push_back(texBinding);
+                textureCount++; 
         }
+        
+        VkDescriptorSetLayoutBinding texBinding{};
+        texBinding.binding = 1;
+        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        texBinding.stageFlags =
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        texBinding.descriptorCount = textureCount;
+        texBinding.pImmutableSamplers = nullptr;
+        materialBindings.push_back(texBinding);
 
         VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
         materialLayoutInfo.sType =
@@ -256,6 +300,7 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             bindingDescriptions.push_back(desc.binding_desc);
             attributeDescriptions.push_back(desc.attrib_desc);
         }
+
 
         // for the model matrix
         VkPushConstantRange mdl_rg{};
@@ -375,7 +420,7 @@ void SceneRenderer::processScene() {
     }
 
     for (TextureHandle texh : tx_mg) {
-        updateTexture(tx_mg.get(texh));
+        updateTexture(texh);
     }
 
     for (ShaderHandle shh : sh_mg) {
@@ -828,13 +873,6 @@ void SceneRenderer::copyBufferToImage(VkBuffer buffer, VkImage image,
                                device.tqueue);
 }
 
-/*void SceneRenderer::createTexturesImageViews() {
-    for (gbg::srTexture& texture : textures) {
-        gbg::addImageView(texture.textureImage, device.ldevice,
-                          VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT,
-                          textures[0].mipLevels);
-    }
-}*/
 
 void SceneRenderer::createTextureSampler() {
     VkSamplerCreateInfo createInfo{};
@@ -1363,9 +1401,12 @@ void SceneRenderer::drawFrame() {
         for (ShaderHandle shh : scene->sh_mg) {
             updateShader(shh);
         }
+        
+        for (TextureHandle txh : scene->tx_mg) {
+            updateTexture(txh);
+        }
 
-        auto& mt_mg = scene->getMaterialManager();
-        for (MaterialHandle math : mt_mg) {
+        for (MaterialHandle math : scene->mat_mg) {
             updateMaterial(math);
         }
 

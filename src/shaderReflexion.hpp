@@ -89,7 +89,8 @@ namespace gbg {
             if (res == SPV_REFLECT_RESULT_SUCCESS and
                 bind_matparm->descriptor_type ==
                     SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
-                shader.addParameter(ParameterTypes::TEXTURE_PARM);
+                for(int i = 0; i < bind_matparm->count; i++)
+                    shader.addParameter(ParameterTypes::TEXTURE_PARM);
             }
         }
     }
