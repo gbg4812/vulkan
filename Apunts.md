@@ -74,3 +74,16 @@ My current plan for lights is...? SSBO
 3. Every Frame
    - fill the SSBO with the lights info
    - so 3 buffers for now
+
+
+## Notes on shadow maps
+
+Steps to follow:
+1. Create separate Images, ImageViews, Framebuffers, Renderpass
+   This is because we will have only 1 stencil attachment with 1 sample
+   The dependencies of the subpass should be between external and the pass and between the pass and external.
+   This will allow for us to render the two passes with the same command buffer avoiding the drawing render pass to 
+   execute before the depth rendre pass has finished.
+2. Set the shadow depth image view as input texture (descriptor binding)  in the 
+   scene drawing graphics pipeline.
+3. Record the command buffer first the drawing of the shadow render pass and then the drawing of the secene.

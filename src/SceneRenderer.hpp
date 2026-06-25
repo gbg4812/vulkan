@@ -114,6 +114,9 @@ class SceneRenderer {
     // to be created
     std::array<vkBuffer, MAX_FRAMES_IN_FLIGHT> lightsBuffers;
     std::array<void*, MAX_FRAMES_IN_FLIGHT> lightsBuffersMapped;
+    std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
+    std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
+    VkRenderPass shadowRenderPass;
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -157,6 +160,8 @@ class SceneRenderer {
     void createRenderPass();
 
     void createGlobalDescriptorSetLayouts();
+
+    void createShadowResources();
 
     void createFrameBuffers();
 

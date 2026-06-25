@@ -92,6 +92,7 @@ void SceneRenderer::initVulkan() {
     createColorResources();
     createDepthResources();
     createFrameBuffers();
+    createShadowResources();
 }
 
 void SceneRenderer::initResources() {
@@ -132,8 +133,8 @@ void SceneRenderer::updateMesh(Mesh& mesh) {
         vkmesh.vertexAttributes.push_back(attrib);
     }
 
-    std::vector<uint32_t> indices =  createIndexBuffer(device, mesh.getFaces());
-    
+    std::vector<uint32_t> indices = createIndexBuffer(device, mesh.getFaces());
+
     VkDeviceSize size = indices.size() * sizeof(indices[0]);
 
     gbg::vkBuffer stagingBuffer =
@@ -154,67 +155,67 @@ void SceneRenderer::updateMesh(Mesh& mesh) {
     vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 
-    
-    vkmesh.indexBuffer = indexBuffer; 
+    vkmesh.indexBuffer = indexBuffer;
 
-    auto tangents = createTangentBuffer(device, mesh.getAttribute<AttributeTypes::VEC3_ATTR>(0), mesh.getAttribute<AttributeTypes::VEC2_ATTR>(2), indices);
-    
-    auto tangentAttr = srAttribute(device, mesh.getAttributes().size(), tangents.size(),
-                    AttributeTypes::VEC3_ATTR,
-                    (void*)tangents.data());
+    auto tangents = createTangentBuffer(
+        device, mesh.getAttribute<AttributeTypes::VEC3_ATTR>(0),
+        mesh.getAttribute<AttributeTypes::VEC2_ATTR>(2), indices);
+
+    auto tangentAttr =
+        srAttribute(device, mesh.getAttributes().size(), tangents.size(),
+                    AttributeTypes::VEC3_ATTR, (void*)tangents.data());
     vkmesh.vertexAttributes.push_back(tangentAttr);
-    
 }
 
 void SceneRenderer::updateTexture(TextureHandle h) {
     auto& texture = scene->tx_mg.get(h);
     auto flags = texture.getFlags();
-    if(flags & NEW) {
+    if (flags & NEW) {
         CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
 
         VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
-        if(texture.raw)
-            format = VK_FORMAT_R8G8B8A8_UNORM;
-    
+        if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;
+
         tex.textureImage = createImage(
-            device.pdevice, device.ldevice, static_cast<uint32_t>(texture.width),
+            device.pdevice, device.ldevice,
+            static_cast<uint32_t>(texture.width),
             static_cast<uint32_t>(texture.height),
             static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
             format, VK_IMAGE_TILING_OPTIMAL,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
+
         tex.mipLevels = texture.mip_levels;
         tex.sampler = textureSampler;
-    
+
         addImageView(tex.textureImage, device.ldevice, format,
-                    VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
-    
+                     VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
+
         VkDeviceSize dsize = texture.data.size();
-    
+
         gbg::vkBuffer stagingBuffer =
             gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         void* sdata;
         vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
         memcpy(sdata, texture.data.data(), texture.data.size());
         vkUnmapMemory(device.ldevice, stagingBuffer.memory);
-    
+
         transitionImageLayout(tex.textureImage.image, format,
-                            VK_IMAGE_LAYOUT_UNDEFINED,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            static_cast<uint32_t>(tex.mipLevels));
-    
+                              VK_IMAGE_LAYOUT_UNDEFINED,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              static_cast<uint32_t>(tex.mipLevels));
+
         copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
-                        texture.width, texture.height);
+                          texture.width, texture.height);
         vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
         vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
-    
+
         transitionImageLayout(tex.textureImage.image, format,
-                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                            static_cast<uint32_t>(tex.mipLevels));
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              static_cast<uint32_t>(tex.mipLevels));
     }
 }
 
@@ -249,14 +250,13 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             return p == ParameterTypes::TEXTURE_PARM;
         };
 
-        
         // creates a binding for each texture
         int textureCount = 0;
         for (ParameterTypes p :
              shader.getParameters() | std::ranges::views::filter(texFilter)) {
-                textureCount++; 
+            textureCount++;
         }
-        
+
         VkDescriptorSetLayoutBinding texBinding{};
         texBinding.binding = 1;
         texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
@@ -300,7 +300,6 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             bindingDescriptions.push_back(desc.binding_desc);
             attributeDescriptions.push_back(desc.attrib_desc);
         }
-
 
         // for the model matrix
         VkPushConstantRange mdl_rg{};
@@ -671,6 +670,102 @@ void SceneRenderer::createRenderPass() {
     }
 }
 
+void SceneRenderer::createShadowResources() {
+    // create images
+
+    for (auto& shadowImage : shadowImages) {
+        shadowImage = createImage(device.pdevice, device.ldevice, width, height,
+                                  0, VK_SAMPLE_COUNT_1_BIT,
+                                  VK_FORMAT_R32_SFLOAT, VK_IMAGE_TILING_OPTIMAL,
+                                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                                      VK_IMAGE_USAGE_SAMPLED_BIT,
+                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        addImageView(shadowImage, device.ldevice, VK_FORMAT_R32_SFLOAT,
+                     VK_IMAGE_ASPECT_DEPTH_BIT, 0);
+    }
+
+    VkAttachmentDescription depthDesc{};
+    depthDesc.format = VK_FORMAT_R32_SFLOAT;
+    depthDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    depthDesc.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+    depthDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depthDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    depthDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+    VkAttachmentReference depthRef{};
+    depthRef.attachment = 0;
+    depthRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpassDesc{};
+    subpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpassDesc.colorAttachmentCount = 0;
+    subpassDesc.pDepthStencilAttachment = &depthRef;
+
+    // giving an external dependency is like putting a pipeline barrier
+    // https://themaister.net/blog/2019/08/14/yet-another-blog-explaining-vulkan-synchronization/
+
+    std::array<VkSubpassDependency, 2> subDep{};
+    subDep[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    subDep[0].dstSubpass = 0;
+    subDep[0].srcStageMask =
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;  // all commands before need to
+                                                // have completed the fragemtn
+                                                // shader stage
+    subDep[0].dstStageMask =
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;  // before entering this
+                                                     // stage (we will use in
+                                                     // fragemnt shader stage)
+    subDep[0].srcAccessMask =
+        VK_ACCESS_SHADER_READ_BIT;  // we wait until all reads to the depth
+                                    // buffer have completed
+    subDep[0].dstAccessMask =
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;  // before writting to it
+    subDep[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;  // welll
+
+    subDep[1].srcSubpass = 0;
+    subDep[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    subDep[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    subDep[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    subDep[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    subDep[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    subDep[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+    VkRenderPassCreateInfo rpc{};
+    rpc.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    rpc.subpassCount = 1;
+    rpc.pSubpasses = &subpassDesc;
+    rpc.dependencyCount = subDep.size();
+    rpc.pDependencies = subDep.data();
+    rpc.attachmentCount = 1;
+    rpc.pAttachments = &depthDesc;
+
+    if (vkCreateRenderPass(device.ldevice, &rpc, nullptr, &shadowRenderPass) !=
+        VK_SUCCESS) {
+        throw std::runtime_error("Failed to create Shadow Render Pass!");
+    }
+
+    for (size_t i = 0; i < shadowImages.size(); i++) {
+        std::array<VkImageView, 3> attachments = {shadowImages[i].view.value()};
+
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = shadowRenderPass;
+        framebufferInfo.attachmentCount =
+            static_cast<uint32_t>(attachments.size());
+        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.width = swapChain.swapChainImageExtent.width;
+        framebufferInfo.height = swapChain.swapChainImageExtent.height;
+        framebufferInfo.layers = 1;
+
+        if (vkCreateFramebuffer(device.ldevice, &framebufferInfo, nullptr,
+                                &shadowFrameBuffer[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
+    }
+}
+
 void SceneRenderer::createGlobalDescriptorSetLayouts() {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
     uboLayoutBinding.binding = 0;
@@ -872,7 +967,6 @@ void SceneRenderer::copyBufferToImage(VkBuffer buffer, VkImage image,
     gbg::endSingleTimeCommands(device, commandBuffer, device.transferCmdPool,
                                device.tqueue);
 }
-
 
 void SceneRenderer::createTextureSampler() {
     VkSamplerCreateInfo createInfo{};
@@ -1157,6 +1251,8 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
         throw std::runtime_error("failed to begin recording buffer");
     }
 
+    // render shadows!
+
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
@@ -1401,7 +1497,7 @@ void SceneRenderer::drawFrame() {
         for (ShaderHandle shh : scene->sh_mg) {
             updateShader(shh);
         }
-        
+
         for (TextureHandle txh : scene->tx_mg) {
             updateTexture(txh);
         }
