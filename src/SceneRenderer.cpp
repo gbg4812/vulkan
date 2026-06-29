@@ -672,23 +672,25 @@ void SceneRenderer::createRenderPass() {
 
 void SceneRenderer::createShadowResources() {
     // create images
+    VkFormat format = findDepthFormat();
 
     for (auto& shadowImage : shadowImages) {
         shadowImage = createImage(device.pdevice, device.ldevice, width, height,
-                                  0, VK_SAMPLE_COUNT_1_BIT,
-                                  VK_FORMAT_R32_SFLOAT, VK_IMAGE_TILING_OPTIMAL,
+                                  1, VK_SAMPLE_COUNT_1_BIT,
+                                  format, VK_IMAGE_TILING_OPTIMAL,
                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                                       VK_IMAGE_USAGE_SAMPLED_BIT,
                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        addImageView(shadowImage, device.ldevice, VK_FORMAT_R32_SFLOAT,
-                     VK_IMAGE_ASPECT_DEPTH_BIT, 0);
+        addImageView(shadowImage, device.ldevice, format,
+                     VK_IMAGE_ASPECT_DEPTH_BIT, 1);
     }
 
+
     VkAttachmentDescription depthDesc{};
-    depthDesc.format = VK_FORMAT_R32_SFLOAT;
+    depthDesc.format = format;
     depthDesc.samples = VK_SAMPLE_COUNT_1_BIT;
     depthDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthDesc.finalLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
+    depthDesc.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depthDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     depthDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -747,7 +749,7 @@ void SceneRenderer::createShadowResources() {
     }
 
     for (size_t i = 0; i < shadowImages.size(); i++) {
-        std::array<VkImageView, 3> attachments = {shadowImages[i].view.value()};
+        std::array<VkImageView, 1> attachments = {shadowImages[i].view.value()};
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -764,6 +766,9 @@ void SceneRenderer::createShadowResources() {
             throw std::runtime_error("failed to create framebuffer!");
         }
     }
+
+    Shader shader = Shader();
+    setShaderCode(shader, "data/shaders/shadow.vert", ShaderType::VERTEX);
 }
 
 void SceneRenderer::createGlobalDescriptorSetLayouts() {
@@ -1238,6 +1243,129 @@ void SceneRenderer::createCommandBuffer() {
                                      device.gqueue, commandBuffers[i]);
     }
 }
+
+void SceneRenderer::recordDrawShadows(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+
+        VkRenderPassBeginInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = shadowRenderPass;
+        renderPassInfo.framebuffer = shadowFrameBuffer[imageIndex];
+        renderPassInfo.renderArea.offset = {0, 0};
+        renderPassInfo.renderArea.extent = swapChain.swapChainImageExtent;
+
+        std::array<VkClearValue, 1> clearValues{};
+        clearValues[0].depthStencil = {1.0f, 0};
+
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
+
+        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
+                             VK_SUBPASS_CONTENTS_INLINE);
+
+        VkViewport viewport{};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(swapChain.swapChainImageExtent.width);
+        viewport.height = static_cast<float>(swapChain.swapChainImageExtent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+
+        VkRect2D scissor{};
+        scissor.offset = {0, 0};
+        scissor.extent = swapChain.swapChainImageExtent;
+
+        auto& md_mg = scene->getModelManager();
+        auto& msh_mg = scene->getMeshManager();
+        auto& mt_mg = scene->getMaterialManager();
+        auto& sh_mg = scene->getShaderManager();
+        auto& st_mg = scene->getSceneTreeManager();
+
+        glm::mat4 accumulated_transform = glm::mat4(1.0f);
+
+        std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
+        Q.push({scene->root, glm::mat4(1.f)});
+        while (not Q.empty()) {
+            SceneTreeHandle visited = Q.front().first;
+            accumulated_transform = Q.front().second;
+            Q.pop();
+
+            SceneTreeNode& stn = st_mg.get(visited);
+
+            auto handle = stn.getResourceH();
+
+            accumulated_transform = accumulated_transform * stn.getLocalTransform();
+
+            std::visit(
+                overloads{
+                    [&](const ModelHandle& mh) {
+                        TracyVkZone(tracyCtx[currentFrame], commandBuffer,
+                                    "DrawModel");
+                        Model& md = md_mg.get(mh);
+                        Material& mt = mt_mg.get(md.getMaterial());
+                        Shader& sh = sh_mg.get(mt.getShaderHandle());
+                        srShader& srsh = shaders.getRelated(
+                            (ResourceHandle)mt.getShaderHandle());
+                        srMaterial& srmt = materials.getRelated(md.getMaterial());
+
+                        srMesh& mesh = meshes.getRelated(md.getMesh());
+
+                        vkCmdBindPipeline(commandBuffer,
+                                          VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                          srsh.pipeline.pipeline);
+
+                        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+                        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                        std::vector<VkBuffer> vbuffers;
+                        std::vector<VkDeviceSize> voffsets;
+                        for (const auto& attrb : mesh.vertexAttributes) {
+                            vbuffers.push_back(attrb.buffer.buffer);
+                            voffsets.push_back(0);
+                        }
+
+                        vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
+                                               vbuffers.data(), voffsets.data());
+                        vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
+                                             0, VK_INDEX_TYPE_UINT32);
+
+                        vkCmdBindDescriptorSets(commandBuffer,
+                                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                srsh.pipeline.layout, 1, 1,
+                                                &srmt.descriptor_set, 0, nullptr);
+
+                        vkCmdBindDescriptorSets(
+                            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            srsh.pipeline.layout, 0, 1,
+                            &globalDescriptorSets[currentFrame], 0, nullptr);
+
+                        PerObjectPushConstant pc{};
+                        pc.model = accumulated_transform;
+                        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                                           VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                           sizeof(PerObjectPushConstant), &pc);
+
+                        vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
+                                         1, 0, 0, 0);
+                    },
+                    [&](const CameraHandle& empty) {
+
+                    },
+                    [&](const std::monostate& empty) {
+
+                    },
+                    [&](const LightHandle& empty) {}},
+
+                handle);
+
+            SceneTreeHandle child = stn.childH;
+            while (child) {
+                Q.push({child, accumulated_transform});
+                child = st_mg.get(child).nextH;
+            }
+        }
+}
+
+
 
 void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                                         uint32_t imageIndex) {

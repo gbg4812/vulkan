@@ -155,8 +155,6 @@ class SceneRenderer {
 
     void createColorResources();
 
-    static std::vector<char> readFile(const std::string& filename);
-
     void createRenderPass();
 
     void createGlobalDescriptorSetLayouts();
@@ -205,6 +203,8 @@ class SceneRenderer {
 
     void recordCommandBuffer(VkCommandBuffer commandBuffer,
                              uint32_t imageIndex);
+    void recordDrawShadows(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
 
     void createSyncObjects();
 
