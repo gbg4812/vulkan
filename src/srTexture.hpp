@@ -21,6 +21,7 @@ void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
 
 void destroySrTexture(const vkDevice& device, const srTexture& texture);
 
-RESOURCE_HANDLE(srTextureHandle);
+RESOURCE_HANDLE(srTexture);
+RESOURCE_MANAGER(srTexture);
 
 }  // namespace gbg

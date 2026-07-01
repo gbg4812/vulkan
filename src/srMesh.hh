@@ -6,6 +6,7 @@
 
 #include "Mesh.hpp"
 #include "Resource.hpp"
+#include "macros.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 namespace gbg {
@@ -37,6 +38,8 @@ struct srMeshHandle : public ResourceHandle {
     srMeshHandle() : ResourceHandle(){};
     srMeshHandle(size_t index, uint32_t rid) : ResourceHandle(index, rid){};
 };
+
+RESOURCE_MANAGER(srMesh);
 
 std::vector<uint32_t> createIndexBuffer(vkDevice device,
                            const std::vector<std::list<uint>>& faces);

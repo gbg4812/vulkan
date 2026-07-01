@@ -48,7 +48,7 @@ VkShaderModule createShaderModule(const vkDevice& device,
                                   std::vector<uint32_t> code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size()*sizeof(uint32_t);
+    createInfo.codeSize = code.size() * sizeof(uint32_t);
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device.ldevice, &createInfo, nullptr,
@@ -59,35 +59,40 @@ VkShaderModule createShaderModule(const vkDevice& device,
 }
 
 vkPipeline createGraphicsPipeline(
-    const vkDevice& device,const std::vector<uint32_t>& vertShaderCode,
+    const vkDevice& device, const std::vector<uint32_t>& vertShaderCode,
     const std::vector<uint32_t>& fragShaderCode,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     const std::vector<VkPushConstantRange>& push_constants,
-    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass) {
+    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass, VkPrimitiveTopology topology) {
     vkPipeline pipeline{};
-    VkShaderModule vertShaderModule =
-        createShaderModule(device, vertShaderCode);
-    VkShaderModule fragShaderModule =
-        createShaderModule(device, fragShaderCode);
 
-    VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-    vertShaderStageInfo.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vertShaderStageInfo.module = vertShaderModule;
-    vertShaderStageInfo.pName = "main";
+    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
-    VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-    fragShaderStageInfo.sType =
-        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    fragShaderStageInfo.module = fragShaderModule;
-    fragShaderStageInfo.pName = "main";
+    if (not vertShaderCode.empty()) {
+        VkShaderModule vertShaderModule =
+            createShaderModule(device, vertShaderCode);
+        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
+        vertShaderStageInfo.sType =
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+        vertShaderStageInfo.module = vertShaderModule;
+        vertShaderStageInfo.pName = "main";
+        shaderStages.push_back(vertShaderStageInfo);
+    }
 
-    VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
-                                                      fragShaderStageInfo};
+    if (not fragShaderCode.empty()) {
+        VkShaderModule fragShaderModule =
+            createShaderModule(device, fragShaderCode);
+        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+        fragShaderStageInfo.sType =
+            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        fragShaderStageInfo.module = fragShaderModule;
+        fragShaderStageInfo.pName = "main";
+        shaderStages.push_back(fragShaderStageInfo);
+    }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType =
@@ -102,7 +107,7 @@ vkPipeline createGraphicsPipeline(
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType =
         VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = topology;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkPipelineViewportStateCreateInfo viewportInfo{};
@@ -210,8 +215,8 @@ vkPipeline createGraphicsPipeline(
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = 2;
-    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.stageCount = shaderStages.size();
+    pipelineInfo.pStages = shaderStages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
     pipelineInfo.pViewportState = &viewportInfo;
@@ -234,8 +239,9 @@ vkPipeline createGraphicsPipeline(
         throw std::runtime_error("failed to create graphics pipeline!");
     }
 
-    vkDestroyShaderModule(device.ldevice, fragShaderModule, nullptr);
-    vkDestroyShaderModule(device.ldevice, vertShaderModule, nullptr);
+    for (auto stage : shaderStages) {
+        vkDestroyShaderModule(device.ldevice, stage.module, nullptr);
+    }
 
     return pipeline;
 }

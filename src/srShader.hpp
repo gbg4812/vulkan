@@ -3,6 +3,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include "Resource.hpp"
+#include "macros.hpp"
 #include "vk_utils/vkPipeline.hh"
 
 namespace gbg {
@@ -11,6 +12,7 @@ struct srShader : public Resource {
     srShader(std::string name, uint32_t rid) : Resource(name, rid) {}
     vkPipeline pipeline;
     VkDescriptorSetLayout layout;
+    VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
 struct srShaderHandle : public ResourceHandle {
@@ -19,5 +21,7 @@ struct srShaderHandle : public ResourceHandle {
 };
 
 void destroySrShader(const vkDevice& device, const srShader& shader);
+
+RESOURCE_MANAGER(srShader);
 
 }  // namespace gbg

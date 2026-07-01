@@ -3,6 +3,7 @@
 
 #include "Material.hpp"
 #include "Resource.hpp"
+#include "macros.hpp"
 #include "vk_utils/vkBuffer.hh"
 
 namespace gbg {
@@ -24,6 +25,8 @@ struct srMaterialHandle : public ResourceHandle {
     srMaterialHandle() : ResourceHandle(){};
     srMaterialHandle(uint32_t rid, size_t index) : ResourceHandle(rid, index){};
 };
+
+RESOURCE_MANAGER(srMaterial);
 
 srParameterValues allocateParameterValues(Material& model);
 

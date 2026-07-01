@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "GlfwCreateRendererContext.hpp"
+#include "Material.hpp"
 #include "SceneTree.hpp"
 #include "srMesh.hh"
 
@@ -59,6 +60,16 @@ struct UniformBufferObjects {
     alignas(16) float time;
 };
 
+struct InternalSceneData {
+    srMaterialManager srmat_mg;
+    srShaderManager srsh_mg;
+    srTextureManager srtx_mg;
+    srMeshManager srmsh_mg;
+    srLightManager srlight_mg;
+
+    Scene* scene;
+};
+
 class SceneRenderer {
    public:
     SceneRenderer(RendererContext context);
@@ -66,7 +77,6 @@ class SceneRenderer {
     void run();
     void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
-    void setActiveCamera(SceneTreeHandle activeCameraNode);
     void drawFrame();
 
    private:
@@ -99,10 +109,11 @@ class SceneRenderer {
 
     std::array<TracyVkCtx, MAX_FRAMES_IN_FLIGHT> tracyCtx;
 
-    ResourceManager<gbg::srShader, gbg::srShaderHandle> shaders;
-    ResourceManager<gbg::srMaterial, gbg::srMaterialHandle> materials;
-    ResourceManager<gbg::srMesh, gbg::srMeshHandle> meshes;
-    ResourceManager<gbg::srTexture, gbg::srTextureHandle> textures;
+    InternalSceneData active_scene_data;
+    
+    InternalSceneData internal_resources;
+    std::unique_ptr<Scene> internal_scene;
+    
 
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
@@ -117,6 +128,9 @@ class SceneRenderer {
     std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
     VkRenderPass shadowRenderPass;
+    ShaderHandle shadowShader_h;
+    MaterialHandle shadowMaterial_h;
+    VkExtent2D shadowSize = {.width = 1080, .height = 1080};
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -126,9 +140,6 @@ class SceneRenderer {
     gbg::vkImage depthImage;
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    Scene* scene;
-    SceneTreeHandle activeCameraNode;
 
    private:
     void initVulkan();
@@ -161,7 +172,11 @@ class SceneRenderer {
 
     void createShadowResources();
 
+    void createRendererObjects();
+
     void createFrameBuffers();
+
+    void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data); 
 
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
                                   VkImageTiling tiling,
@@ -194,8 +209,8 @@ class SceneRenderer {
 
     void createGlobalDescriptorSets();
 
-    void createMaterialDescriptorSet(srMaterial& srmat, Material& mat);
-    void updateMaterialDescriptorSet(srMaterial& srmat, Material& mat);
+    void createMaterialDescriptorSet(MaterialHandle h, InternalSceneData& scene_data);
+    void updateMaterialDescriptorSet(MaterialHandle h, InternalSceneData& scene_data);
 
     void createModelDescriptorSets();
 
@@ -203,7 +218,8 @@ class SceneRenderer {
 
     void recordCommandBuffer(VkCommandBuffer commandBuffer,
                              uint32_t imageIndex);
-    void recordDrawShadows(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+
+    void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor, uint32_t imageIndex, SceneTreeHandle root, MaterialHandle override);
 
 
     void createSyncObjects();
@@ -212,11 +228,11 @@ class SceneRenderer {
 
     void updateGlobalDescriptorSets(uint32_t currentImage);
 
-    void updateMesh(Mesh& mesh);
-    void updateShader(ShaderHandle sh_h);
-    void updateMaterial(MaterialHandle math);
-    void updateTexture(TextureHandle texture);
-    void updateLight(LightHandle lh);
+    void updateMesh(MeshHandle mesh_h, InternalSceneData& scene_data);
+    void updateShader(ShaderHandle sh_h, InternalSceneData& scene_data, VkRenderPass renderPass, VkSampleCountFlagBits samples);
+    void updateMaterial(MaterialHandle math, InternalSceneData& scene_data);
+    void updateTexture(TextureHandle texture, InternalSceneData& scene_data);
+    void updateLight(LightHandle lh, InternalSceneData& scene_data);
 
     void fillLightBuffer(uint32_t currentImage);
 };

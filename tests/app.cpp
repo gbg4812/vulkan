@@ -17,6 +17,7 @@
 #include "Texture.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
+#include "glm/gtc/quaternion.hpp"
 #include "traits/traits.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "GLFW/glfw3.h"
@@ -194,6 +195,7 @@ int main(int argc, char* argv[]) {
     st_mg.get(cm_nh).rotation += glm::vec3{-0.3f, 1.92f, 0.0f};
     st_mg.get(cm_nh).setResource(camh);
     st_mg.prependChild(sc.root, cm_nh);
+    sc.active_camera = cm_nh;
 
     // Light
     gbg::LightHandle lh1 = sc.lh_mg.create("Light1");
@@ -210,9 +212,9 @@ int main(int argc, char* argv[]) {
     std::cout << "Loading::" << arguments[1] << std::endl;
 
     gbg::objLoader(arguments[1], &sc, sc.root, mth);
+    std::cout << "Obj loaded" << std::endl;
 
     renderer.setScene(&sc);
-    std::cout << "Obj loaded" << std::endl;
 
     for (auto shh : sh_mg) {
         sh_mg.get(shh).unsetFlag(gbg::ResourceFlags::NEW);
@@ -230,8 +232,8 @@ int main(int argc, char* argv[]) {
         tx.unsetFlag(gbg::ResourceFlags::NEW);
         tx.unsetFlag(gbg::ResourceFlags::DIRTY);
     }
+    
 
-    renderer.setActiveCamera(cm_nh);
 
     double time = glfwGetTime();
 
@@ -455,15 +457,15 @@ int main(int argc, char* argv[]) {
             }  // end tab bar
         }
 
-        cam_node.localTranslate(offset);
+        cam_node.translation += glm::mat3(st_mg.getGlobalTransform(cm_nh)) * offset;
 
         double xnew, ynew;
         glfwGetCursorPos(window, &xnew, &ynew);
         if (not ui_mode) {
             double xdelta = xnew - xpos;
             double ydelta = ynew - ypos;
-            cam_node.rotation.y += -0.001f * (float)xdelta;
-            cam_node.rotation.x += -0.001f * (float)ydelta;
+            cam_node.rotation.y += -0.1f * (float)xdelta;
+            cam_node.rotation.x += -0.1f * (float)ydelta;
         }
         xpos = xnew;
         ypos = ynew;

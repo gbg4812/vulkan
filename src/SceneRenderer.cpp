@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "Light.hpp"
+#include "Material.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -28,6 +29,7 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
 #include "macros.hpp"
+#include "shaderReflexion.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
@@ -35,6 +37,7 @@
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyVulkan.hpp"
 #include "traits/traits.hpp"
+#include "loaders/objLoader.hpp"
 #include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
@@ -46,14 +49,13 @@
 namespace gbg {
 
 SceneRenderer::SceneRenderer(RendererContext context)
-    : meshes(10),
-      materials(10),
-      shaders(10),
-      instance(context.instance),
+    : instance(context.instance),
       surface(context.surface),
       device(context.device) {
     width = static_cast<uint32_t>(context.width);
     height = static_cast<uint32_t>(context.height);
+    internal_scene = std::make_unique<Scene>();
+    internal_resources.scene = internal_scene.get();
     initVulkan();
     initImgui();
 }
@@ -75,13 +77,9 @@ void SceneRenderer::initImgui() {
 }
 
 void SceneRenderer::setScene(Scene* scene) {
-    this->scene = scene;
+    active_scene_data.scene = scene;
     vkDeviceWaitIdle(device.ldevice);
     initResources();
-}
-
-void SceneRenderer::setActiveCamera(SceneTreeHandle activeCameraNode) {
-    this->activeCameraNode = activeCameraNode;
 }
 
 void SceneRenderer::initVulkan() {
@@ -92,7 +90,6 @@ void SceneRenderer::initVulkan() {
     createColorResources();
     createDepthResources();
     createFrameBuffers();
-    createShadowResources();
 }
 
 void SceneRenderer::initResources() {
@@ -109,6 +106,10 @@ void SceneRenderer::initResources() {
     // Per Material pool and sets
     createMaterialDescriptorPool();
 
+    createShadowResources();
+
+    createRendererObjects();
+
     // Material DSLs created
     // Material UBO and Textures created also
     processScene();
@@ -117,9 +118,12 @@ void SceneRenderer::initResources() {
     createSyncObjects();
 }
 
-void SceneRenderer::updateMesh(Mesh& mesh) {
-    srMeshHandle vkmh = meshes.create("srMesh::" + mesh.getName());
-    srMesh& vkmesh = meshes.get(vkmh);
+void SceneRenderer::updateMesh(MeshHandle mesh_h,
+                               InternalSceneData& scene_data) {
+    Scene* scene = scene_data.scene;
+    auto& mesh = scene->ms_mg.get(mesh_h);
+    srMeshHandle vkmh = scene_data.srmsh_mg.create("srMesh::" + mesh.getName());
+    srMesh& vkmesh = scene_data.srmsh_mg.get(vkmh);
 
     for (auto& attr : mesh.getAttributes()) {
         srAttribute attrib = std::visit<srAttribute>(
@@ -167,11 +171,13 @@ void SceneRenderer::updateMesh(Mesh& mesh) {
     vkmesh.vertexAttributes.push_back(tangentAttr);
 }
 
-void SceneRenderer::updateTexture(TextureHandle h) {
-    auto& texture = scene->tx_mg.get(h);
+void SceneRenderer::updateTexture(TextureHandle h,
+                                  InternalSceneData& scene_data) {
+    auto& texture = scene_data.scene->tx_mg.get(h);
     auto flags = texture.getFlags();
     if (flags & NEW) {
-        CREATE_AND_GET(tex, texh, textures, "srTexture" + texture.getName());
+        CREATE_AND_GET(tex, scene_data.srtx_mg,
+                       "srTexture" + texture.getName());
 
         VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
         if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -219,12 +225,14 @@ void SceneRenderer::updateTexture(TextureHandle h) {
     }
 }
 
-void SceneRenderer::updateShader(ShaderHandle sh_h) {
-    Shader& shader = scene->sh_mg.get(sh_h);
+void SceneRenderer::updateShader(ShaderHandle sh_h,
+                                 InternalSceneData& scene_data, VkRenderPass renderPass, VkSampleCountFlagBits samples) {
+    Shader& shader = scene_data.scene->sh_mg.get(sh_h);
     uint32_t flags = shader.getFlags();
     if (flags & ResourceFlags::NEW)
-        srShaderHandle shh = shaders.create("srShader::" + shader.getName());
-    srShader& sr_sh = shaders.getRelated(sh_h);
+        srShaderHandle shh =
+            scene_data.srsh_mg.create("srShader::" + shader.getName());
+    srShader& sr_sh = scene_data.srsh_mg.getRelated(sh_h);
 
     if (flags & (ResourceFlags::NEW | ResourceFlags::DIRTY)) {
         if (flags & ResourceFlags::DIRTY) {
@@ -234,17 +242,19 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             vkDestroyPipelineLayout(device.ldevice, sr_sh.pipeline.layout,
                                     nullptr);
         }
-        VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
-        matParmsLayoutBinding.binding = 0;
-        matParmsLayoutBinding.descriptorCount = 1;
-        matParmsLayoutBinding.descriptorType =
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        matParmsLayoutBinding.pImmutableSamplers = nullptr;
-        matParmsLayoutBinding.stageFlags =
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        std::vector<VkDescriptorSetLayoutBinding> materialBindings = {
-            matParmsLayoutBinding};
+        std::vector<VkDescriptorSetLayoutBinding> materialBindings;
+        if (not shader.getParameters().empty()) {
+            VkDescriptorSetLayoutBinding matParmsLayoutBinding{};
+            matParmsLayoutBinding.binding = 0;
+            matParmsLayoutBinding.descriptorCount = 1;
+            matParmsLayoutBinding.descriptorType =
+                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            matParmsLayoutBinding.pImmutableSamplers = nullptr;
+            matParmsLayoutBinding.stageFlags =
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            materialBindings.push_back(matParmsLayoutBinding);
+        }
 
         auto texFilter = [](ParameterTypes p) {
             return p == ParameterTypes::TEXTURE_PARM;
@@ -257,29 +267,36 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
             textureCount++;
         }
 
-        VkDescriptorSetLayoutBinding texBinding{};
-        texBinding.binding = 1;
-        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        texBinding.stageFlags =
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        texBinding.descriptorCount = textureCount;
-        texBinding.pImmutableSamplers = nullptr;
-        materialBindings.push_back(texBinding);
-
-        VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
-        materialLayoutInfo.sType =
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        materialLayoutInfo.bindingCount =
-            static_cast<uint32_t>(materialBindings.size());
-        materialLayoutInfo.pBindings = materialBindings.data();
-
-        if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
-                                        nullptr, &sr_sh.layout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor set layout!");
+        if (textureCount) {
+            VkDescriptorSetLayoutBinding texBinding{};
+            texBinding.binding = 1;
+            texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            texBinding.stageFlags =
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+            texBinding.descriptorCount = textureCount;
+            texBinding.pImmutableSamplers = nullptr;
+            materialBindings.push_back(texBinding);
         }
 
         std::vector<VkDescriptorSetLayout> desc_sets_layouts = {
-            globalDescriptorSetLayout, sr_sh.layout};
+            globalDescriptorSetLayout};
+
+        if (not materialBindings.empty()) {
+            VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
+            materialLayoutInfo.sType =
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            materialLayoutInfo.bindingCount =
+                static_cast<uint32_t>(materialBindings.size());
+            materialLayoutInfo.pBindings = materialBindings.data();
+
+            if (vkCreateDescriptorSetLayout(device.ldevice, &materialLayoutInfo,
+                                            nullptr,
+                                            &sr_sh.layout) != VK_SUCCESS) {
+                throw std::runtime_error(
+                    "failed to create descriptor set layout!");
+            }
+            desc_sets_layouts.push_back(sr_sh.layout);
+        }
 
         std::vector<VkVertexInputBindingDescription> bindingDescriptions;
         std::vector<VkVertexInputAttributeDescription> attributeDescriptions;
@@ -312,61 +329,65 @@ void SceneRenderer::updateShader(ShaderHandle sh_h) {
         sr_sh.pipeline = createGraphicsPipeline(
             device, shader.getVertShaderCode(), shader.getFragShaderCode(),
             desc_sets_layouts, bindingDescriptions, attributeDescriptions,
-            push_constants, msaaSamples, renderPass);
+            push_constants, samples, renderPass, sr_sh.topology);
     }
 }
 
-void SceneRenderer::updateMaterial(MaterialHandle math) {
+void SceneRenderer::updateMaterial(MaterialHandle math,
+                                   InternalSceneData& scene_data) {
     ZoneScoped;
-    Material& mat = scene->getMaterialManager().get(math);
+    Material& mat = scene_data.scene->mat_mg.get(math);
     if (mat.getFlags() & ResourceFlags::NEW)
-        srMaterialHandle mth = materials.create("srMaterial::" + mat.getName());
+        srMaterialHandle mth =
+            scene_data.srmat_mg.create("srMaterial::" + mat.getName());
 
     if (mat.getFlags() & (ResourceFlags::NEW | ResourceFlags::DIRTY)) {
         // TODO: easy to leak memory
-        srMaterial& srmt = materials.getRelated(math);
+        srMaterial& srmt = scene_data.srmat_mg.getRelated(math);
 
         // we have the data layed out
         srParameterValues values = gbg::allocateParameterValues(mat);
 
-        if (mat.getFlags() & ResourceFlags::NEW) {
-            srmt.paramBuffer = gbg::createBuffer(
-                device, values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        if (values.size > 0) {
+            if (mat.getFlags() & ResourceFlags::NEW) {
+                srmt.paramBuffer = gbg::createBuffer(
+                    device, values.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+            }
+            void* data;
+            vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
+                        srmt.paramBuffer.size, 0, &data);
+            std::memcpy(data, values.data, values.size);
+            vkUnmapMemory(device.ldevice, srmt.paramBuffer.memory);
+
+            delete values.data;
         }
-        void* data;
-        vkMapMemory(device.ldevice, srmt.paramBuffer.memory, 0,
-                    srmt.paramBuffer.size, 0, &data);
-        std::memcpy(data, values.data, values.size);
-        vkUnmapMemory(device.ldevice, srmt.paramBuffer.memory);
 
-        delete values.data;
-
-        auto& sh = scene->sh_mg.get(mat.getShaderHandle());
+        auto& sh = scene_data.scene->sh_mg.get(mat.getShaderHandle());
         // create descriptor sets if new
         if (mat.getFlags() & ResourceFlags::NEW)
-            createMaterialDescriptorSet(srmt, mat);
+            createMaterialDescriptorSet(math, scene_data);
         else if (sh.getFlags() & ResourceFlags::DIRTY) {
             vkDeviceWaitIdle(device.ldevice);
             vkFreeDescriptorSets(device.ldevice, materialDescPool, 1,
                                  &srmt.descriptor_set);
-            createMaterialDescriptorSet(srmt, mat);
+            createMaterialDescriptorSet(math, scene_data);
         }
 
-        updateMaterialDescriptorSet(srmt, mat);
+        updateMaterialDescriptorSet(math, scene_data);
     }
 }
 
 void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
-    auto& st_mg = scene->getSceneTreeManager();
+    auto& st_mg = active_scene_data.scene->getSceneTreeManager();
 
     std::vector<vkLight> lightTemporalBuffer;
 
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
     std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
-    Q.push({scene->root, glm::mat4(1.f)});
+    Q.push({active_scene_data.scene->root, glm::mat4(1.f)});
     while (not Q.empty()) {
         SceneTreeHandle visited = Q.front().first;
         accumulated_transform = Q.front().second;
@@ -386,12 +407,19 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
 
                              },
                              [&](const LightHandle& lh) {
-                                 auto& light = scene->lh_mg.get(lh);
+                                 auto& light =
+                                     active_scene_data.scene->lh_mg.get(lh);
                                  vkLight vklight{};
                                  vklight.color = light.color;
                                  vklight.direction = light.direction;
                                  vklight.position = accumulated_transform *
                                                     glm::vec4(0., 0., 0., 1.);
+                                 vklight.proj =
+                                     glm::perspective(glm::radians(45.0f),
+                                                      1.0f,
+                                                      0.1f, 100.0f);
+                                 vklight.proj[1][1] *= -1;
+                                 vklight.proj = vklight.proj * glm::inverse(accumulated_transform);
                                  lightTemporalBuffer.push_back(vklight);
                              }},
 
@@ -409,25 +437,25 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
 }
 
 void SceneRenderer::processScene() {
-    auto& ms_mg = scene->getMeshManager();
-    auto& mt_mg = scene->getMaterialManager();
-    auto& sh_mg = scene->getShaderManager();
-    auto& tx_mg = scene->getTextureManager();
+    auto& ms_mg = active_scene_data.scene->getMeshManager();
+    auto& mt_mg = active_scene_data.scene->getMaterialManager();
+    auto& sh_mg = active_scene_data.scene->getShaderManager();
+    auto& tx_mg = active_scene_data.scene->getTextureManager();
 
     for (MeshHandle mesh : ms_mg) {
-        updateMesh(ms_mg.get(mesh));
+        updateMesh(mesh, active_scene_data);
     }
 
     for (TextureHandle texh : tx_mg) {
-        updateTexture(texh);
+        updateTexture(texh, active_scene_data);
     }
 
     for (ShaderHandle shh : sh_mg) {
-        updateShader(shh);
+        updateShader(shh, active_scene_data, renderPass, msaaSamples);
     }
 
     for (MaterialHandle math : mt_mg) {
-        updateMaterial(math);
+        updateMaterial(math, active_scene_data);
     }
 }
 
@@ -452,20 +480,20 @@ void SceneRenderer::cleanup() {
 
     vkDestroySampler(device.ldevice, textureSampler, nullptr);
 
-    for (const auto& shader : shaders) {
-        destroySrShader(device, shaders.get(shader));
+    for (const auto& shader : active_scene_data.srsh_mg) {
+        destroySrShader(device, active_scene_data.srsh_mg.get(shader));
     }
 
-    for (const auto& material : materials) {
-        destroySrMaterial(device, materials.get(material));
+    for (const auto& material : active_scene_data.srmat_mg) {
+        destroySrMaterial(device, active_scene_data.srmat_mg.get(material));
     }
 
-    for (const auto& texture : textures) {
-        destroySrTexture(device, textures.get(texture));
+    for (const auto& texture : active_scene_data.srtx_mg) {
+        destroySrTexture(device, active_scene_data.srtx_mg.get(texture));
     }
 
-    for (const auto& mesh : meshes) {
-        destroyMesh(device, meshes.get(mesh));
+    for (const auto& mesh : active_scene_data.srmsh_mg) {
+        destroyMesh(device, active_scene_data.srmsh_mg.get(mesh));
     }
 
     vkDestroyDescriptorPool(device.ldevice, materialDescPool, nullptr);
@@ -670,21 +698,34 @@ void SceneRenderer::createRenderPass() {
     }
 }
 
+void SceneRenderer::createRendererObjects() {
+    CREATE_AND_GET(color_shader, internal_scene->sh_mg, "PlainColorShader");
+    setShaderCode(color_shader, "data/models/RendererScene/plain_color.vert", VERTEX);
+    setShaderCode(color_shader, "data/models/RendererScene/plain_color.frag", FRAGMENT);
+    reflectShader(color_shader);
+    
+    CREATE_AND_GET(white_material, internal_scene->mat_mg, "WhiteMaterial");
+    white_material.setShader(color_shader_h, color_shader, TextureHandle());
+    white_material.setParameterValue<VEC3_PARM>(0, glm::vec3(1.0f, 1.0f, 1.0f));
+    
+    objLoader("data/models/RendererScene/RendererObjects.obj", internal_scene.get() ,internal_scene->root, white_material_h);
+}
+
+
 void SceneRenderer::createShadowResources() {
     // create images
     VkFormat format = findDepthFormat();
 
     for (auto& shadowImage : shadowImages) {
-        shadowImage = createImage(device.pdevice, device.ldevice, width, height,
-                                  1, VK_SAMPLE_COUNT_1_BIT,
-                                  format, VK_IMAGE_TILING_OPTIMAL,
-                                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                                      VK_IMAGE_USAGE_SAMPLED_BIT,
-                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        shadowImage =
+            createImage(device.pdevice, device.ldevice, shadowSize.width, shadowSize.height, 1,
+                        VK_SAMPLE_COUNT_1_BIT, format, VK_IMAGE_TILING_OPTIMAL,
+                        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                            VK_IMAGE_USAGE_SAMPLED_BIT,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         addImageView(shadowImage, device.ldevice, format,
                      VK_IMAGE_ASPECT_DEPTH_BIT, 1);
     }
-
 
     VkAttachmentDescription depthDesc{};
     depthDesc.format = format;
@@ -757,8 +798,8 @@ void SceneRenderer::createShadowResources() {
         framebufferInfo.attachmentCount =
             static_cast<uint32_t>(attachments.size());
         framebufferInfo.pAttachments = attachments.data();
-        framebufferInfo.width = swapChain.swapChainImageExtent.width;
-        framebufferInfo.height = swapChain.swapChainImageExtent.height;
+        framebufferInfo.width = shadowSize.width;
+        framebufferInfo.height = shadowSize.height;
         framebufferInfo.layers = 1;
 
         if (vkCreateFramebuffer(device.ldevice, &framebufferInfo, nullptr,
@@ -767,8 +808,23 @@ void SceneRenderer::createShadowResources() {
         }
     }
 
-    Shader shader = Shader();
-    setShaderCode(shader, "data/shaders/shadow.vert", ShaderType::VERTEX);
+    shadowShader_h = internal_resources.scene->sh_mg.create("Shadow Shader");
+    auto& shadowShader = internal_resources.scene->sh_mg.get(shadowShader_h);
+    setShaderCode(shadowShader, "data/shaders/shadow.vert", ShaderType::VERTEX);
+    reflectShader(shadowShader);
+
+    shadowMaterial_h =
+        internal_resources.scene->mat_mg.create("Shadow Material");
+    auto& shadowMaterial =
+        internal_resources.scene->mat_mg.get(shadowMaterial_h);
+
+    shadowMaterial.setShader(shadowShader_h, shadowShader, TextureHandle());
+    
+    shadowMaterial.setParameterValue<ParameterTypes::INT_PARM>(0, 0);
+
+    updateShader(shadowShader_h, internal_resources, shadowRenderPass, VK_SAMPLE_COUNT_1_BIT);
+    updateMaterial(shadowMaterial_h, internal_resources);
+
 }
 
 void SceneRenderer::createGlobalDescriptorSetLayouts() {
@@ -1148,29 +1204,35 @@ void SceneRenderer::createGlobalDescriptorSets() {
     }
 }
 
-void SceneRenderer::updateMaterialDescriptorSet(srMaterial& srmat,
-                                                Material& mat) {
+void SceneRenderer::updateMaterialDescriptorSet(MaterialHandle h,
+                                                InternalSceneData& scene_data) {
     // no volem cap frame dibuixant-se
     vkDeviceWaitIdle(device.ldevice);
 
-    std::array<VkWriteDescriptorSet, 2> descWrites = {};
-    uint32_t descWritesSize = 1;
+    auto& srmat = scene_data.srmat_mg.getRelated(h);
+    auto& mat = scene_data.scene->mat_mg.get(h);
+
+    std::vector<VkWriteDescriptorSet> descWrites = {};
 
     VkDescriptorBufferInfo bufferInfo{};
     bufferInfo.buffer = srmat.paramBuffer.buffer;
     bufferInfo.offset = 0;
     bufferInfo.range = VK_WHOLE_SIZE;
 
-    descWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descWrites[0].dstSet = srmat.descriptor_set;
-    descWrites[0].dstBinding = 0;
-    descWrites[0].dstArrayElement = 0;
-    descWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    descWrites[0].descriptorCount = 1;
-    descWrites[0].pImageInfo = nullptr;
-    // Only needed for other types of descriptors
-    descWrites[0].pTexelBufferView = nullptr;
-    descWrites[0].pBufferInfo = &bufferInfo;
+    if (not mat.getValues().empty()) {
+        VkWriteDescriptorSet writeDesc{};
+
+        writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDesc.dstSet = srmat.descriptor_set;
+        writeDesc.dstBinding = 0;
+        writeDesc.dstArrayElement = 0;
+        writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        writeDesc.descriptorCount = 1;
+        writeDesc.pImageInfo = nullptr;
+        writeDesc.pTexelBufferView = nullptr;
+        writeDesc.pBufferInfo = &bufferInfo;
+        descWrites.push_back(writeDesc);
+    }
 
     std::vector<VkDescriptorImageInfo> imageInfos;
 
@@ -1180,37 +1242,39 @@ void SceneRenderer::updateMaterialDescriptorSet(srMaterial& srmat,
             VkDescriptorImageInfo imageInfo{};
             imageInfo.sampler = textureSampler;
             imageInfo.imageView =
-                textures.getRelated(*th).textureImage.view.value();
+                scene_data.srtx_mg.getRelated(*th).textureImage.view.value();
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfos.push_back(imageInfo);
         }
     }
 
     if (imageInfos.size() > 0) {
-        descWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descWrites[1].dstSet = srmat.descriptor_set;
-        descWrites[1].dstBinding = 1;
-        descWrites[1].dstArrayElement = 0;
-        descWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        descWrites[1].descriptorCount =
-            static_cast<uint32_t>(imageInfos.size());
-        descWrites[1].pImageInfo = imageInfos.data();
-        // Only needed for other types of textureDescriptors
-        descWrites[1].pTexelBufferView = nullptr;
-        descWrites[1].pBufferInfo = nullptr;
-
-        descWritesSize++;
+        VkWriteDescriptorSet writeDesc{};
+        writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writeDesc.dstSet = srmat.descriptor_set;
+        writeDesc.dstBinding = 1;
+        writeDesc.dstArrayElement = 0;
+        writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        writeDesc.descriptorCount = static_cast<uint32_t>(imageInfos.size());
+        writeDesc.pImageInfo = imageInfos.data();
+        writeDesc.pTexelBufferView = nullptr;
+        writeDesc.pBufferInfo = nullptr;
+        descWrites.push_back(writeDesc);
     }
 
-    vkUpdateDescriptorSets(device.ldevice, descWritesSize, descWrites.data(), 0,
-                           nullptr);
+    if (descWrites.empty()) return;
+    vkUpdateDescriptorSets(device.ldevice, descWrites.size(), descWrites.data(),
+                           0, nullptr);
 }
 
-void SceneRenderer::createMaterialDescriptorSet(srMaterial& srmat,
-                                                Material& mat) {
+void SceneRenderer::createMaterialDescriptorSet(MaterialHandle h,
+                                                InternalSceneData& scene_data) {
+    auto& mat = scene_data.scene->mat_mg.get(h);
+    if (mat.getValues().empty()) return;  // has no parameters or textures
     ShaderHandle shh = mat.getShaderHandle();
 
-    srShader& srsh = shaders.getRelated(shh);
+    srShader& srsh = scene_data.srsh_mg.getRelated(shh);
+    srMaterial& srmat = scene_data.srmat_mg.getRelated(h);
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1244,172 +1308,11 @@ void SceneRenderer::createCommandBuffer() {
     }
 }
 
-void SceneRenderer::recordDrawShadows(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-
-        VkRenderPassBeginInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassInfo.renderPass = shadowRenderPass;
-        renderPassInfo.framebuffer = shadowFrameBuffer[imageIndex];
-        renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapChain.swapChainImageExtent;
-
-        std::array<VkClearValue, 1> clearValues{};
-        clearValues[0].depthStencil = {1.0f, 0};
-
-        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-        renderPassInfo.pClearValues = clearValues.data();
-
-        vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
-                             VK_SUBPASS_CONTENTS_INLINE);
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapChain.swapChainImageExtent.width);
-        viewport.height = static_cast<float>(swapChain.swapChainImageExtent.height);
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-
-        VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = swapChain.swapChainImageExtent;
-
-        auto& md_mg = scene->getModelManager();
-        auto& msh_mg = scene->getMeshManager();
-        auto& mt_mg = scene->getMaterialManager();
-        auto& sh_mg = scene->getShaderManager();
-        auto& st_mg = scene->getSceneTreeManager();
-
-        glm::mat4 accumulated_transform = glm::mat4(1.0f);
-
-        std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
-        Q.push({scene->root, glm::mat4(1.f)});
-        while (not Q.empty()) {
-            SceneTreeHandle visited = Q.front().first;
-            accumulated_transform = Q.front().second;
-            Q.pop();
-
-            SceneTreeNode& stn = st_mg.get(visited);
-
-            auto handle = stn.getResourceH();
-
-            accumulated_transform = accumulated_transform * stn.getLocalTransform();
-
-            std::visit(
-                overloads{
-                    [&](const ModelHandle& mh) {
-                        TracyVkZone(tracyCtx[currentFrame], commandBuffer,
-                                    "DrawModel");
-                        Model& md = md_mg.get(mh);
-                        Material& mt = mt_mg.get(md.getMaterial());
-                        Shader& sh = sh_mg.get(mt.getShaderHandle());
-                        srShader& srsh = shaders.getRelated(
-                            (ResourceHandle)mt.getShaderHandle());
-                        srMaterial& srmt = materials.getRelated(md.getMaterial());
-
-                        srMesh& mesh = meshes.getRelated(md.getMesh());
-
-                        vkCmdBindPipeline(commandBuffer,
-                                          VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                          srsh.pipeline.pipeline);
-
-                        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-                        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-                        std::vector<VkBuffer> vbuffers;
-                        std::vector<VkDeviceSize> voffsets;
-                        for (const auto& attrb : mesh.vertexAttributes) {
-                            vbuffers.push_back(attrb.buffer.buffer);
-                            voffsets.push_back(0);
-                        }
-
-                        vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
-                                               vbuffers.data(), voffsets.data());
-                        vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
-                                             0, VK_INDEX_TYPE_UINT32);
-
-                        vkCmdBindDescriptorSets(commandBuffer,
-                                                VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                                srsh.pipeline.layout, 1, 1,
-                                                &srmt.descriptor_set, 0, nullptr);
-
-                        vkCmdBindDescriptorSets(
-                            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            srsh.pipeline.layout, 0, 1,
-                            &globalDescriptorSets[currentFrame], 0, nullptr);
-
-                        PerObjectPushConstant pc{};
-                        pc.model = accumulated_transform;
-                        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
-                                           VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                           sizeof(PerObjectPushConstant), &pc);
-
-                        vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
-                                         1, 0, 0, 0);
-                    },
-                    [&](const CameraHandle& empty) {
-
-                    },
-                    [&](const std::monostate& empty) {
-
-                    },
-                    [&](const LightHandle& empty) {}},
-
-                handle);
-
-            SceneTreeHandle child = stn.childH;
-            while (child) {
-                Q.push({child, accumulated_transform});
-                child = st_mg.get(child).nextH;
-            }
-        }
-}
-
-
-
-void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
-                                        uint32_t imageIndex) {
-    ZoneScoped;
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = 0;
-    beginInfo.pInheritanceInfo = nullptr;
-
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording buffer");
-    }
-
-    // render shadows!
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChain.swapChainImageExtent;
-
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-    clearValues[1].depthStencil = {1.0f, 0};
-
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
-                         VK_SUBPASS_CONTENTS_INLINE);
-
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapChain.swapChainImageExtent.width);
-    viewport.height = static_cast<float>(swapChain.swapChainImageExtent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapChain.swapChainImageExtent;
-
+void SceneRenderer::recordDrawScene(
+    VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor,
+    uint32_t imageIndex, SceneTreeHandle root,
+    MaterialHandle override = MaterialHandle()) {
+    Scene* scene = active_scene_data.scene;
     auto& md_mg = scene->getModelManager();
     auto& msh_mg = scene->getMeshManager();
     auto& mt_mg = scene->getMaterialManager();
@@ -1419,7 +1322,25 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
     std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
-    Q.push({scene->root, glm::mat4(1.f)});
+    Q.push({root, glm::mat4(1.f)});
+
+    if (override) {
+        bindMaterial(commandBuffer, shadowMaterial_h, internal_resources);
+        
+        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        Material& mt = internal_resources.scene->mat_mg.get(override);
+        srShader& srsh = internal_resources.srsh_mg.getRelated(
+            mt.getShaderHandle());
+        PerObjectPushConstant pc{};
+        pc.model = accumulated_transform;
+        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                           VK_SHADER_STAGE_VERTEX_BIT, 0,
+                           sizeof(PerObjectPushConstant), &pc);
+    }
+
     while (not Q.empty()) {
         SceneTreeHandle visited = Q.front().first;
         accumulated_transform = Q.front().second;
@@ -1437,21 +1358,29 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     TracyVkZone(tracyCtx[currentFrame], commandBuffer,
                                 "DrawModel");
                     Model& md = md_mg.get(mh);
-                    Material& mt = mt_mg.get(md.getMaterial());
-                    Shader& sh = sh_mg.get(mt.getShaderHandle());
-                    srShader& srsh = shaders.getRelated(
-                        (ResourceHandle)mt.getShaderHandle());
-                    srMaterial& srmt = materials.getRelated(md.getMaterial());
 
-                    srMesh& mesh = meshes.getRelated(md.getMesh());
+                    if (not override) {
 
-                    vkCmdBindPipeline(commandBuffer,
-                                      VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                      srsh.pipeline.pipeline);
+                        bindMaterial(commandBuffer, md.getMaterial(), active_scene_data);
 
-                    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                    
+                        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                        
+                        Material& mt = scene->mat_mg.get(md.getMaterial());
+                        srShader& srsh = active_scene_data.srsh_mg.getRelated(
+                            mt.getShaderHandle());
+                        
+                        PerObjectPushConstant pc{};
+                        pc.model = accumulated_transform;
+                        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                                           VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                           sizeof(PerObjectPushConstant), &pc);
+                    }
 
-                    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                    srMesh& mesh =
+                        active_scene_data.srmsh_mg.getRelated(md.getMesh());
+
                     std::vector<VkBuffer> vbuffers;
                     std::vector<VkDeviceSize> voffsets;
                     for (const auto& attrb : mesh.vertexAttributes) {
@@ -1464,32 +1393,57 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
                                          0, VK_INDEX_TYPE_UINT32);
 
-                    vkCmdBindDescriptorSets(commandBuffer,
-                                            VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                            srsh.pipeline.layout, 1, 1,
-                                            &srmt.descriptor_set, 0, nullptr);
-
-                    vkCmdBindDescriptorSets(
-                        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        srsh.pipeline.layout, 0, 1,
-                        &globalDescriptorSets[currentFrame], 0, nullptr);
-
-                    PerObjectPushConstant pc{};
-                    pc.model = accumulated_transform;
-                    vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
-                                       VK_SHADER_STAGE_VERTEX_BIT, 0,
-                                       sizeof(PerObjectPushConstant), &pc);
-
                     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
                                      1, 0, 0, 0);
                 },
                 [&](const CameraHandle& empty) {
+                    Model& md = internal_resources.scene->md_mg.getAll()[1];
+
+                    if (not override) {
+
+                        bindMaterial(commandBuffer, md.getMaterial(), internal_resources);
+
+                        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                    
+                        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+                        
+                        Material& mt = internal_resources.scene->mat_mg.get(md.getMaterial());
+                        srShader& srsh = internal_resources.srsh_mg.getRelated(
+                            mt.getShaderHandle());
+                        
+                        PerObjectPushConstant pc{};
+                        pc.model = accumulated_transform;
+                        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                                           VK_SHADER_STAGE_VERTEX_BIT, 0,
+                                           sizeof(PerObjectPushConstant), &pc);
+                    }
+
+                    srMesh& mesh =
+                        active_scene_data.srmsh_mg.getRelated(md.getMesh());
+
+                    std::vector<VkBuffer> vbuffers;
+                    std::vector<VkDeviceSize> voffsets;
+                    for (const auto& attrb : mesh.vertexAttributes) {
+                        vbuffers.push_back(attrb.buffer.buffer);
+                        voffsets.push_back(0);
+                    }
+
+                    vkCmdBindVertexBuffers(commandBuffer, 0, vbuffers.size(),
+                                           vbuffers.data(), voffsets.data());
+                    vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.buffer,
+                                         0, VK_INDEX_TYPE_UINT32);
+
+                    vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4,
+                                     1, 0, 0, 0);
 
                 },
                 [&](const std::monostate& empty) {
 
                 },
-                [&](const LightHandle& empty) {}},
+                [&](const LightHandle& empty) {
+
+                    
+                }},
 
             handle);
 
@@ -1499,6 +1453,112 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
             child = st_mg.get(child).nextH;
         }
     }
+}
+
+void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data) {
+    Material& mt = data.scene->mat_mg.get(math);
+    Shader& sh = data.scene->sh_mg.get(mt.getShaderHandle());
+    srShader& srsh = data.srsh_mg.getRelated(
+        mt.getShaderHandle());
+    srMaterial& srmt =
+        data.srmat_mg.getRelated(
+            math);
+
+    vkCmdBindPipeline(commandBuffer,
+                      VK_PIPELINE_BIND_POINT_GRAPHICS,
+                      srsh.pipeline.pipeline);
+
+
+    if (not mt.getValues().empty())
+        vkCmdBindDescriptorSets(
+            commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            srsh.pipeline.layout, 1, 1,
+            &srmt.descriptor_set, 0, nullptr);
+
+    vkCmdBindDescriptorSets(
+        commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        srsh.pipeline.layout, 0, 1,
+        &globalDescriptorSets[currentFrame], 0, nullptr);
+    
+}
+
+void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
+                                        uint32_t imageIndex) {
+    ZoneScoped;
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = 0;
+    beginInfo.pInheritanceInfo = nullptr;
+
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording buffer");
+    }
+
+
+    VkRenderPassBeginInfo shadowRenderPassInfo{};
+    shadowRenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    shadowRenderPassInfo.renderPass = shadowRenderPass;
+    shadowRenderPassInfo.framebuffer = shadowFrameBuffer[currentFrame];
+    shadowRenderPassInfo.renderArea.offset = {0, 0};
+    shadowRenderPassInfo.renderArea.extent = shadowSize;
+
+    VkClearValue shadowClear = {.depthStencil = {1.0f, 0}};
+
+    shadowRenderPassInfo.clearValueCount = 1;
+    shadowRenderPassInfo.pClearValues = &shadowClear;
+
+    vkCmdBeginRenderPass(commandBuffer, &shadowRenderPassInfo,
+                         VK_SUBPASS_CONTENTS_INLINE);
+    
+    VkViewport shadowViewport{};
+    shadowViewport.x = 0.0f;
+    shadowViewport.y = 0.0f;
+    shadowViewport.width = shadowSize.width;
+    shadowViewport.height = shadowSize.height; 
+    shadowViewport.minDepth = 0.0f;
+    shadowViewport.maxDepth = 1.0f;
+
+    VkRect2D shadowScisors{};
+    shadowScisors.offset = {0, 0};
+    shadowScisors.extent = shadowSize;
+    
+
+    recordDrawScene(commandBuffer, shadowViewport, shadowScisors, imageIndex,
+                    active_scene_data.scene->root, shadowMaterial_h);
+
+    vkCmdEndRenderPass(commandBuffer);
+
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = renderPass;
+    renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+    renderPassInfo.renderArea.offset = {0, 0};
+    renderPassInfo.renderArea.extent = swapChain.swapChainImageExtent;
+
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
+
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo,
+                         VK_SUBPASS_CONTENTS_INLINE);
+    
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapChain.swapChainImageExtent.width);
+    viewport.height = static_cast<float>(swapChain.swapChainImageExtent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapChain.swapChainImageExtent;
+
+    recordDrawScene(commandBuffer, viewport, scissor, imageIndex,
+                    active_scene_data.scene->root);
 
     // ImGui
     {
@@ -1580,8 +1640,9 @@ void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
                      .count();
 
     UniformBufferObjects ubo{};
-    auto& st_mg = scene->getSceneTreeManager();
-    ubo.view = glm::inverse(st_mg.getGlobalTransform(activeCameraNode));
+    auto& st_mg = active_scene_data.scene->getSceneTreeManager();
+    ubo.view = glm::inverse(
+        st_mg.getGlobalTransform(active_scene_data.scene->active_camera));
     ubo.proj =
         glm::perspective(glm::radians(45.0f),
                          swapChain.swapChainImageExtent.width /
@@ -1590,7 +1651,7 @@ void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
     ubo.proj[1][1] *= -1;
 
     ubo.time = time;
-    ubo.obs = st_mg.getGlobalTransform(activeCameraNode) *
+    ubo.obs = st_mg.getGlobalTransform(active_scene_data.scene->active_camera) *
               glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     memcpy(globalBuffersMapped[currentImage], &ubo, sizeof(ubo));
@@ -1617,21 +1678,24 @@ void SceneRenderer::drawFrame() {
             &imageIndex);
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapChain();
+            ImGui::EndFrame();
             return;
         } else if (result != VK_SUCCESS and result != VK_SUBOPTIMAL_KHR) {
             throw std::runtime_error("failed to recreate swapchain image!");
         }
 
+        Scene* scene = active_scene_data.scene;
+
         for (ShaderHandle shh : scene->sh_mg) {
-            updateShader(shh);
+            updateShader(shh, active_scene_data, renderPass, msaaSamples);
         }
 
         for (TextureHandle txh : scene->tx_mg) {
-            updateTexture(txh);
+            updateTexture(txh, active_scene_data);
         }
 
         for (MaterialHandle math : scene->mat_mg) {
-            updateMaterial(math);
+            updateMaterial(math, active_scene_data);
         }
 
         updateGlobalDescriptorSets(currentFrame);

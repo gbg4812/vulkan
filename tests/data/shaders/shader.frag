@@ -25,6 +25,7 @@ struct Light {
     vec3 color;
     vec3 direction;
     vec3 position;
+    mat4 proj;
 };
 
 layout(std140, set = 0, binding = 2) readonly buffer LightBlock {

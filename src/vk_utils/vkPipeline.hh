@@ -30,7 +30,7 @@ vkPipeline createGraphicsPipeline(
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     const std::vector<VkPushConstantRange>& push_constants,
-    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass);
+    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass, VkPrimitiveTopology topology);
 
 VkShaderModule createShaderModule(const std::vector<uint32_t>& code);
 
