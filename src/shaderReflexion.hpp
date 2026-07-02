@@ -1,3 +1,4 @@
+#pragma  once
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -77,7 +78,7 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
                     } else if (flags & SPV_REFLECT_TYPE_FLAG_INT) {
                         shader.addParameter(ParameterTypes::INT_PARM);
                     }
-                    
+
                 }
             }
         }

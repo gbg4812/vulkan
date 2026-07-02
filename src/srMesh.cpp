@@ -82,12 +82,18 @@ std::vector<uint32_t> createIndexBuffer(
     vkDevice device, const std::vector<std::list<uint>>& faces) {
     std::vector<uint32_t> indices;
     for (const auto& face : faces) {
-        if (not face.empty()) {
-            auto it = ++face.begin();
-            while (it != --face.end()) {
-                indices.push_back(*face.begin());
-                indices.push_back(*it);
-                indices.push_back(*++it);
+        if (face.size() > 3) {
+            if (not face.empty()) {
+                auto it = ++face.begin();
+                while (it != --face.end()) {
+                    indices.push_back(*face.begin());
+                    indices.push_back(*it);
+                    indices.push_back(*++it);
+                }
+            }
+        } else {
+            for(uint32_t index : face) {
+                indices.push_back(index);
             }
         }
     }
@@ -116,22 +122,23 @@ std::vector<glm::vec3> createTangentBuffer(
     const std::vector<glm::vec2> tex_coord,
     const std::vector<uint32_t> indices) {
     std::vector<glm::vec3> tangents(pos.size(), glm::vec3(0.0f));
-    for (int i = 0; i < indices.size(); i += 3) {
+    for (int i = 0; i < (indices.size() - 2); i += 3) {
         uint32_t i1 = indices[i];
         uint32_t i2 = indices[i + 1];
         uint32_t i3 = indices[i + 2];
 
-        glm::vec3 tangent = computeTangent(pos[i1], tex_coord[i1], pos[i2],
-                                              tex_coord[i2], pos[i3], tex_coord[i3]); 
+        glm::vec3 tangent =
+            computeTangent(pos[i1], tex_coord[i1], pos[i2], tex_coord[i2],
+                           pos[i3], tex_coord[i3]);
         tangents[i1] += tangent;
         tangents[i2] += tangent;
         tangents[i3] += tangent;
     }
 
-    for(auto& tan : tangents) {
+    for (auto& tan : tangents) {
         tan = normalize(tan);
     }
-    
+
     return tangents;
 }
 

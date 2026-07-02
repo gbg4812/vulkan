@@ -8,4 +8,5 @@ void destroySrShader(const vkDevice& device, const srShader& shader) {
     vkDestroyDescriptorSetLayout(device.ldevice, shader.layout, nullptr);
 }
 
+
 }  // namespace gbg

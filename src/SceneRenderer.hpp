@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "GlfwCreateRendererContext.hpp"
@@ -27,9 +28,12 @@
 #include "tracy/TracyVulkan.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
+#include "vk_utils/vkRenderPass.hpp"
 #include "vk_utils/vkImage.hh"
 #include "vk_utils/vkInstance.hh"
 #include "vk_utils/vkSwapChain.h"
+#include "InternalSceneData.hpp"
+#include "PerObjectPushConstant.hpp"
 
 namespace gbg {
 
@@ -42,9 +46,6 @@ const std::vector<const char*> validationLayers = {
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-struct PerObjectPushConstant {
-    glm::mat4 model;
-};
 
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
@@ -58,16 +59,6 @@ struct UniformBufferObjects {
 
     // time
     alignas(16) float time;
-};
-
-struct InternalSceneData {
-    srMaterialManager srmat_mg;
-    srShaderManager srsh_mg;
-    srTextureManager srtx_mg;
-    srMeshManager srmsh_mg;
-    srLightManager srlight_mg;
-
-    Scene* scene;
 };
 
 class SceneRenderer {
@@ -86,7 +77,6 @@ class SceneRenderer {
     uint32_t width;
     uint32_t height;
 
-    VkRenderPass renderPass;
 
     VkDescriptorPool globalDescriptorPool;
     VkDescriptorPool materialDescPool;
@@ -110,10 +100,10 @@ class SceneRenderer {
     std::array<TracyVkCtx, MAX_FRAMES_IN_FLIGHT> tracyCtx;
 
     InternalSceneData active_scene_data;
-    
+
     InternalSceneData internal_resources;
     std::unique_ptr<Scene> internal_scene;
-    
+
 
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
@@ -122,12 +112,13 @@ class SceneRenderer {
 
     VkSampler textureSampler;
 
+    std::unordered_map<std::string, vkRenderPass> renderPasses;
+
     // to be created
     std::array<vkBuffer, MAX_FRAMES_IN_FLIGHT> lightsBuffers;
     std::array<void*, MAX_FRAMES_IN_FLIGHT> lightsBuffersMapped;
     std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
-    VkRenderPass shadowRenderPass;
     ShaderHandle shadowShader_h;
     MaterialHandle shadowMaterial_h;
     VkExtent2D shadowSize = {.width = 1080, .height = 1080};
@@ -176,7 +167,7 @@ class SceneRenderer {
 
     void createFrameBuffers();
 
-    void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data); 
+    void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data);
 
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
                                   VkImageTiling tiling,
@@ -209,9 +200,6 @@ class SceneRenderer {
 
     void createGlobalDescriptorSets();
 
-    void createMaterialDescriptorSet(MaterialHandle h, InternalSceneData& scene_data);
-    void updateMaterialDescriptorSet(MaterialHandle h, InternalSceneData& scene_data);
-
     void createModelDescriptorSets();
 
     void createCommandBuffer();
@@ -228,11 +216,7 @@ class SceneRenderer {
 
     void updateGlobalDescriptorSets(uint32_t currentImage);
 
-    void updateMesh(MeshHandle mesh_h, InternalSceneData& scene_data);
-    void updateShader(ShaderHandle sh_h, InternalSceneData& scene_data, VkRenderPass renderPass, VkSampleCountFlagBits samples);
-    void updateMaterial(MaterialHandle math, InternalSceneData& scene_data);
     void updateTexture(TextureHandle texture, InternalSceneData& scene_data);
-    void updateLight(LightHandle lh, InternalSceneData& scene_data);
 
     void fillLightBuffer(uint32_t currentImage);
 };

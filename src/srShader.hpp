@@ -1,8 +1,8 @@
-
 #pragma once
 #include <vulkan/vulkan_core.h>
 
 #include "Resource.hpp"
+#include "Shader.hpp"
 #include "macros.hpp"
 #include "vk_utils/vkPipeline.hh"
 
@@ -15,10 +15,17 @@ struct srShader : public Resource {
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
+static std::map<PrimitiveInterpretation, VkPrimitiveTopology> topologyToVulkan = {
+    {TRIANGLES, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+    {POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
+    {LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}
+};
+
 struct srShaderHandle : public ResourceHandle {
     srShaderHandle() : ResourceHandle() {};
     srShaderHandle(uint32_t rid, size_t index) : ResourceHandle(rid, index) {};
 };
+
 
 void destroySrShader(const vkDevice& device, const srShader& shader);
 
