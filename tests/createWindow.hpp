@@ -9,13 +9,13 @@
 #include "imgui.h"
 void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
     auto app =
-        reinterpret_cast<gbg::SceneRenderer*>(glfwGetWindowUserPointer(window));
+        reinterpret_cast<AppData*>(glfwGetWindowUserPointer(window));
 
     while (width == 0 || height == 0) {
         glfwGetFramebufferSize(window, &width, &height);
         glfwWaitEvents();
     }
-    app->resizeSwapchain(width, height);
+    app->renderer.resizeSwapchain(width, height);
 }
 
 

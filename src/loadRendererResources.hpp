@@ -19,7 +19,7 @@ namespace gbg  {
         color_shader.topology = LINES;
 
         CREATE_AND_GET(white_material, internal_scene->mat_mg, "WhiteMaterial");
-        white_material.setShader(color_shader_h, color_shader, TextureHandle());
+        white_material.setShader(color_shader_h, color_shader);
         white_material.setParameterValue<VEC3_PARM>(0, glm::vec3(1.0f, 1.0f, 1.0f));
 
         objLoader("data/models/RendererResources/RendererObjects.obj", internal_scene ,internal_scene->root, white_material_h);

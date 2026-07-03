@@ -179,13 +179,6 @@ class SceneRenderer {
 
     void createDepthResources();
 
-    void transitionImageLayout(VkImage image, VkFormat format,
-                               VkImageLayout oldLayout, VkImageLayout newLayout,
-                               uint32_t mipLevels);
-
-    void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width,
-                           uint32_t height);
-
     void createTexturesImageViews();
 
     void createTextureSampler();
@@ -215,8 +208,6 @@ class SceneRenderer {
     VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice);
 
     void updateGlobalDescriptorSets(uint32_t currentImage);
-
-    void updateTexture(TextureHandle texture, InternalSceneData& scene_data);
 
     void fillLightBuffer(uint32_t currentImage);
 };

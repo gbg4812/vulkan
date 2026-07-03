@@ -1,6 +1,7 @@
 #ifndef GBG_VKIMAGE
 #define GBG_VKIMAGE
 
+#include "vkDevice.hh"
 #include <vulkan/vulkan_core.h>
 
 #include <optional>
@@ -26,6 +27,17 @@ VkImageView createImageView(VkImage image, VkDevice device, VkFormat format,
                             VkImageAspectFlags aspectFlags, uint32_t mipLevels);
 
 void destoryImage(vkImage image, VkDevice device);
+
+bool hasStencilComponent(VkFormat format);
+
+
+void transitionImageLayout(vkDevice device, VkImage image, VkFormat format,
+                                          VkImageLayout oldLayout,
+                                          VkImageLayout newLayout,
+                                          uint32_t mipLevels);
+
+void copyBufferToImage(vkDevice device, VkBuffer buffer, VkImage image,
+                                      uint32_t width, uint32_t height);
 
 }  // namespace gbg
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <ranges>
 #include "Scene.hpp"
+#include "Texture.hpp"
 #include "imgui.h"
 #include "loaders/texLoader.hpp"
 #include "nfd.h"
@@ -10,7 +11,8 @@ void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
         for (auto [num, value] : mat.getValues() | std::views::enumerate) {
             if (const gbg::TextureHandle* h =
                     std::get_if<gbg::TextureHandle>(&value)) {
-                auto& tex = sc.tx_mg.get(*h);
+                gbg::TextureHandle tx_h = *h ? *h : gbg::TextureHandle(1,1);
+                auto& tex = sc.tx_mg.get(tx_h);
                 if (ImGui::BeginCombo(
                         ("Texture" + std::to_string(num - 1)).c_str(),
                         tex.getName().c_str())) {

@@ -121,59 +121,6 @@ void SceneRenderer::initResources() {
 }
 
 
-void SceneRenderer::updateTexture(TextureHandle h,
-                                  InternalSceneData& scene_data) {
-    auto& texture = scene_data.scene->tx_mg.get(h);
-    auto flags = texture.getFlags();
-    if (flags & NEW) {
-        CREATE_AND_GET(tex, scene_data.srtx_mg,
-                       "srTexture" + texture.getName());
-
-        VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
-        if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;
-
-        tex.textureImage = createImage(
-            device.pdevice, device.ldevice,
-            static_cast<uint32_t>(texture.width),
-            static_cast<uint32_t>(texture.height),
-            static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
-            format, VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-        tex.mipLevels = texture.mip_levels;
-        tex.sampler = textureSampler;
-
-        addImageView(tex.textureImage, device.ldevice, format,
-                     VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
-
-        VkDeviceSize dsize = texture.data.size();
-
-        gbg::vkBuffer stagingBuffer =
-            gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-        void* sdata;
-        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
-        memcpy(sdata, texture.data.data(), texture.data.size());
-        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
-
-        transitionImageLayout(tex.textureImage.image, format,
-                              VK_IMAGE_LAYOUT_UNDEFINED,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              static_cast<uint32_t>(tex.mipLevels));
-
-        copyBufferToImage(stagingBuffer.buffer, tex.textureImage.image,
-                          texture.width, texture.height);
-        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
-        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
-
-        transitionImageLayout(tex.textureImage.image, format,
-                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                              static_cast<uint32_t>(tex.mipLevels));
-    }
-}
 
 
 
@@ -245,7 +192,7 @@ void SceneRenderer::processScene() {
     }
 
     for (TextureHandle texh : tx_mg) {
-        updateTexture(texh, active_scene_data);
+        updateTexture(device, texh, active_scene_data, textureSampler);
     }
 
     for (ShaderHandle shh : sh_mg) {
@@ -610,7 +557,7 @@ void SceneRenderer::createShadowResources() {
     auto& shadowMaterial =
         internal_resources.scene->mat_mg.get(shadowMaterial_h);
 
-    shadowMaterial.setShader(shadowShader_h, shadowShader, TextureHandle());
+    shadowMaterial.setShader(shadowShader_h, shadowShader);
 
     shadowMaterial.setParameterValue<ParameterTypes::INT_PARM>(0, 0);
 
@@ -710,10 +657,6 @@ VkFormat SceneRenderer::findDepthFormat() {
         VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
-bool SceneRenderer::hasStencilComponent(VkFormat format) {
-    return format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
-           format == VK_FORMAT_D24_UNORM_S8_UINT;
-}
 
 void SceneRenderer::createDepthResources() {
     VkFormat depthFormat = findDepthFormat();
@@ -727,99 +670,11 @@ void SceneRenderer::createDepthResources() {
     gbg::addImageView(depthImage, device.ldevice, depthFormat,
                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
-    transitionImageLayout(depthImage.image, depthFormat,
+    transitionImageLayout(device, depthImage.image, depthFormat,
                           VK_IMAGE_LAYOUT_UNDEFINED,
                           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
 }
 
-void SceneRenderer::transitionImageLayout(VkImage image, VkFormat format,
-                                          VkImageLayout oldLayout,
-                                          VkImageLayout newLayout,
-                                          uint32_t mipLevels) {
-    VkCommandBuffer transBuffer =
-        beginSingleTimeCommands(device, device.transferCmdPool);
-
-    VkImageMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = oldLayout;
-    barrier.newLayout = newLayout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        if (hasStencilComponent(format)) {
-            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-        }
-
-    } else {
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-    barrier.subresourceRange.layerCount = 1;
-    barrier.subresourceRange.levelCount = mipLevels;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.baseArrayLayer = 0;
-
-    VkPipelineStageFlags srcStage;
-    VkPipelineStageFlags dstStage;
-
-    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-        newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL &&
-               newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    } else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-               newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-                                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-        srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-
-    } else {
-        throw std::invalid_argument("unsupported layout transition!");
-    }
-
-    vkCmdPipelineBarrier(transBuffer, srcStage, dstStage, 0, 0, nullptr, 0,
-                         nullptr, 1, &barrier);
-
-    endSingleTimeCommands(device, transBuffer, device.transferCmdPool,
-                          device.tqueue);
-}
-
-void SceneRenderer::copyBufferToImage(VkBuffer buffer, VkImage image,
-                                      uint32_t width, uint32_t height) {
-    VkCommandBuffer commandBuffer =
-        beginSingleTimeCommands(device, device.transferCmdPool);
-
-    VkBufferImageCopy copyInfo{};
-    copyInfo.bufferOffset = 0;
-    copyInfo.bufferRowLength = 0;
-    copyInfo.bufferImageHeight = 0;
-
-    copyInfo.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyInfo.imageSubresource.baseArrayLayer = 0;
-    copyInfo.imageSubresource.layerCount = 1;
-    copyInfo.imageSubresource.mipLevel = 0;
-
-    copyInfo.imageExtent = {width, height, 1};
-    copyInfo.imageOffset = {0, 0, 0};
-
-    vkCmdCopyBufferToImage(commandBuffer, buffer, image,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyInfo);
-
-    gbg::endSingleTimeCommands(device, commandBuffer, device.transferCmdPool,
-                               device.tqueue);
-}
 
 void SceneRenderer::createTextureSampler() {
     VkSamplerCreateInfo createInfo{};
@@ -1400,7 +1255,7 @@ void SceneRenderer::drawFrame() {
         }
 
         for (TextureHandle txh : scene->tx_mg) {
-            updateTexture(txh, active_scene_data);
+            updateTexture(device, txh, active_scene_data, textureSampler);
         }
 
         for (MaterialHandle math : scene->mat_mg) {

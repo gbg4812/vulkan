@@ -19,4 +19,7 @@ void createMaterialDescriptorSet(vkDevice device, MaterialHandle h,
                                                 InternalSceneData& scene_data, VkDescriptorPool materialDescPool);
 void updateMaterial(vkDevice device, MaterialHandle math,
                                    InternalSceneData& scene_data, VkDescriptorPool materialDescPool, VkSampler textureSampler);
+
+void updateTexture(vkDevice device, TextureHandle h,
+                                  InternalSceneData& scene_data, VkSampler textureSampler);
 }

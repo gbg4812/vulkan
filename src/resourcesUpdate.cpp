@@ -6,6 +6,7 @@
 
 #include "PerObjectPushConstant.hpp"
 #include "Resource.hpp"
+#include "vk_utils/vkImage.hh"
 
 namespace gbg {
 
@@ -266,9 +267,14 @@ void updateMaterialDescriptorSet(vkDevice device, MaterialHandle h,
     for (const parm_vt& val : mat.getValues()) {
         if (auto th = std::get_if<TextureHandle>(&val)) {
             VkDescriptorImageInfo imageInfo{};
+            if (*th) {
+                imageInfo.imageView = scene_data.srtx_mg.getRelated(*th)
+                                          .textureImage.view.value();
+            } else {
+                imageInfo.imageView = scene_data.srtx_mg.getRelated(TextureHandle(1,1))
+                                          .textureImage.view.value();
+            }
             imageInfo.sampler = textureSampler;
-            imageInfo.imageView =
-                scene_data.srtx_mg.getRelated(*th).textureImage.view.value();
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfos.push_back(imageInfo);
         }
@@ -312,6 +318,66 @@ void createMaterialDescriptorSet(vkDevice device, MaterialHandle h,
     if (vkAllocateDescriptorSets(device.ldevice, &setInfo,
                                  &srmat.descriptor_set) != VK_SUCCESS) {
         throw std::runtime_error("failed to create descriptor sets");
+    }
+}
+
+void updateTexture(vkDevice device, TextureHandle h,
+                   InternalSceneData& scene_data, VkSampler textureSampler) {
+    auto& texture = scene_data.scene->tx_mg.get(h);
+    auto flags = texture.getFlags();
+
+    // the default one? can't be created...
+    if (flags & NEW) {
+        // TODO(guillem): improve
+        srTextureHandle tex_h = srTextureHandle(1, 1);
+        if (h) {
+            tex_h = scene_data.srtx_mg.create("srTexture" + texture.getName());
+        }
+        auto& tex = scene_data.srtx_mg.get(tex_h);
+
+        VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
+        if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;
+
+        tex.textureImage = createImage(
+            device.pdevice, device.ldevice,
+            static_cast<uint32_t>(texture.width),
+            static_cast<uint32_t>(texture.height),
+            static_cast<uint32_t>(texture.mip_levels), VK_SAMPLE_COUNT_1_BIT,
+            format, VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        tex.mipLevels = texture.mip_levels;
+        tex.sampler = textureSampler;
+
+        addImageView(tex.textureImage, device.ldevice, format,
+                     VK_IMAGE_ASPECT_COLOR_BIT, tex.mipLevels);
+
+        VkDeviceSize dsize = texture.data.size();
+
+        gbg::vkBuffer stagingBuffer =
+            gbg::createBuffer(device, dsize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        void* sdata;
+        vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
+        memcpy(sdata, texture.data.data(), texture.data.size());
+        vkUnmapMemory(device.ldevice, stagingBuffer.memory);
+
+        transitionImageLayout(device, tex.textureImage.image, format,
+                              VK_IMAGE_LAYOUT_UNDEFINED,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              static_cast<uint32_t>(tex.mipLevels));
+
+        copyBufferToImage(device, stagingBuffer.buffer, tex.textureImage.image,
+                          texture.width, texture.height);
+        vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
+        vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
+
+        transitionImageLayout(device, tex.textureImage.image, format,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                              static_cast<uint32_t>(tex.mipLevels));
     }
 }
 

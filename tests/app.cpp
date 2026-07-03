@@ -18,6 +18,7 @@
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
+#include "loaders/objLoader.hpp"
 #include "materialPanel.hpp"
 #include "sceneObjectPanel.hpp"
 #define GLFW_INCLUDE_VULKAN
@@ -28,17 +29,15 @@
 #include "Shader.hpp"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
+#include "controller.hpp"
 #include "imgui.h"
 #include "io_utils/watcher.hpp"
-#include "loaders/objLoader.hpp"
-#include "loaders/texLoader.hpp"
 #include "shaderReflexion.hpp"
-#include "controller.hpp"
 
 #define TRACY_ENABLE 1
-#include "tracy/Tracy.hpp"
 #include "AppData.hpp"
 #include "createWindow.hpp"
+#include "tracy/Tracy.hpp"
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -49,16 +48,8 @@ const bool enableValidationLayers = true;
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-
 int main(int argc, char* argv[]) {
     ZoneScoped;
-
-    std::span arguments(argv, argc);
-
-    if (arguments.size() < 2) {
-        std::cout << "Usage: app obj-file-name" << std::endl;
-        exit(1);
-    }
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
     glfwMaximizeWindow(window);
@@ -97,18 +88,7 @@ int main(int argc, char* argv[]) {
     gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
     gbg::Material& mt = mt_mg.get(mth);
 
-    auto& tx_mg = app.scene.getTextureManager();
-    auto tx_h = tx_mg.create("DiffuseTexture");
-    auto tx1_h = tx_mg.create("StoneTexture");
-
-    loadTexture("data/textures/plank_texture/raw_plank_wall_diff_1k.png", &app.scene,
-                tx_h);  // loads texture
-    loadTexture("data/textures/plank_texture/raw_plank_wall_nor_gl_1k.png", &app.scene,
-                tx1_h);           // loads texture
-    tx_mg.get(tx1_h).raw = true;  // not srgb
-
-    mt.setShader(shh, sh, tx_h);
-    mt.setParameterValue<gbg::TEXTURE_PARM>(3, tx1_h);
+    mt.setShader(shh, sh);
 
     watch({"./data/shaders/shader.frag", "./data/shaders/shader.vert"},
           (uint32_t)WatchEvents::MODFY, [&]() {
@@ -130,7 +110,7 @@ int main(int argc, char* argv[]) {
               gbg::reflectShader(sh);
 
               for (gbg::MaterialHandle mh : app.scene.mat_mg) {
-                  app.scene.mat_mg.get(mh).setShader(shh, sh, tx_h);
+                  app.scene.mat_mg.get(mh).setShader(shh, sh);
                   app.scene.mat_mg.get(mh).setFlags(gbg::ResourceFlags::DIRTY);
               }
               sh.setFlags(gbg::ResourceFlags::DIRTY);
@@ -140,7 +120,7 @@ int main(int argc, char* argv[]) {
     auto& st_mg = app.scene.getSceneTreeManager();
     auto& cm_mg = app.scene.getCameraManager();
     gbg::CameraHandle camh = cm_mg.create("Camera");
-    gbg::SceneTreeHandle cm_nh = st_mg.create("CameraObject");
+    gbg::SceneTreeHandle cm_nh = st_mg.create("DefaultCamera");
     st_mg.get(cm_nh).translation += glm::vec3{12.0f, 5.0f, -3.0f};
     st_mg.get(cm_nh).rotation += glm::vec3{-0.3f, 1.92f, 0.0f};
     st_mg.get(cm_nh).setResource(camh);
@@ -148,21 +128,12 @@ int main(int argc, char* argv[]) {
     app.scene.active_camera = cm_nh;
 
     // Light
-    gbg::LightHandle lh1 = app.scene.lh_mg.create("Light1");
-    gbg::LightHandle lh2 = app.scene.lh_mg.create("Light2");
-    gbg::SceneTreeHandle lh_nh1 = st_mg.create("LightObject1");
-    gbg::SceneTreeHandle lh_nh2 = st_mg.create("LightObject2");
-    st_mg.get(lh_nh1).setResource(lh1);
-    st_mg.get(lh_nh2).setResource(lh2);
-    st_mg.get(lh_nh1).translation = {1, 2, -3};
-    st_mg.get(lh_nh2).translation = {5, 2, -4};
-    st_mg.prependChild(app.scene.root, lh_nh1);
-    st_mg.prependChild(app.scene.root, lh_nh2);
-
-    std::cout << "Loading::" << arguments[1] << std::endl;
-
-    gbg::objLoader(arguments[1], &app.scene, app.scene.root, mth);
-    std::cout << "Obj loaded" << std::endl;
+    gbg::LightHandle lh = app.scene.lh_mg.create("Light");
+    gbg::SceneTreeHandle lh_nh = st_mg.create("DefaultLigth");
+    st_mg.get(lh_nh).setResource(lh);
+    st_mg.get(lh_nh).translation = {5, 2, -5};
+    st_mg.get(lh_nh).rotation.y = 130;
+    st_mg.prependChild(app.scene.root, lh_nh);
 
     app.renderer.setScene(&app.scene);
 
@@ -174,14 +145,13 @@ int main(int argc, char* argv[]) {
         mt_mg.get(mth).clearFlags();
     }
 
-    for (auto txh : tx_mg) {
-        tx_mg.get(txh).clearFlags();
+    for (auto txh : app.scene.tx_mg) {
+        app.scene.tx_mg.get(txh).clearFlags();
     }
 
     for (auto msh : app.scene.ms_mg) {
         app.scene.ms_mg.get(msh).clearFlags();
     }
-
 
     double time = glfwGetTime();
 
@@ -212,8 +182,19 @@ int main(int argc, char* argv[]) {
         gbg::SceneTreeNode& cam_node = st_mg.get(cm_nh);
         if (not app.ui_mode) {
             glm::vec3 offset = getOffset(window);
-            cam_node.translation += glm::mat3(st_mg.getGlobalTransform(cm_nh)) * offset * delta * 2.0f; // vel 2
+            cam_node.translation += glm::mat3(st_mg.getGlobalTransform(cm_nh)) *
+                                    offset * delta * 2.0f;  // vel 2
         } else {
+            if (ImGui::Button("Load Model")) {
+                nfdu8char_t* outpath = nullptr;
+                nfdopendialognargs_t args = {0};
+                nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
+                if (res == NFD_OKAY) {
+                    gbg::objLoader(outpath, &app.scene, app.scene.root, mth);
+                    NFD_FreePathU8(outpath);
+                }
+            }
+
             if (ImGui::BeginTabBar("Properties")) {
                 if (ImGui::BeginTabItem("Scene Objects")) {
                     for (auto snh : st_mg) {
@@ -237,7 +218,6 @@ int main(int argc, char* argv[]) {
             }  // end tab bar
         }
 
-
         double xnew, ynew;
         glfwGetCursorPos(window, &xnew, &ynew);
         if (not app.ui_mode) {
@@ -259,8 +239,8 @@ int main(int argc, char* argv[]) {
             mt_mg.get(mth).clearFlags();
         }
 
-        for (auto txh : tx_mg) {
-            tx_mg.get(txh).clearFlags();
+        for (auto txh : app.scene.tx_mg) {
+            app.scene.tx_mg.get(txh).clearFlags();
         }
 
         for (auto msh : app.scene.ms_mg) {
