@@ -168,6 +168,11 @@ class SceneRenderer {
     void createFrameBuffers();
 
     void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data);
+    
+    void recordDrawModel(VkCommandBuffer commandBuffer,
+                                        VkViewport viewport, VkRect2D scissor,
+                                        glm::mat4 accumulated_transform,
+                                        Model& md, InternalSceneData& model_scene_data, bool override_material); 
 
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
                                   VkImageTiling tiling,

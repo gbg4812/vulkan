@@ -58,6 +58,7 @@ void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
             }
         }
 
+
         static bool raw = false;
 
         if (ImGui::Button("New Texture")) {

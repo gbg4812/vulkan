@@ -63,7 +63,7 @@ void main() {
     for (int i = 0; i < lightData.lights.length(); i++) {
         vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
 
-        lcolor += albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, 127));
+        lcolor += albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, int(shaininess)));
     }
     outColor = vec4(lcolor, 1.0f);
 }

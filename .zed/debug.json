@@ -7,14 +7,14 @@
     "label": "Debug app",
     "build": {
       "command": "cmake",
-      "args": ["--build", "build", "--parallel"],
+      "args": ["--build", "build-debug", "--parallel"],
       "cwd": "$ZED_WORKTREE_ROOT",
       "use_new_terminal": true,
       "shell": {
         "program": "zsh",
       },
     },
-    "program": "$ZED_WORKTREE_ROOT/build/app",
+    "program": "$ZED_WORKTREE_ROOT/build-debug/app",
     "args": ["data/models/EasyModels/scene.obj"],
     "cwd": "$ZED_WORKTREE_ROOT/tests/",
     "request": "launch",

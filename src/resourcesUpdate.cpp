@@ -326,14 +326,13 @@ void updateTexture(vkDevice device, TextureHandle h,
     auto& texture = scene_data.scene->tx_mg.get(h);
     auto flags = texture.getFlags();
 
-    // the default one? can't be created...
     if (flags & NEW) {
-        // TODO(guillem): improve
-        srTextureHandle tex_h = srTextureHandle(1, 1);
         if (h) {
-            tex_h = scene_data.srtx_mg.create("srTexture" + texture.getName());
+            srTextureHandle tex_h = scene_data.srtx_mg.create("srTexture" + texture.getName());
+        } else {
+            h = scene_data.scene->defaults.texture;
         }
-        auto& tex = scene_data.srtx_mg.get(tex_h);
+        auto& tex = scene_data.srtx_mg.getRelated(h);
 
         VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
         if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;

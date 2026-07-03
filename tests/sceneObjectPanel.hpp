@@ -5,6 +5,7 @@
 #include "traits/traits.hpp"
 
 inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
+    ImGui::PushID(sn.getName().c_str());
     if (ImGui::CollapsingHeader(sn.getName().c_str())) {
         ImGui::InputFloat3("Translation", (float*)&sn.translation);
         ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
@@ -39,4 +40,5 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
             },
             sn.getResourceH());
     }
+    ImGui::PopID();
 }

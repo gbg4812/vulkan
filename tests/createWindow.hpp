@@ -1,5 +1,6 @@
 
 #pragma once
+#include <clocale>
 #include <iostream>
 #include "AppData.hpp"
 #include "SceneRenderer.hpp"
@@ -35,7 +36,7 @@ void setupGlfwCallbacks(GLFWwindow* window, void* userPointer) {
     glfwSetWindowFocusCallback(window, window_focus_callback);
 }
 
-GLFWwindow* createWindow(int width, int height, std::string name) {
+inline GLFWwindow* createWindow(int width, int height, std::string name) {
     glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
     glfwInit();
 
@@ -47,7 +48,6 @@ GLFWwindow* createWindow(int width, int height, std::string name) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::GetPlatformIO().Platform_LocaleDecimalPoint = '.';
 
     ImGui_ImplGlfw_InitForVulkan(window, true);
 

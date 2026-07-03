@@ -64,6 +64,9 @@ int main(int argc, char* argv[]) {
 
     init_watch();
     NFD_Init();
+    // fix
+    std::setlocale(LC_NUMERIC, "C");
+    
 
     auto& sh_mg = app.scene.getShaderManager();
 

@@ -6,8 +6,8 @@
 
 struct AppData {
     AppData(const gbg::RendererContext& context) : renderer(context) {
-        auto tx_def = scene.tx_mg.create("DefaultTexture");
-        loadTexture("data/models/RendererResources/DefaultTexture.png", &scene,  tx_def);
+        scene.defaults.texture = scene.tx_mg.create("DefaultTexture");
+        loadTexture("data/models/RendererResources/DefaultTexture.png", &scene,  scene.defaults.texture);
     }
     bool ui_mode;
     gbg::SceneRenderer renderer;
