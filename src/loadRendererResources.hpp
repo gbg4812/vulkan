@@ -33,7 +33,9 @@ namespace gbg  {
             updateMesh(device, msh_h, internal_resources);
         }
 
-        updateShader(device, color_shader_h, internal_resources, renderPasses.at("color"), globalDescSet);
+        color_shader.shadow = false;
+
+        updateShader(device, color_shader_h, internal_resources, renderPasses.at("color"), {globalDescSet});
 
         updateMaterial(device, white_material_h, internal_resources, materialDescPool, textureSampler);
     }

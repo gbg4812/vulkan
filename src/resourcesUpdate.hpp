@@ -5,21 +5,26 @@
 
 namespace gbg {
 
-void updateShader(vkDevice device, ShaderHandle sh_h,
-                  InternalSceneData& scene_data, vkRenderPass renderPass,
-                  VkDescriptorSetLayout globalDescriptorSetLayout);
+void updateShader(
+    vkDevice device, ShaderHandle sh_h, InternalSceneData& scene_data,
+    vkRenderPass renderPass,
+    std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts);
 
 void updateMesh(vkDevice device, MeshHandle mesh_h,
-                               InternalSceneData& scene_data);
+                InternalSceneData& scene_data);
 
 void updateMaterialDescriptorSet(vkDevice device, MaterialHandle h,
-                                                InternalSceneData& scene_data, VkSampler textureSampler);
+                                 InternalSceneData& scene_data,
+                                 VkSampler textureSampler);
 
 void createMaterialDescriptorSet(vkDevice device, MaterialHandle h,
-                                                InternalSceneData& scene_data, VkDescriptorPool materialDescPool);
+                                 InternalSceneData& scene_data,
+                                 VkDescriptorPool materialDescPool);
 void updateMaterial(vkDevice device, MaterialHandle math,
-                                   InternalSceneData& scene_data, VkDescriptorPool materialDescPool, VkSampler textureSampler);
+                    InternalSceneData& scene_data,
+                    VkDescriptorPool materialDescPool,
+                    VkSampler textureSampler);
 
 void updateTexture(vkDevice device, TextureHandle h,
-                                  InternalSceneData& scene_data, VkSampler textureSampler);
-}
+                   InternalSceneData& scene_data, VkSampler textureSampler);
+}  // namespace gbg

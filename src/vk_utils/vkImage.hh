@@ -31,7 +31,7 @@ void destoryImage(vkImage image, VkDevice device);
 bool hasStencilComponent(VkFormat format);
 
 
-void transitionImageLayout(vkDevice device, VkImage image, VkFormat format,
+void transitionImageLayout(vkDevice device, VkCommandBuffer transBuffer, VkImage image, VkFormat format,
                                           VkImageLayout oldLayout,
                                           VkImageLayout newLayout,
                                           uint32_t mipLevels);

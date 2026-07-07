@@ -1,5 +1,6 @@
 #include "SceneRenderer.hpp"
 
+#include <sys/param.h>
 #include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
@@ -194,7 +195,7 @@ void SceneRenderer::processScene() {
 
     for (ShaderHandle shh : sh_mg) {
         updateShader(device, shh, active_scene_data, renderPasses.at("color"),
-                     globalDescriptorSetLayout);
+                     {globalDescriptorSetLayout, shadowDescriptorSetLayout});
     }
 
     for (MaterialHandle math : mt_mg) {
@@ -548,6 +549,8 @@ void SceneRenderer::createShadowResources() {
     setShaderCode(shadowShader, "data/shaders/shadow.vert", ShaderType::VERTEX);
     reflectShader(shadowShader);
 
+    shadowShader.shadow = false;
+
     shadowMaterial_h =
         internal_resources.scene->mat_mg.create("Shadow Material");
     auto& shadowMaterial =
@@ -558,9 +561,59 @@ void SceneRenderer::createShadowResources() {
     shadowMaterial.setParameterValue<ParameterTypes::INT_PARM>(0, 0);
 
     updateShader(device, shadowShader_h, internal_resources,
-                 renderPasses["shadow"], globalDescriptorSetLayout);
+                 renderPasses["shadow"], {globalDescriptorSetLayout});
+
     updateMaterial(device, shadowMaterial_h, internal_resources,
                    materialDescPool, textureSampler);
+
+    // create descriptor layout
+    VkDescriptorSetLayoutBinding shadowBind;
+    shadowBind.binding = 0;
+    shadowBind.descriptorCount = 1;
+    shadowBind.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    shadowBind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutCreateInfo descSetLayInfo{};
+    descSetLayInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descSetLayInfo.bindingCount = 1;
+    descSetLayInfo.pBindings = &shadowBind;
+
+    if (vkCreateDescriptorSetLayout(device.ldevice, &descSetLayInfo, nullptr,
+                                    &shadowDescriptorSetLayout) != VK_SUCCESS) {
+        throw std::runtime_error(
+            "Shadow descriptor set layout can't be created!");
+    }
+
+    std::vector<VkDescriptorSetLayout> layouts(shadowDescriptorSets.size(),
+                                               shadowDescriptorSetLayout);
+
+    // create descriptor
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = materialDescPool;
+    allocInfo.descriptorSetCount = shadowDescriptorSets.size();
+    allocInfo.pSetLayouts = layouts.data();
+
+    if (vkAllocateDescriptorSets(device.ldevice, &allocInfo,
+                                 shadowDescriptorSets.data()) != VK_SUCCESS) {
+        throw std::runtime_error("Shadow descriptor set can't be created!");
+    }
+
+    for (int i = 0; i < shadowDescriptorSets.size(); ++i) {
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.imageView = shadowImages[i].view.value();
+        imageInfo.sampler = textureSampler;
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        write.pImageInfo = &imageInfo;
+        write.dstSet = shadowDescriptorSets[i];
+
+        vkUpdateDescriptorSets(device.ldevice, 1, &write, 0, nullptr);
+    }
 }
 
 void SceneRenderer::createGlobalDescriptorSetLayouts() {
@@ -666,9 +719,15 @@ void SceneRenderer::createDepthResources() {
     gbg::addImageView(depthImage, device.ldevice, depthFormat,
                       VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
-    transitionImageLayout(device, depthImage.image, depthFormat,
+    VkCommandBuffer transBuffer =
+        beginSingleTimeCommands(device, device.transferCmdPool);
+
+    transitionImageLayout(device, transBuffer, depthImage.image, depthFormat,
                           VK_IMAGE_LAYOUT_UNDEFINED,
                           VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
+
+    endSingleTimeCommands(device, transBuffer, device.transferCmdPool,
+                          device.tqueue);
 }
 
 void SceneRenderer::createTextureSampler() {
@@ -870,7 +929,8 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
                                     VkViewport viewport, VkRect2D scissor,
                                     glm::mat4 accumulated_transform, Model& md,
                                     InternalSceneData& model_scene_data,
-                                    bool override_material) {
+                                    MaterialHandle override_material) {
+    MaterialHandle mth = override_material;
     if (not override_material) {
         bindMaterial(commandBuffer, md.getMaterial(), model_scene_data);
 
@@ -878,16 +938,18 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
 
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        Material& mt = model_scene_data.scene->mat_mg.get(md.getMaterial());
-        srShader& srsh =
-            model_scene_data.srsh_mg.getRelated(mt.getShaderHandle());
-
-        PerObjectPushConstant pc{};
-        pc.model = accumulated_transform;
-        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
-                           VK_SHADER_STAGE_VERTEX_BIT, 0,
-                           sizeof(PerObjectPushConstant), &pc);
+        mth = md.getMaterial();
     }
+    
+    Material& mt = model_scene_data.scene->mat_mg.get(mth);
+    srShader& srsh =
+        model_scene_data.srsh_mg.getRelated(mt.getShaderHandle());
+    PerObjectPushConstant pc{};
+    pc.model = accumulated_transform;
+    vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
+                       VK_SHADER_STAGE_VERTEX_BIT, 0,
+                       sizeof(PerObjectPushConstant), &pc);
+
 
     srMesh& mesh = model_scene_data.srmsh_mg.getRelated(md.getMesh());
 
@@ -922,22 +984,13 @@ void SceneRenderer::recordDrawScene(
 
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        Material& mt = internal_resources.scene->mat_mg.get(override);
-        srShader& srsh =
-            internal_resources.srsh_mg.getRelated(mt.getShaderHandle());
-        PerObjectPushConstant pc{};
-        pc.model = accumulated_transform;
-        vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
-                           VK_SHADER_STAGE_VERTEX_BIT, 0,
-                           sizeof(PerObjectPushConstant), &pc);
     }
 
     // draw axis
     {
-        Model& md =
-            internal_resources.scene->md_mg.getByName("Axis");
+        Model& md = internal_resources.scene->md_mg.getByName("Axis");
         recordDrawModel(commandBuffer, viewport, scissor, accumulated_transform,
-                        md, internal_resources, (bool) override);
+                        md, internal_resources, override);
     }
 
     while (not Q.empty()) {
@@ -955,7 +1008,7 @@ void SceneRenderer::recordDrawScene(
                           auto& md = active_scene_data.scene->md_mg.get(mh);
                           recordDrawModel(commandBuffer, viewport, scissor,
                                           accumulated_transform, md,
-                                          active_scene_data, (bool) override);
+                                          active_scene_data, override);
                       },
                       [&](const CameraHandle& empty) {},
                       [&](const std::monostate& empty) {
@@ -966,7 +1019,7 @@ void SceneRenderer::recordDrawScene(
                               "SpotLight");  // light mesh
                           recordDrawModel(commandBuffer, viewport, scissor,
                                           accumulated_transform, md,
-                                          internal_resources, (bool) override);
+                                          internal_resources, override);
                       }},
 
             handle);
@@ -989,14 +1042,22 @@ void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer,
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       srsh.pipeline.pipeline);
 
-    if (not mt.getValues().empty())
+    if (not mt.getValues().empty()) {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                srsh.pipeline.layout, 1, 1,
-                                &srmt.descriptor_set, 0, nullptr);
-
+                                srsh.pipeline.layout, 0, 1,
+                                &globalDescriptorSets[currentFrame], 0,
+                                nullptr);
+    }
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            srsh.pipeline.layout, 0, 1,
-                            &globalDescriptorSets[currentFrame], 0, nullptr);
+                            srsh.pipeline.layout, 1, 1, &srmt.descriptor_set, 0,
+                            nullptr);
+
+    if(sh.shadow) {
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                srsh.pipeline.layout, 2, 1,
+                                &shadowDescriptorSets[currentFrame], 0, nullptr);
+    }
+
 }
 
 void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
@@ -1042,6 +1103,12 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
                     active_scene_data.scene->root, shadowMaterial_h);
 
     vkCmdEndRenderPass(commandBuffer);
+
+    // transition detph map
+    transitionImageLayout(device, commandBuffer,
+                          shadowImages[currentFrame].image, findDepthFormat(),
+                          VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1202,8 +1269,9 @@ void SceneRenderer::drawFrame() {
         Scene* scene = active_scene_data.scene;
 
         for (ShaderHandle shh : scene->sh_mg) {
-            updateShader(device, shh, active_scene_data,
-                         renderPasses.at("color"), globalDescriptorSetLayout);
+            updateShader(
+                device, shh, active_scene_data, renderPasses.at("color"),
+                {globalDescriptorSetLayout, shadowDescriptorSetLayout});
         }
 
         for (TextureHandle txh : scene->tx_mg) {

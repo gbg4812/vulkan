@@ -1,6 +1,7 @@
 #include <nfd.h>
 #include <vulkan/vulkan_core.h>
 
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <ostream>
@@ -15,6 +16,7 @@
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "Texture.hpp"
+#include "createObject.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/quaternion.hpp"
@@ -58,66 +60,15 @@ int main(int argc, char* argv[]) {
         window, gbg::validationLayers, enableValidationLayers,
         gbg::deviceExtensions);
 
+    init_watch();
+    
     AppData app(context);
 
     setupGlfwCallbacks(window, &app);
 
-    init_watch();
     NFD_Init();
     // fix
     std::setlocale(LC_NUMERIC, "C");
-    
-
-    auto& sh_mg = app.scene.getShaderManager();
-
-    // Shader Creation
-    gbg::ShaderHandle shh = sh_mg.create("DefaultShader");
-    gbg::Shader& sh = sh_mg.get(shh);
-
-    auto res =
-        gbg::setShaderCode(sh, "./data/shaders/shader.vert", gbg::VERTEX);
-    if (not res.first) {
-        std::cout << res.second << std::endl;
-    }
-    res = gbg::setShaderCode(sh, "./data/shaders/shader.frag", gbg::FRAGMENT);
-    if (not res.first) {
-        std::cout << res.second << std::endl;
-    }
-    gbg::reflectShader(sh);
-
-    // Material Creation
-    auto& mt_mg = app.scene.getMaterialManager();
-
-    gbg::MaterialHandle mth = mt_mg.create("DefaultMaterial");
-    gbg::Material& mt = mt_mg.get(mth);
-
-    mt.setShader(shh, sh);
-
-    watch({"./data/shaders/shader.frag", "./data/shaders/shader.vert"},
-          (uint32_t)WatchEvents::MODFY, [&]() {
-              auto res = gbg::setShaderCode(sh, "./data/shaders/shader.vert",
-                                            gbg::VERTEX);
-              if (not res.first) {
-                  std::cout << res.second << std::endl;
-              } else {
-                  std::cout << "Shader recompiled successfuly" << std::endl;
-              }
-              res = gbg::setShaderCode(sh, "./data/shaders/shader.frag",
-                                       gbg::FRAGMENT);
-              if (not res.first) {
-                  std::cout << res.second << std::endl;
-              } else {
-                  std::cout << "Shader recompiled successfuly" << std::endl;
-              }
-
-              gbg::reflectShader(sh);
-
-              for (gbg::MaterialHandle mh : app.scene.mat_mg) {
-                  app.scene.mat_mg.get(mh).setShader(shh, sh);
-                  app.scene.mat_mg.get(mh).setFlags(gbg::ResourceFlags::DIRTY);
-              }
-              sh.setFlags(gbg::ResourceFlags::DIRTY);
-          });
 
     // Camera
     auto& st_mg = app.scene.getSceneTreeManager();
@@ -140,12 +91,12 @@ int main(int argc, char* argv[]) {
 
     app.renderer.setScene(&app.scene);
 
-    for (auto shh : sh_mg) {
-        sh_mg.get(shh).clearFlags();
+    for (auto shh : app.scene.sh_mg) {
+        app.scene.sh_mg.get(shh).clearFlags();
     }
 
-    for (auto mth : mt_mg) {
-        mt_mg.get(mth).clearFlags();
+    for (auto mth : app.scene.mat_mg) {
+        app.scene.mat_mg.get(mth).clearFlags();
     }
 
     for (auto txh : app.scene.tx_mg) {
@@ -188,15 +139,8 @@ int main(int argc, char* argv[]) {
             cam_node.translation += glm::mat3(st_mg.getGlobalTransform(cm_nh)) *
                                     offset * delta * 2.0f;  // vel 2
         } else {
-            if (ImGui::Button("Load Model")) {
-                nfdu8char_t* outpath = nullptr;
-                nfdopendialognargs_t args = {0};
-                nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
-                if (res == NFD_OKAY) {
-                    gbg::objLoader(outpath, &app.scene, app.scene.root, mth);
-                    NFD_FreePathU8(outpath);
-                }
-            }
+
+            drawCreateObject(app.scene);
 
             if (ImGui::BeginTabBar("Properties")) {
                 if (ImGui::BeginTabItem("Scene Objects")) {
@@ -209,13 +153,22 @@ int main(int argc, char* argv[]) {
 
                 if (ImGui::BeginTabItem("Materials")) {
                     int i = 0;
-                    for (auto math : mt_mg) {
-                        auto& mat = mt_mg.get(math);
+                    for (auto math : app.scene.mat_mg) {
+                        auto& mat = app.scene.mat_mg.get(math);
                         drawMaterialPanel(app.scene, mat);
                         i++;
                     }
+
+                    drawNewMaterial(app.scene);
+
                     ImGui::EndTabItem();
                 }
+                
+                if (ImGui::BeginTabItem("Shaders")) {
+                    drawShaderPannel(app.scene);
+                    ImGui::EndTabItem();
+                }
+                
 
                 ImGui::EndTabBar();
             }  // end tab bar
@@ -234,12 +187,12 @@ int main(int argc, char* argv[]) {
 
         app.renderer.drawFrame();
 
-        for (auto shh : sh_mg) {
-            sh_mg.get(shh).clearFlags();
+        for (auto shh : app.scene.sh_mg) {
+            app.scene.sh_mg.get(shh).clearFlags();
         }
 
-        for (auto mth : mt_mg) {
-            mt_mg.get(mth).clearFlags();
+        for (auto mth : app.scene.mat_mg) {
+            app.scene.mat_mg.get(mth).clearFlags();
         }
 
         for (auto txh : app.scene.tx_mg) {

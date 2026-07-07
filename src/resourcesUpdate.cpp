@@ -1,18 +1,19 @@
 #include "resourcesUpdate.hpp"
 
 #include <string.h>
+#include <vulkan/vulkan_core.h>
 
 #include <ranges>
 
 #include "PerObjectPushConstant.hpp"
 #include "Resource.hpp"
+#include "vk_utils/vkCommandBuffer.hh"
 #include "vk_utils/vkImage.hh"
 
 namespace gbg {
 
 void updateShader(vkDevice device, ShaderHandle sh_h,
-                  InternalSceneData& scene_data, vkRenderPass renderPass,
-                  VkDescriptorSetLayout globalDescriptorSetLayout) {
+                  InternalSceneData& scene_data, vkRenderPass renderPass, std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts) {
     Shader& shader = scene_data.scene->sh_mg.get(sh_h);
     uint32_t flags = shader.getFlags();
     if (flags & ResourceFlags::NEW)
@@ -66,8 +67,6 @@ void updateShader(vkDevice device, ShaderHandle sh_h,
             materialBindings.push_back(texBinding);
         }
 
-        std::vector<VkDescriptorSetLayout> desc_sets_layouts = {
-            globalDescriptorSetLayout};
 
         if (not materialBindings.empty()) {
             VkDescriptorSetLayoutCreateInfo materialLayoutInfo{};
@@ -83,7 +82,7 @@ void updateShader(vkDevice device, ShaderHandle sh_h,
                 throw std::runtime_error(
                     "failed to create descriptor set layout!");
             }
-            desc_sets_layouts.push_back(sr_sh.layout);
+            rendererDescriptorSetLayouts.insert(++rendererDescriptorSetLayouts.begin(), sr_sh.layout);
         }
 
         std::vector<VkVertexInputBindingDescription> bindingDescriptions;
@@ -116,7 +115,7 @@ void updateShader(vkDevice device, ShaderHandle sh_h,
 
         sr_sh.pipeline = createGraphicsPipeline(
             device, shader.getVertShaderCode(), shader.getFragShaderCode(),
-            desc_sets_layouts, bindingDescriptions, attributeDescriptions,
+            rendererDescriptorSetLayouts, bindingDescriptions, attributeDescriptions,
             push_constants, renderPass.samples, renderPass.renderPass,
             sr_sh.topology);
     }
@@ -362,21 +361,29 @@ void updateTexture(vkDevice device, TextureHandle h,
         vkMapMemory(device.ldevice, stagingBuffer.memory, 0, dsize, 0, &sdata);
         memcpy(sdata, texture.data.data(), texture.data.size());
         vkUnmapMemory(device.ldevice, stagingBuffer.memory);
+        
+        VkCommandBuffer transBuffer = beginSingleTimeCommands(device, device.transferCmdPool);
 
-        transitionImageLayout(device, tex.textureImage.image, format,
+        transitionImageLayout(device, transBuffer, tex.textureImage.image, format,
                               VK_IMAGE_LAYOUT_UNDEFINED,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                               static_cast<uint32_t>(tex.mipLevels));
+        
+        endSingleTimeCommands(device, transBuffer, device.transferCmdPool, device.tqueue);
 
         copyBufferToImage(device, stagingBuffer.buffer, tex.textureImage.image,
                           texture.width, texture.height);
         vkDestroyBuffer(device.ldevice, stagingBuffer.buffer, nullptr);
         vkFreeMemory(device.ldevice, stagingBuffer.memory, nullptr);
 
-        transitionImageLayout(device, tex.textureImage.image, format,
+        transBuffer = beginSingleTimeCommands(device, device.transferCmdPool);
+
+        transitionImageLayout(device, transBuffer, tex.textureImage.image, format,
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                               static_cast<uint32_t>(tex.mipLevels));
+
+        endSingleTimeCommands(device, transBuffer, device.transferCmdPool, device.tqueue);
     }
 }
 

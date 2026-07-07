@@ -1,3 +1,4 @@
+#pragma once
 // API
 // init_watch();
 // watchedh = watch(filepath, actions, callback)

@@ -63,27 +63,29 @@ void main() {
     n.y *= -1;
     n = normalize(fs_in.fTBN * n);
 
-    for (int i = 0; i < lightData.lights.length(); i++) {
-        vec4 cam_pos = lightData.lights[i].proj * vec4(fs_in.fpos, 1.0f);
-        cam_pos /= cam_pos.w;
-        vec2 coords = cam_pos.xy;
-        float shadow = smoothstep(0, 0.1, 1 - length(cam_pos.xy));
-        coords += 1.;
-        coords /= 2.;
-        if (i == 0) {
-            float d = (texture(sampler2D(_shadow_map, _sampler), coords)).r;
-            if (d < cam_pos.z - 0.0001) {
-                shadow = 0.0f;
-            }
-        }
+    vec4 cam_pos = lightData.lights[0].proj * vec4(fs_in.fpos, 1.0f);
+    cam_pos /= cam_pos.w;
+    vec2 coords = cam_pos.xy;
+    coords += 1.;
+    coords /= 2.;
+    float d = (texture(sampler2D(_shadow_map, _sampler), coords)).r;
 
-        vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
+    float shadow = 1.0f;
 
-        vec3 ilum = albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, int(shaininess)));
-
-        lcolor += ilum * shadow;
+    if (d < cam_pos.z - 0.0001) {
+        shadow = 0.0f;
     }
 
+    float f = smoothstep(0, 0.1, 1 - length(cam_pos.xy));
+    shadow *= f;
+
+    for (int i = 0; i < lightData.lights.length(); i++) {
+        vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
+
+        lcolor += albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, int(shaininess)));
+    }
+
+    lcolor *= shadow;
     lcolor += ambientI * albedo;
 
     outColor = vec4(lcolor, 1.0f);

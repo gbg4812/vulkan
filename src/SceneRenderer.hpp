@@ -20,6 +20,8 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
+#include "InternalSceneData.hpp"
+#include "PerObjectPushConstant.hpp"
 #include "Scene.hpp"
 #include "srLight.hpp"
 #include "srMaterial.hpp"
@@ -28,12 +30,10 @@
 #include "tracy/TracyVulkan.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
-#include "vk_utils/vkRenderPass.hpp"
 #include "vk_utils/vkImage.hh"
 #include "vk_utils/vkInstance.hh"
+#include "vk_utils/vkRenderPass.hpp"
 #include "vk_utils/vkSwapChain.h"
-#include "InternalSceneData.hpp"
-#include "PerObjectPushConstant.hpp"
 
 namespace gbg {
 
@@ -45,7 +45,6 @@ const std::vector<const char*> validationLayers = {
 
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-
 
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
@@ -77,7 +76,6 @@ class SceneRenderer {
     uint32_t width;
     uint32_t height;
 
-
     VkDescriptorPool globalDescriptorPool;
     VkDescriptorPool materialDescPool;
     VkDescriptorPool modelDescPool;
@@ -85,8 +83,10 @@ class SceneRenderer {
     // Descriptors that change in a frame basis but not per-material
     VkDescriptorSetLayout globalDescriptorSetLayout;
     VkDescriptorSetLayout modelDescriptorSetLayout;
+    VkDescriptorSetLayout shadowDescriptorSetLayout;
 
     std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> globalDescriptorSets;
+    std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> shadowDescriptorSets;
 
     gbg::vkSwapChain swapChain;
     std::vector<VkFramebuffer> swapChainFramebuffers;
@@ -103,7 +103,6 @@ class SceneRenderer {
 
     InternalSceneData internal_resources;
     std::unique_ptr<Scene> internal_scene;
-
 
     const uint32_t max_obj = 1000;
     const uint32_t max_mat = 1000;
@@ -167,13 +166,6 @@ class SceneRenderer {
 
     void createFrameBuffers();
 
-    void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math, InternalSceneData& data);
-    
-    void recordDrawModel(VkCommandBuffer commandBuffer,
-                                        VkViewport viewport, VkRect2D scissor,
-                                        glm::mat4 accumulated_transform,
-                                        Model& md, InternalSceneData& model_scene_data, bool override_material); 
-
     VkFormat findSupportedFormats(const std::vector<VkFormat>& candidates,
                                   VkImageTiling tiling,
                                   VkFormatFeatureFlags features);
@@ -202,11 +194,20 @@ class SceneRenderer {
 
     void createCommandBuffer();
 
+    void bindMaterial(VkCommandBuffer commandBuffer, MaterialHandle math,
+                      InternalSceneData& data);
+
     void recordCommandBuffer(VkCommandBuffer commandBuffer,
                              uint32_t imageIndex);
 
-    void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor, uint32_t imageIndex, SceneTreeHandle root, MaterialHandle override);
+    void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport,
+                         VkRect2D scissor, uint32_t imageIndex,
+                         SceneTreeHandle root, MaterialHandle override);
 
+    void recordDrawModel(VkCommandBuffer commandBuffer, VkViewport viewport,
+                         VkRect2D scissor, glm::mat4 accumulated_transform,
+                         Model& md, InternalSceneData& model_scene_data,
+                         MaterialHandle override_material);
 
     void createSyncObjects();
 

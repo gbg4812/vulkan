@@ -1,5 +1,7 @@
 #include "vkImage.hh"
 
+#include <vulkan/vulkan_core.h>
+
 #include <stdexcept>
 
 #include "vkUtil.hh"
@@ -96,13 +98,10 @@ bool hasStencilComponent(VkFormat format) {
            format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
-void transitionImageLayout(vkDevice device, VkImage image, VkFormat format,
-                                          VkImageLayout oldLayout,
-                                          VkImageLayout newLayout,
-                                          uint32_t mipLevels) {
-    VkCommandBuffer transBuffer =
-        beginSingleTimeCommands(device, device.transferCmdPool);
-
+void transitionImageLayout(vkDevice device, VkCommandBuffer transBuffer,
+                           VkImage image, VkFormat format,
+                           VkImageLayout oldLayout, VkImageLayout newLayout,
+                           uint32_t mipLevels) {
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = oldLayout;
@@ -110,7 +109,7 @@ void transitionImageLayout(vkDevice device, VkImage image, VkFormat format,
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
+    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL | oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         if (hasStencilComponent(format)) {
             barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
@@ -148,20 +147,22 @@ void transitionImageLayout(vkDevice device, VkImage image, VkFormat format,
                                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-
+    } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL &&
+               newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        srcStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     } else {
         throw std::invalid_argument("unsupported layout transition!");
     }
 
     vkCmdPipelineBarrier(transBuffer, srcStage, dstStage, 0, 0, nullptr, 0,
                          nullptr, 1, &barrier);
-
-    endSingleTimeCommands(device, transBuffer, device.transferCmdPool,
-                          device.tqueue);
 }
 
 void copyBufferToImage(vkDevice device, VkBuffer buffer, VkImage image,
-                                      uint32_t width, uint32_t height) {
+                       uint32_t width, uint32_t height) {
     VkCommandBuffer commandBuffer =
         beginSingleTimeCommands(device, device.transferCmdPool);
 
