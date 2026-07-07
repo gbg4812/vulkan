@@ -114,12 +114,9 @@ void SceneRenderer::initResources() {
 
     loadRendererResources(device, globalDescriptorSetLayout, internal_resources,
                           renderPasses, materialDescPool, textureSampler);
-
-    // Material DSLs created
-    // Material UBO and Textures created also
-    processScene();
-
+    
     createCommandBuffer();
+    
     createSyncObjects();
 }
 
@@ -179,30 +176,6 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
            lightTemporalBuffer.size() * sizeof(vkLight));
 }
 
-void SceneRenderer::processScene() {
-    auto& ms_mg = active_scene_data.scene->getMeshManager();
-    auto& mt_mg = active_scene_data.scene->getMaterialManager();
-    auto& sh_mg = active_scene_data.scene->getShaderManager();
-    auto& tx_mg = active_scene_data.scene->getTextureManager();
-
-    for (MeshHandle mesh : ms_mg) {
-        updateMesh(device, mesh, active_scene_data);
-    }
-
-    for (TextureHandle texh : tx_mg) {
-        updateTexture(device, texh, active_scene_data, textureSampler);
-    }
-
-    for (ShaderHandle shh : sh_mg) {
-        updateShader(device, shh, active_scene_data, renderPasses.at("color"),
-                     {globalDescriptorSetLayout, shadowDescriptorSetLayout});
-    }
-
-    for (MaterialHandle math : mt_mg) {
-        updateMaterial(device, math, active_scene_data, materialDescPool,
-                       textureSampler);
-    }
-}
 
 void SceneRenderer::cleanup() {
     vkDeviceWaitIdle(device.ldevice);

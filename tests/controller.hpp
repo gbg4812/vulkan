@@ -1,11 +1,12 @@
 
 #include "AppData.hpp"
 #include "GLFW/glfw3.h"
-#include "glm/vec3.hpp"
 #include "imgui.h"
 
 
-inline glm::vec3 getOffset(GLFWwindow* window) {
+inline void updateCamera(gbg::Scene& scene, GLFWwindow* window, float delta) {
+    gbg::SceneTreeNode& cam_node =
+        scene.st_mg.get(scene.active_camera);
     glm::vec3 offset = glm::vec3(0.0f);
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
         offset.z = -1.0f;
@@ -25,7 +26,21 @@ inline glm::vec3 getOffset(GLFWwindow* window) {
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
         offset.y = -1.0f;
     }
-    return offset;
+    cam_node.translation +=
+        glm::mat3(scene.st_mg.getGlobalTransform(
+            scene.active_camera)) *
+        offset * delta * 2.0f;  // vel 2
+
+    
+    double xnew, ynew;
+    static float xpos = 0, ypos = 0;
+    glfwGetCursorPos(window, &xnew, &ynew);
+    double xdelta = xnew - xpos;
+    double ydelta = ynew - ypos;
+    cam_node.rotation.y += -0.1f * (float)xdelta;
+    cam_node.rotation.x += -0.1f * (float)ydelta;
+    xpos = xnew;
+    ypos = ynew;
 }
 
 

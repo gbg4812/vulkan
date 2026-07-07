@@ -30,7 +30,7 @@ void updateShader(vkDevice device, ShaderHandle sh_h,
                                     nullptr);
         }
 
-        sr_sh.topology = topologyToVulkan[shader.topology];
+        sr_sh.topology = topologyToVulkan.at(shader.topology);
 
         std::vector<VkDescriptorSetLayoutBinding> materialBindings;
         if (not shader.getParameters().empty()) {

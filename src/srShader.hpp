@@ -15,7 +15,7 @@ struct srShader : public Resource {
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
-static std::map<PrimitiveInterpretation, VkPrimitiveTopology> topologyToVulkan = {
+inline const std::map<PrimitiveInterpretation, VkPrimitiveTopology> topologyToVulkan = {
     {TRIANGLES, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
     {POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
     {LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}
