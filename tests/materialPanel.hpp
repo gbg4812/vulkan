@@ -1,22 +1,28 @@
 #pragma once
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <ranges>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
+#include "AppData.hpp"
+#include "DependencyTreeFunctions.hpp"
+#include "Resource.hpp"
 #include "Scene.hpp"
+#include "SceneRenderer.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "imgui.h"
 #include "io_utils/watcher.hpp"
 #include "loaders/texLoader.hpp"
 #include "nfd.h"
+#include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
 
-inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
+inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
+    gbg::Scene& sc = app.scene;
     ImGui::PushID(mat.getRID());
     if (ImGui::CollapsingHeader(mat.getName().c_str())) {
         for (auto [num, value] : mat.getValues() | std::views::enumerate) {
@@ -33,7 +39,12 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
                         if (ImGui::Selectable(tex2.getName().c_str())) {
                             mat.setParameterValue<
                                 gbg::ParameterTypes::TEXTURE_PARM>(num, texh);
-                            mat.setFlags(gbg::ResourceFlags::DIRTY);
+                            gbg::setDependent(app.dep_tree, mat,
+                                              gbg::SObjFlags::TEXTURE_CHANGED,
+                                              tex2, gbg::SObjFlags::NEW);
+                            app.dep_tree.propagateChange(
+                                mat.representative,
+                                gbg::SObjFlags::TEXTURE_CHANGED);
                         }
                     }
 
@@ -47,7 +58,8 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(num,
                                                                           col);
-                    mat.setFlags(gbg::ResourceFlags::DIRTY);
+                    app.dep_tree.propagateChange(
+                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
             } else if (const glm::vec2* vec = std::get_if<glm::vec2>(&value)) {
                 glm::vec2 col = *vec;
@@ -56,7 +68,8 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC2_PARM>(num,
                                                                           col);
-                    mat.setFlags(gbg::ResourceFlags::DIRTY);
+                    app.dep_tree.propagateChange(
+                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
             } else if (const float* val = std::get_if<float>(&value)) {
                 float f = *val;
@@ -64,7 +77,8 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
                         ("Parameter" + std::to_string(num)).c_str(), &f)) {
                     mat.setParameterValue<gbg::ParameterTypes::FLOAT_PARM>(num,
                                                                            f);
-                    mat.setFlags(gbg::ResourceFlags::DIRTY);
+                    app.dep_tree.propagateChange(
+                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
             }
         }
@@ -79,32 +93,33 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
         if (ImGui::BeginPopupModal("New Texture", NULL,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
             // expand to multiples...
-            nfdu8char_t* outpath = nullptr;
-            static std::filesystem::path pt = std::filesystem::current_path();
+            static char buff[1024] = "";
             static char name[64] = "";
             if (ImGui::Button("Search")) {
-                static char buff[1024] = "";
-                nfdopendialognargs_t args = {0};
-                args.defaultPath = pt.remove_filename().c_str();
+                nfdu8char_t* outpath = nullptr;
+                nfdopendialognargs_t args{};
+                std::filesystem::path path(buff);
+                std::filesystem::path root_dir = path.parent_path();
+                args.defaultPath = root_dir.c_str();
                 nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
                 if (res == NFD_OKAY) {
-                    if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
+                    if (strlen(outpath) < sizeof(buff))
+                        std::strcpy(buff, outpath);
+                    path = buff;
+                    std::strcpy(name, path.filename().c_str());
                     NFD_FreePathU8(outpath);
-                    pt = buff;
                 }
             }
 
-            pt.filename().replace_extension().string().copy(name, sizeof(name));
-            
-            static char buff[1024] = "";
-            pt.string().copy(buff, sizeof(buff));
-            
             ImGui::InputText("File path", buff, sizeof(buff));
             ImGui::InputText("Name", name, sizeof(name));
             ImGui::Checkbox("Raw", &raw);
 
             if (ImGui::Button("Confirm")) {
                 auto hand = sc.tx_mg.create(name);
+                gbg::createRepresentative(app.dep_tree, hand, sc.tx_mg,
+                                          gbg::ResourceTypes::TEXTURE,
+                                          gbg::SObjFlags::NEW);
                 loadTexture(buff, &sc, hand);
                 sc.tx_mg.get(hand).raw = raw;
                 ImGui::CloseCurrentPopup();
@@ -116,7 +131,8 @@ inline void drawMaterialPanel(gbg::Scene& sc, gbg::Material& mat) {
     ImGui::PopID();
 }
 
-inline void drawShaderPannel(gbg::Scene& sc) {
+inline void drawShaderPannel(AppData& app) {
+    gbg::Scene& sc = app.scene;
     nfdu8char_t* outpath = nullptr;
     static char buff[1024] = "";
     static std::filesystem::path chosen_path;
@@ -127,7 +143,7 @@ inline void drawShaderPannel(gbg::Scene& sc) {
             for (auto [num, parm] :
                  shader.getParameters() | std::views::enumerate) {
                 ImGui::Text("Position: %ld, Type: %s", num,
-                            gbg::parmTypeToString[parm].data());
+                            gbg::parmTypeToString[to_underlying(parm)].data());
             }
         }
     }
@@ -165,9 +181,13 @@ inline void drawShaderPannel(gbg::Scene& sc) {
         }
 
         if (ImGui::Button("Load")) {
+            // Shader Creation
             gbg::ShaderHandle shh = sc.sh_mg.create(name);
             gbg::Shader& sh = sc.sh_mg.get(shh);
-            // Shader Creation
+
+            gbg::createRepresentative(app.dep_tree, shh, sc.sh_mg,
+                                      gbg::ResourceTypes::SHADER,
+                                      gbg::SObjFlags::NEW);
 
             auto vert = [](const std::filesystem::path& path) {
                 return path.extension() == ".vert";
@@ -214,16 +234,8 @@ inline void drawShaderPannel(gbg::Scene& sc) {
                                     << std::endl;
                       }
 
-                      gbg::reflectShader(sh);
-
-                      for (gbg::MaterialHandle mh : sc.mat_mg) {
-                          gbg::Material& mat = sc.mat_mg.get(mh);
-                          if (mat.getShaderHandle() == shh) {
-                              mat.setShader(shh, sh);
-                              mat.setFlags(gbg::ResourceFlags::DIRTY);
-                          }
-                      }
-                      sh.setFlags(gbg::ResourceFlags::DIRTY);
+                      app.dep_tree.propagateChange(
+                          sh.representative, gbg::SObjFlags::DIRTY_SHADER_CODE);
                   });
             ImGui::CloseCurrentPopup();
         }
@@ -232,7 +244,8 @@ inline void drawShaderPannel(gbg::Scene& sc) {
     }
 }
 
-inline void drawNewMaterial(gbg::Scene& sc) {
+inline void drawNewMaterial(AppData& app) {
+    gbg::Scene& sc = app.scene;
     if (ImGui::Button("New Material")) {
         ImGui::OpenPopup("New Material");
     }
@@ -241,7 +254,8 @@ inline void drawNewMaterial(gbg::Scene& sc) {
 
     if (ImGui::BeginPopupModal("New Material", NULL,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
-        const char * def = selected ? sc.sh_mg.get(selected).getName().c_str() : "pick - shader";
+        const char* def = selected ? sc.sh_mg.get(selected).getName().c_str()
+                                   : "pick - shader";
         if (ImGui::BeginCombo("Pick Shader", def)) {
             for (auto shh : sc.sh_mg) {
                 auto& sh = sc.sh_mg.get(shh);
@@ -257,11 +271,19 @@ inline void drawNewMaterial(gbg::Scene& sc) {
                 auto& sh = sc.sh_mg.get(selected);
                 auto mh = sc.mat_mg.create("Material" +
                                            std::to_string(sc.mat_mg.nextID()));
+                gbg::createRepresentative(app.dep_tree, mh, sc.mat_mg,
+                                          gbg::ResourceTypes::MATERIAL,
+                                          gbg::SObjFlags::NEW);
                 auto& mt = sc.mat_mg.get(mh);
-                mt.setShader(selected, sh);
+                mt.setShader(selected);
+                gbg::setDependent(
+                    app.dep_tree, mt, gbg::SObjFlags::SHADER_CHANGED, sh,
+                    gbg::SObjFlags::DIRTY_SHADER_CODE | gbg::SObjFlags::NEW);
+
                 ImGui::CloseCurrentPopup();
             } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.f, 1.f), "You must select a shader"); 
+                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.f, 1.f),
+                                   "You must select a shader");
             }
         }
 

@@ -1,3 +1,4 @@
+
 #include <nfd.h>
 #include <vulkan/vulkan_core.h>
 
@@ -5,19 +6,19 @@
 
 #include "GlfwCreateRendererContext.hpp"
 #include "Material.hpp"
+#include "MaterialFunctions.hpp"
 #include "RendererContext.hpp"
 #include "SceneTree.hpp"
-#include "Texture.hpp"
 #include "createObject.hpp"
 #include "materialPanel.hpp"
+#include "resourcesUpdate.hpp"
 #include "sceneObjectPanel.hpp"
+#include "shaderReflexion.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "AppData.hpp"
 #include "GLFW/glfw3.h"
-#include "Mesh.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
-#include "Shader.hpp"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
 #include "controller.hpp"
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]) {
     ZoneScoped;
 
     GLFWwindow* window = createWindow(WIDTH, HEIGHT, "Renderer Test App");
-    
+
     glfwMaximizeWindow(window);
 
     gbg::RendererContext context = gbg::glfwCreateRendererContext(
@@ -57,17 +58,16 @@ int main(int argc, char* argv[]) {
 
     std::setlocale(LC_NUMERIC, "C");
 
-    app.renderer.setScene(&app.scene);
+    app.renderer.setScene(&app.scene, &app.dep_tree);
 
     double time = glfwGetTime();
 
-    double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
+    glfwGetCursorPos(window, &app.cursor_pos.x, &app.cursor_pos.y);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         poll_watchers();
-        
+
         // draw ui and modify scene
         // i will end up with a component system...
 
@@ -87,9 +87,9 @@ int main(int argc, char* argv[]) {
         }
 
         if (not app.ui_mode) {
-            updateCamera(app.scene, window, delta);
+            updateCamera(app, window, delta);
         } else {
-            drawCreateObject(app.scene);
+            drawCreateObject(app);
 
             if (ImGui::BeginTabBar("Properties")) {
                 if (ImGui::BeginTabItem("Scene Objects")) {
@@ -104,17 +104,16 @@ int main(int argc, char* argv[]) {
                     int i = 0;
                     for (auto math : app.scene.mat_mg) {
                         auto& mat = app.scene.mat_mg.get(math);
-                        drawMaterialPanel(app.scene, mat);
+                        drawMaterialPanel(app, mat);
                         i++;
                     }
-
-                    drawNewMaterial(app.scene);
+                    drawNewMaterial(app);
 
                     ImGui::EndTabItem();
                 }
 
                 if (ImGui::BeginTabItem("Shaders")) {
-                    drawShaderPannel(app.scene);
+                    drawShaderPannel(app);
                     ImGui::EndTabItem();
                 }
 
@@ -122,26 +121,28 @@ int main(int argc, char* argv[]) {
             }  // end tab bar
         }
 
-
-        app.renderer.drawFrame();
-
-        for (auto shh : app.scene.sh_mg) {
-            app.scene.sh_mg.get(shh).clearFlags();
-        }
-
-        for (auto mth : app.scene.mat_mg) {
-            app.scene.mat_mg.get(mth).clearFlags();
-        }
-
-        for (auto txh : app.scene.tx_mg) {
-            app.scene.tx_mg.get(txh).clearFlags();
-        }
-
-        for (auto msh : app.scene.ms_mg) {
-            app.scene.ms_mg.get(msh).clearFlags();
+        // update
+        for (auto h : app.dep_tree.getModified()) {
+            auto& n = app.dep_tree.get(h);
+            if (n.type == gbg::ResourceTypes::SHADER &&
+                (n.flags & gbg::SObjFlags::DIRTY_SHADER_CODE)) {
+                gbg::Shader& sh = app.scene.sh_mg.getRelated(n.represented);
+                gbg::reflectShader(sh);
+            }
+            if (n.type == gbg::ResourceTypes::MATERIAL &&
+                (n.flags & gbg::SObjFlags::SHADER_CHANGED)) {
+                gbg::Material& mat = app.scene.mat_mg.getRelated(n.represented);
+                gbg::setParametersFromShader(app.scene, mat);
+            }
         }
 
         changeAppState(app, window);
+
+        // draw
+        app.renderer.drawFrame();
+
+        // clear
+        app.dep_tree.clearModified();
 
         FrameMark;
 

@@ -19,6 +19,7 @@ struct srMaterial : public Resource {
     VkDescriptorSet descriptor_set;
     std::vector<VkDescriptorSet> texture_descriptors;
     vkBuffer paramBuffer;
+    srParameterValues values;
 };
 
 struct srMaterialHandle : public ResourceHandle {
@@ -27,6 +28,8 @@ struct srMaterialHandle : public ResourceHandle {
 };
 
 RESOURCE_MANAGER(srMaterial);
+
+void fillParameterValues(Material& material, srMaterial& srmat);
 
 srParameterValues allocateParameterValues(Material& model);
 

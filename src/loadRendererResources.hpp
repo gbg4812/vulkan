@@ -1,8 +1,11 @@
 #pragma once
 #include <unordered_map>
 #include "InternalSceneData.hpp"
+#include "MaterialFunctions.hpp"
+#include "macros.hpp"
 #include "shaderReflexion.hpp"
 #include "resourcesUpdate.hpp"
+#include "srMaterial.hpp"
 #include "vk_utils/vkRenderPass.hpp"
 #include "loaders/objLoader.hpp"
 
@@ -19,7 +22,8 @@ namespace gbg  {
         color_shader.topology = LINES;
 
         CREATE_AND_GET(white_material, internal_scene->mat_mg, "WhiteMaterial");
-        white_material.setShader(color_shader_h, color_shader);
+        white_material.setShader(color_shader_h);
+        setParametersFromShader(*internal_resources.scene, white_material);
         white_material.setParameterValue<VEC3_PARM>(0, glm::vec3(1.0f, 1.0f, 1.0f));
 
         objLoader("data/models/RendererResources/RendererObjects.obj", internal_scene ,internal_scene->root, white_material_h);
@@ -30,13 +34,17 @@ namespace gbg  {
 
 
         for(auto msh_h : internal_scene->ms_mg) {
-            updateMesh(device, msh_h, internal_resources);
+            createMeshVkResources(device, msh_h, internal_resources);
         }
 
         color_shader.shadow = false;
 
-        updateShader(device, color_shader_h, internal_resources, renderPasses.at("color"), {globalDescSet});
+        CREATE_AND_GET(color_sr_sh, internal_resources.srsh_mg, "srColorShader");
+        createShaderVkResources(device, color_shader, color_sr_sh, renderPasses.at("color"),{globalDescSet});
 
-        updateMaterial(device, white_material_h, internal_resources, materialDescPool, textureSampler);
+        CREATE_AND_GET(color_sr_mt, internal_resources.srmat_mg, "srWhiteMaterial");
+        createMaterialVkResources(device, white_material_h, internal_resources, materialDescPool);
+        updateParameterValues(device, white_material, color_sr_mt);
+        updateMaterialDescriptorSet(device, white_material_h, internal_resources, textureSampler);
     }
 }

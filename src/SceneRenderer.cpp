@@ -17,9 +17,11 @@
 #include <stdexcept>
 #include <vector>
 
+#include "DependencyTree.hpp"
 #include "InternalSceneData.hpp"
 #include "Light.hpp"
 #include "Material.hpp"
+#include "MaterialFunctions.hpp"
 #include "Mesh.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
@@ -80,8 +82,9 @@ void SceneRenderer::initImgui() {
     ImGui_ImplVulkan_Init(&info);
 }
 
-void SceneRenderer::setScene(Scene* scene) {
+void SceneRenderer::setScene(Scene* scene, DependencyTreeManager* dep_tree) {
     active_scene_data.scene = scene;
+    active_scene_data.dep_tree = dep_tree;
     vkDeviceWaitIdle(device.ldevice);
     initResources();
 }
@@ -114,9 +117,9 @@ void SceneRenderer::initResources() {
 
     loadRendererResources(device, globalDescriptorSetLayout, internal_resources,
                           renderPasses, materialDescPool, textureSampler);
-    
+
     createCommandBuffer();
-    
+
     createSyncObjects();
 }
 
@@ -176,6 +179,23 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
            lightTemporalBuffer.size() * sizeof(vkLight));
 }
 
+void SceneRenderer::cleanScene(InternalSceneData& scene_data) {
+    for (const auto& shader : scene_data.srsh_mg) {
+        destroySrShader(device, scene_data.srsh_mg.get(shader));
+    }
+
+    for (const auto& material : scene_data.srmat_mg) {
+        destroySrMaterial(device, scene_data.srmat_mg.get(material));
+    }
+
+    for (const auto& texture : scene_data.srtx_mg) {
+        destroySrTexture(device, scene_data.srtx_mg.get(texture));
+    }
+
+    for (const auto& mesh : scene_data.srmsh_mg) {
+        destroyMesh(device, scene_data.srmsh_mg.get(mesh));
+    }
+}
 
 void SceneRenderer::cleanup() {
     vkDeviceWaitIdle(device.ldevice);
@@ -198,23 +218,25 @@ void SceneRenderer::cleanup() {
 
     vkDestroySampler(device.ldevice, textureSampler, nullptr);
 
-    for (const auto& shader : active_scene_data.srsh_mg) {
-        destroySrShader(device, active_scene_data.srsh_mg.get(shader));
-    }
-
-    for (const auto& material : active_scene_data.srmat_mg) {
-        destroySrMaterial(device, active_scene_data.srmat_mg.get(material));
-    }
-
-    for (const auto& texture : active_scene_data.srtx_mg) {
-        destroySrTexture(device, active_scene_data.srtx_mg.get(texture));
-    }
-
-    for (const auto& mesh : active_scene_data.srmsh_mg) {
-        destroyMesh(device, active_scene_data.srmsh_mg.get(mesh));
-    }
+    cleanScene(internal_resources);
+    cleanScene(active_scene_data);
 
     vkDestroyDescriptorPool(device.ldevice, materialDescPool, nullptr);
+
+    // Shadow Resources
+    for (auto img : shadowImages) {
+        vkDestroyImage(device.ldevice, img.image, nullptr);
+        vkFreeMemory(device.ldevice, img.memory, nullptr);
+        if (img.view.has_value())
+            vkDestroyImageView(device.ldevice, img.view.value(), nullptr);
+    }
+
+    for (auto fb : shadowFrameBuffer) {
+        vkDestroyFramebuffer(device.ldevice, fb, nullptr);
+    }
+
+    vkDestroyDescriptorSetLayout(device.ldevice, shadowDescriptorSetLayout,
+                                 nullptr);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
@@ -529,15 +551,24 @@ void SceneRenderer::createShadowResources() {
     auto& shadowMaterial =
         internal_resources.scene->mat_mg.get(shadowMaterial_h);
 
-    shadowMaterial.setShader(shadowShader_h, shadowShader);
+    shadowMaterial.setShader(shadowShader_h);
+    gbg::setParametersFromShader(*internal_resources.scene, shadowMaterial);
 
     shadowMaterial.setParameterValue<ParameterTypes::INT_PARM>(0, 0);
 
-    updateShader(device, shadowShader_h, internal_resources,
-                 renderPasses["shadow"], {globalDescriptorSetLayout});
+    auto sr_sh = internal_resources.srsh_mg.create("srShadowShader");
 
-    updateMaterial(device, shadowMaterial_h, internal_resources,
-                   materialDescPool, textureSampler);
+    createShaderVkResources(
+        device, shadowShader, internal_resources.srsh_mg.get(sr_sh),
+        renderPasses.at("shadow"), {globalDescriptorSetLayout});
+
+    auto sr_mt = internal_resources.srmat_mg.create("srShadowMaterial");
+
+    createMaterialVkResources(device, shadowMaterial_h, internal_resources,
+                              materialDescPool);
+    fillParameterValues(shadowMaterial, internal_resources.srmat_mg.get(sr_mt));
+    updateMaterialDescriptorSet(device, shadowMaterial_h, internal_resources,
+                                textureSampler);
 
     // create descriptor layout
     VkDescriptorSetLayoutBinding shadowBind;
@@ -913,16 +944,14 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
 
         mth = md.getMaterial();
     }
-    
+
     Material& mt = model_scene_data.scene->mat_mg.get(mth);
-    srShader& srsh =
-        model_scene_data.srsh_mg.getRelated(mt.getShaderHandle());
+    srShader& srsh = model_scene_data.srsh_mg.getRelated(mt.getShaderHandle());
     PerObjectPushConstant pc{};
     pc.model = accumulated_transform;
     vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
                        VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(PerObjectPushConstant), &pc);
-
 
     srMesh& mesh = model_scene_data.srmsh_mg.getRelated(md.getMesh());
 
@@ -956,7 +985,6 @@ void SceneRenderer::recordDrawScene(
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
     }
 
     // draw axis
@@ -1025,12 +1053,12 @@ void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer,
                             srsh.pipeline.layout, 1, 1, &srmt.descriptor_set, 0,
                             nullptr);
 
-    if(sh.shadow) {
+    if (sh.shadow) {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 srsh.pipeline.layout, 2, 1,
-                                &shadowDescriptorSets[currentFrame], 0, nullptr);
+                                &shadowDescriptorSets[currentFrame], 0,
+                                nullptr);
     }
-
 }
 
 void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
@@ -1241,23 +1269,39 @@ void SceneRenderer::drawFrame() {
 
         Scene* scene = active_scene_data.scene;
 
-        for (ShaderHandle shh : scene->sh_mg) {
-            updateShader(
-                device, shh, active_scene_data, renderPasses.at("color"),
-                {globalDescriptorSetLayout, shadowDescriptorSetLayout});
-        }
+        const auto& modified = active_scene_data.dep_tree->getModified();
 
-        for (TextureHandle txh : scene->tx_mg) {
-            updateTexture(device, txh, active_scene_data, textureSampler);
-        }
-
-        for (MaterialHandle math : scene->mat_mg) {
-            updateMaterial(device, math, active_scene_data, materialDescPool,
-                           textureSampler);
-        }
-
-        for (MeshHandle mshh : scene->ms_mg) {
-            updateMesh(device, mshh, active_scene_data);
+        for (auto nh : modified) {
+            auto& n = active_scene_data.dep_tree->get(nh);
+            switch (n.type) {
+                case ResourceTypes::TEXTURE:
+                    updateTexture(device, n.represented, active_scene_data,
+                                  textureSampler);
+                    std::cout
+                        << "Updating texture::" << n.represented.getIndex()
+                        << std::endl;
+                    break;
+                case ResourceTypes::SHADER:
+                    updateShader(
+                        device, n.represented, active_scene_data,
+                        renderPasses.at("color"),
+                        {globalDescriptorSetLayout, shadowDescriptorSetLayout});
+                    std::cout << "Updating shader::" << n.represented.getIndex()
+                              << std::endl;
+                    break;
+                case ResourceTypes::MATERIAL:
+                    updateMaterial(device, n.represented, active_scene_data,
+                                   materialDescPool, textureSampler);
+                    std::cout
+                        << "Updating material::" << n.represented.getIndex()
+                        << std::endl;
+                    break;
+                case ResourceTypes::MESH:
+                    updateMesh(device, n.represented, active_scene_data);
+                    std::cout << "Updating mesh::" << n.represented.getIndex()
+                              << std::endl;
+                    break;
+            }
         }
 
         updateGlobalDescriptorSets(currentFrame);

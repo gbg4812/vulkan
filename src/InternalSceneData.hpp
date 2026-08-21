@@ -1,4 +1,5 @@
 #pragma once
+#include "DependencyTree.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
@@ -15,5 +16,7 @@ namespace gbg {
         srLightManager srlight_mg;
 
         Scene* scene;
+
+        DependencyTreeManager* dep_tree;
     };
 }

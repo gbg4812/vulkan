@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "DependencyTree.hpp"
 #include "GlfwCreateRendererContext.hpp"
 #include "Material.hpp"
 #include "SceneTree.hpp"
@@ -23,6 +24,7 @@
 #include "InternalSceneData.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "Scene.hpp"
+#include "resourcesUpdate.hpp"
 #include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srShader.hpp"
@@ -46,6 +48,14 @@ const std::vector<const char*> validationLayers = {
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
+enum ResourceTypes : gbg::ResourceType {
+    SCENE_TREE_NODE,
+    MATERIAL,
+    SHADER,
+    TEXTURE,
+    MESH,
+};
+
 struct UniformBufferObjects {
     // Vulkan requires us to align the descriptor data. If it is a scalar to N
     // (4 bytes given 32 bit floats or ints) If it is a vec2 to 2N and if it is
@@ -63,7 +73,7 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     SceneRenderer(RendererContext context);
-    void setScene(gbg::Scene* scene);
+    void setScene(gbg::Scene* scene, gbg::DependencyTreeManager* dep_tree);
     void run();
     void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
@@ -151,6 +161,7 @@ class SceneRenderer {
     void createLogicalDevice();
 
     void cleanupSwapChain();
+    void cleanScene(InternalSceneData& scene_data);
 
     void createImageViews();
 

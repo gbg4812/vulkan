@@ -33,7 +33,7 @@ layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
     Light lights[];
 } lightData;
 
-layout(set = 1, binding = 0) uniform MatParms {
+layout(std140, set = 1, binding = 0) uniform MatParms {
     vec3 color;
     float ambientI;
     float shaininess;
