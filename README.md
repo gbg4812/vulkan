@@ -10,14 +10,30 @@ directory.
 
 ## Technologies
 
-The toolkit uses Vulkan API as graphics API and glfw for the context and input.
-It uses my other library
-[SceneEquipament](https://github.com/gbg4812/SceneEquipament.git) scene input to
-render.
+- The toolkit uses Vulkan API as graphics API and glfw for the context and input.
+  It uses my other library
+- [SceneEquipament](https://github.com/gbg4812/SceneEquipament.git) scene input to
+  render.
+- [Tracy](https://github.com/wolfpld/tracy) to profile performance
+- [Renderdoc](https://renderdoc.org/) (not instrumented) for graphics debugging
 
 ## Screenshots
 
 ![image](LittleLightingSS.png)
+
+## Features
+
+### Rendering of 3D scenes descrived with SceneEquipament library
+
+- Model matrices from the scene graph
+- Rendering of meshes (with any combination of attributes)
+- SPIR-V shaders with realtime updating
+- Shader inputs defined by materials including numeric types and Textures (with realtime updating too)
+- Perspective Camera (relatime updating)
+- Shadow Mapping (if the shader cooperates)
+- Multiple point lights (if the shader cooperates)
+
+And overall flexibility to extend and implement more visual effects.
 
 ## To build
 
@@ -28,10 +44,17 @@ render.
 
 ## Build Instructions
 
+To build the library and the test app.
+
 ```bash
 cmake -B build
 cmake --build build --parallel
 ```
+
+## Integration Instructions
+
+Just add the repository directory in cmake and add the `VkSceneRenderEngine` target
+as a library to link.
 
 ## Project Structure:
 
