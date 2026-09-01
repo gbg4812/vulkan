@@ -80,6 +80,15 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
+            } else if (const int* val = std::get_if<int32_t>(&value)) {
+                int i = *val;
+                if (ImGui::InputInt(("Parameter" + std::to_string(num)).c_str(),
+                                    &i)) {
+                    mat.setParameterValue<gbg::ParameterTypes::FLOAT_PARM>(num,
+                                                                           i);
+                    app.dep_tree.propagateChange(
+                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
+                }
             }
         }
 
@@ -157,7 +166,8 @@ inline void drawShaderPannel(AppData& app) {
             ImGui::OpenPopup("New Shader");
         }
     }
-    if (ImGui::BeginPopupModal("New Shader", NULL,
+
+    if (ImGui::BeginPopupModal("Load Shader", NULL,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         auto pt = std::filesystem::path(buff);
         std::string name = pt.filename().replace_extension();
@@ -211,7 +221,6 @@ inline void drawShaderPannel(AppData& app) {
                 sh.setVertShaderCode(
                     sc.sh_mg.get(sc.defaults.shader).getFragShaderCode());
             }
-            gbg::reflectShader(sh);
 
             watch({std::ranges::find_if(paths, vert)->string(),
                    std::ranges::find_if(paths, frag)->string()},
@@ -271,9 +280,9 @@ inline void drawNewMaterial(AppData& app) {
                 auto& sh = sc.sh_mg.get(selected);
                 auto mh = sc.mat_mg.create("Material" +
                                            std::to_string(sc.mat_mg.nextID()));
-                gbg::createRepresentative(app.dep_tree, mh, sc.mat_mg,
-                                          gbg::ResourceTypes::MATERIAL,
-                                          gbg::SObjFlags::NEW);
+                gbg::createRepresentative(
+                    app.dep_tree, mh, sc.mat_mg, gbg::ResourceTypes::MATERIAL,
+                    gbg::SObjFlags::NEW | gbg::SObjFlags::SHADER_CHANGED);
                 auto& mt = sc.mat_mg.get(mh);
                 mt.setShader(selected);
                 gbg::setDependent(

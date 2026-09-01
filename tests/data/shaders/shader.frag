@@ -35,6 +35,8 @@ layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
 
 layout(std140, set = 1, binding = 0) uniform MatParms {
     vec3 color;
+    bool normalMap;
+    bool colorMap;
     float ambientI;
     float shaininess;
 };
