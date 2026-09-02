@@ -13,7 +13,9 @@ struct srParameterValues {
     size_t size = 0;
 };
 
-struct srMaterial : public Resource {
+RESOURCE_HANDLE(srMaterial);
+
+struct srMaterial : public Resource<srMaterialHandle> {
     srMaterial() : Resource(){};
     srMaterial(std::string name, uint32_t rid) : Resource(name, rid){};
     VkDescriptorSet descriptor_set;
@@ -22,10 +24,6 @@ struct srMaterial : public Resource {
     srParameterValues values;
 };
 
-struct srMaterialHandle : public ResourceHandle {
-    srMaterialHandle() : ResourceHandle(){};
-    srMaterialHandle(uint32_t rid, size_t index) : ResourceHandle(rid, index){};
-};
 
 RESOURCE_MANAGER(srMaterial);
 
