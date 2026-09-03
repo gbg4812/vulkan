@@ -70,19 +70,18 @@ void main() {
         vec4 cam_pos = lightData.lights[i].proj * vec4(fs_in.fpos, 1.0f);
         cam_pos /= cam_pos.w;
         vec2 coords = cam_pos.xy;
-        float shadow = smoothstep(0, 0.1, 1 - length(cam_pos.xy));
+        vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
+        float shadow = smoothstep(0, 0.01, 1 - length(cam_pos.xy));
         coords += 1.;
         coords /= 2.;
         coords.x /= 10; // alongated texture
         coords.x += lightData.lights[i].shadow_map * (1. / 10.); // move to the correct place
         if (lightData.lights[i].shadow_map >= 0) {
             float d = (texture(sampler2D(_shadow_map, _sampler), coords)).r;
-            if (d < cam_pos.z - 0.0001) {
+            if (d < cam_pos.z - 0.0001 || dot(L, lightData.lights[i].direction) < 0) {
                 shadow = 0.0f;
             }
         }
-
-        vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
 
         vec3 ilum = albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, int(shaininess)));
 

@@ -155,7 +155,7 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos) {
                           vkLight vklight{};
                           vklight.color = light.color;
                           vklight.direction = accumulated_transform *
-                                              glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+                                              glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
                           vklight.position =
                               accumulated_transform * glm::vec4(0., 0., 0., 1.);
                           vklight.proj = glm::perspective(glm::radians(45.0f),
