@@ -278,8 +278,8 @@ inline void drawNewMaterial(AppData& app) {
         if (ImGui::Button("Create")) {
             if (selected) {
                 auto& sh = sc.sh_mg.get(selected);
-                auto mh = sc.mat_mg.create("Material" +
-                                           std::to_string(sc.mat_mg.nextID()));
+                auto mh = sc.mat_mg.create(
+                    "Material" + std::to_string(sc.mat_mg.nextIndex()));
                 gbg::createRepresentative(
                     app.dep_tree, mh, sc.mat_mg, gbg::ResourceTypes::MATERIAL,
                     gbg::SObjFlags::NEW | gbg::SObjFlags::SHADER_CHANGED);

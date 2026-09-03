@@ -2,13 +2,14 @@
 
 #pragma once
 #include "Resource.hpp"
+#include "Texture.hpp"
 #include "macros.hpp"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.hh"
 
 namespace gbg {
 
-struct srTexture : public Resource {
+struct srTexture : public Resource<TextureHandle> {
     RESOURCE_CONSTR(srTexture)
 
     uint32_t mipLevels;
@@ -21,7 +22,6 @@ void generateMipmaps(vkDevice device, VkImage image, VkFormat format,
 
 void destroySrTexture(const vkDevice& device, const srTexture& texture);
 
-RESOURCE_HANDLE(srTexture);
-RESOURCE_MANAGER(srTexture);
+RELATED_RESOURCE_MANAGER(srTexture, TextureHandle);
 
 }  // namespace gbg

@@ -27,6 +27,7 @@ struct Light {
     vec3 direction;
     vec3 position;
     mat4 proj;
+    int shadow_map;
 };
 
 layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
@@ -72,7 +73,9 @@ void main() {
         float shadow = smoothstep(0, 0.1, 1 - length(cam_pos.xy));
         coords += 1.;
         coords /= 2.;
-        if (i == 0) {
+        coords.x /= 10; // alongated texture
+        coords.x += lightData.lights[i].shadow_map * (1. / 10.); // move to the correct place
+        if (lightData.lights[i].shadow_map >= 0) {
             float d = (texture(sampler2D(_shadow_map, _sampler), coords)).r;
             if (d < cam_pos.z - 0.0001) {
                 shadow = 0.0f;

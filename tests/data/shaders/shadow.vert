@@ -1,7 +1,8 @@
 #version 450
 
-layout(push_constant) uniform pc {
+layout(push_constant, std430) uniform pc {
     mat4 model;
+    int lightIndex;
 };
 
 layout(set = 0, binding = 0) uniform UniformBufferObject {
@@ -16,15 +17,12 @@ layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec3 inTangent;
 
-layout(set = 1, binding = 0) uniform MatParms {
-    int lightIndex;
-};
-
 struct Light {
     vec3 color;
     vec3 direction;
     vec3 position;
     mat4 proj;
+    int shadow_map;
 };
 
 layout(std140, set = 0, binding = 2) readonly buffer LightBlock {

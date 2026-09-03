@@ -23,18 +23,17 @@
 #include "Material.hpp"
 #include "MaterialFunctions.hpp"
 #include "Mesh.hpp"
+#include "PerObjectPushConstant.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
-#include "glm/ext/matrix_transform.hpp"
+#include "glm/geometric.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
 #include "imgui.h"
 #include "loadRendererResources.hpp"
-#include "loaders/objLoader.hpp"
-#include "macros.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
 #include "srMaterial.hpp"
@@ -44,7 +43,6 @@
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyVulkan.hpp"
 #include "traits/traits.hpp"
-#include "vk_utils/Logger.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkImage.hh"
@@ -123,10 +121,11 @@ void SceneRenderer::initResources() {
     createSyncObjects();
 }
 
-void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
+void SceneRenderer::fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos) {
     auto& st_mg = active_scene_data.scene->getSceneTreeManager();
 
-    std::vector<vkLight> lightTemporalBuffer;
+    lightBuffer.clear();
+    lightShadowOrder.clear();
 
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
@@ -155,7 +154,8 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
                           auto& light = active_scene_data.scene->lh_mg.get(lh);
                           vkLight vklight{};
                           vklight.color = light.color;
-                          vklight.direction = light.direction;
+                          vklight.direction = accumulated_transform *
+                                              glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
                           vklight.position =
                               accumulated_transform * glm::vec4(0., 0., 0., 1.);
                           vklight.proj = glm::perspective(glm::radians(45.0f),
@@ -163,7 +163,11 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
                           vklight.proj[1][1] *= -1;
                           vklight.proj = vklight.proj *
                                          glm::inverse(accumulated_transform);
-                          lightTemporalBuffer.push_back(vklight);
+
+                          lightBuffer.push_back(vklight);
+                          lightShadowOrder.push_back(
+                              {glm::length(vklight.position - cam_pos),
+                               lightBuffer.size() - 1});
                       }},
 
             handle);
@@ -175,8 +179,14 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage) {
         }
     }
 
-    memcpy(lightsBuffersMapped[currentImage], lightTemporalBuffer.data(),
-           lightTemporalBuffer.size() * sizeof(vkLight));
+    std::ranges::sort(lightShadowOrder);
+
+    for (auto [i, pair] : lightShadowOrder | std::views::enumerate) {
+        lightBuffer[pair.second].shadow_map = i < max_shadow_lights ? i : -1;
+    }
+
+    memcpy(lightsBuffersMapped[currentImage], lightBuffer.data(),
+           lightBuffer.size() * sizeof(vkLight));
 }
 
 void SceneRenderer::cleanScene(InternalSceneData& scene_data) {
@@ -442,23 +452,14 @@ void SceneRenderer::createRenderPass() {
 }
 
 void SceneRenderer::createShadowResources() {
-    // create images
+    // creation of the render pass
     VkFormat format = findDepthFormat();
 
-    for (auto& shadowImage : shadowImages) {
-        shadowImage = createImage(
-            device.pdevice, device.ldevice, shadowSize.width, shadowSize.height,
-            1, VK_SAMPLE_COUNT_1_BIT, format, VK_IMAGE_TILING_OPTIMAL,
-            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                VK_IMAGE_USAGE_SAMPLED_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        addImageView(shadowImage, device.ldevice, format,
-                     VK_IMAGE_ASPECT_DEPTH_BIT, 1);
-    }
+    VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT;
 
     VkAttachmentDescription depthDesc{};
     depthDesc.format = format;
-    depthDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthDesc.samples = sample_count;
     depthDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     depthDesc.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
     depthDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -518,9 +519,22 @@ void SceneRenderer::createShadowResources() {
         throw std::runtime_error("Failed to create Shadow Render Pass!");
     }
 
-    renderPasses["shadow"].samples = VK_SAMPLE_COUNT_1_BIT;
+    renderPasses["shadow"].samples = sample_count;
 
-    for (size_t i = 0; i < shadowImages.size(); i++) {
+    // create images
+    for (auto& shadowImage : shadowImages) {
+        shadowImage = createImage(device.pdevice, device.ldevice,
+                                  shadowSize.width, shadowSize.height, 1,
+                                  sample_count, format, VK_IMAGE_TILING_OPTIMAL,
+                                  VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+                                      VK_IMAGE_USAGE_SAMPLED_BIT,
+                                  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        addImageView(shadowImage, device.ldevice, format,
+                     VK_IMAGE_ASPECT_DEPTH_BIT, 1);
+    }
+
+    // create frame buffers
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         std::array<VkImageView, 1> attachments = {shadowImages[i].view.value()};
 
         VkFramebufferCreateInfo framebufferInfo{};
@@ -539,6 +553,7 @@ void SceneRenderer::createShadowResources() {
         }
     }
 
+    // create shader which will be used in the shadow pass for all objects
     shadowShader_h = internal_resources.scene->sh_mg.create("Shadow Shader");
     auto& shadowShader = internal_resources.scene->sh_mg.get(shadowShader_h);
     setShaderCode(shadowShader, "data/shaders/shadow.vert", ShaderType::VERTEX);
@@ -554,13 +569,17 @@ void SceneRenderer::createShadowResources() {
     shadowMaterial.setShader(shadowShader_h);
     gbg::setParametersFromShader(*internal_resources.scene, shadowMaterial);
 
-    shadowMaterial.setParameterValue<ParameterTypes::INT_PARM>(0, 0);
+    auto srsh_h = internal_resources.srsh_mg.create("srShadowShader");
 
-    auto sr_sh = internal_resources.srsh_mg.create("srShadowShader");
+    VkPushConstantRange pushConstants{};
+    pushConstants.offset = 0;
+    pushConstants.size = sizeof(PerObjectPushConstant) + sizeof(int);
+    pushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    createShaderVkResources(
-        device, shadowShader, internal_resources.srsh_mg.get(sr_sh),
-        renderPasses.at("shadow"), {globalDescriptorSetLayout});
+    createShaderVkResources(device, shadowShader,
+                            internal_resources.srsh_mg.get(srsh_h),
+                            renderPasses.at("shadow"),
+                            {globalDescriptorSetLayout}, {pushConstants});
 
     auto sr_mt = internal_resources.srmat_mg.create("srShadowMaterial");
 
@@ -570,7 +589,7 @@ void SceneRenderer::createShadowResources() {
     updateMaterialDescriptorSet(device, shadowMaterial_h, internal_resources,
                                 textureSampler);
 
-    // create descriptor layout
+    // create descriptor layout for the shadow map textures
     VkDescriptorSetLayoutBinding shadowBind;
     shadowBind.binding = 0;
     shadowBind.descriptorCount = 1;
@@ -591,7 +610,8 @@ void SceneRenderer::createShadowResources() {
     std::vector<VkDescriptorSetLayout> layouts(shadowDescriptorSets.size(),
                                                shadowDescriptorSetLayout);
 
-    // create descriptor
+    // create descriptor set with the depth buffer rendered from the lights
+    // perspectives
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = materialDescPool;
@@ -614,6 +634,7 @@ void SceneRenderer::createShadowResources() {
         write.descriptorCount = 1;
         write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         write.pImageInfo = &imageInfo;
+        write.dstBinding = 0;
         write.dstSet = shadowDescriptorSets[i];
 
         vkUpdateDescriptorSets(device.ldevice, 1, &write, 0, nullptr);
@@ -946,14 +967,14 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
     }
 
     Material& mt = model_scene_data.scene->mat_mg.get(mth);
-    srShader& srsh = model_scene_data.srsh_mg.getRelated(mt.getShaderHandle());
+    srShader& srsh = model_scene_data.srsh_mg.get(mt.getShaderHandle());
     PerObjectPushConstant pc{};
     pc.model = accumulated_transform;
     vkCmdPushConstants(commandBuffer, srsh.pipeline.layout,
                        VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(PerObjectPushConstant), &pc);
 
-    srMesh& mesh = model_scene_data.srmsh_mg.getRelated(md.getMesh());
+    srMesh& mesh = model_scene_data.srmsh_mg.get(md.getMesh());
 
     std::vector<VkBuffer> vbuffers;
     std::vector<VkDeviceSize> voffsets;
@@ -1037,21 +1058,20 @@ void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer,
                                  MaterialHandle math, InternalSceneData& data) {
     Material& mt = data.scene->mat_mg.get(math);
     Shader& sh = data.scene->sh_mg.get(mt.getShaderHandle());
-    srShader& srsh = data.srsh_mg.getRelated(mt.getShaderHandle());
-    srMaterial& srmt = data.srmat_mg.getRelated(math);
+    srShader& srsh = data.srsh_mg.get(mt.getShaderHandle());
+    srMaterial& srmt = data.srmat_mg.get(math);
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       srsh.pipeline.pipeline);
 
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            srsh.pipeline.layout, 0, 1,
+                            &globalDescriptorSets[currentFrame], 0, nullptr);
     if (not mt.getValues().empty()) {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                srsh.pipeline.layout, 0, 1,
-                                &globalDescriptorSets[currentFrame], 0,
-                                nullptr);
+                                srsh.pipeline.layout, 1, 1,
+                                &srmt.descriptor_set, 0, nullptr);
     }
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            srsh.pipeline.layout, 1, 1, &srmt.descriptor_set, 0,
-                            nullptr);
 
     if (sh.shadow) {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1088,20 +1108,30 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     vkCmdBeginRenderPass(commandBuffer, &shadowRenderPassInfo,
                          VK_SUBPASS_CONTENTS_INLINE);
 
-    VkViewport shadowViewport{};
-    shadowViewport.x = 0.0f;
-    shadowViewport.y = 0.0f;
-    shadowViewport.width = shadowSize.width;
-    shadowViewport.height = shadowSize.height;
-    shadowViewport.minDepth = 0.0f;
-    shadowViewport.maxDepth = 1.0f;
+    for (auto [_, i] : std::views::take(lightShadowOrder, max_shadow_lights)) {
+        VkViewport shadowViewport{};
+        shadowViewport.x = shadowSize.height * lightBuffer[i].shadow_map;
+        shadowViewport.y = 0.0f;
+        shadowViewport.width = shadowSize.height;  // we want an square only
+        shadowViewport.height = shadowSize.height;
+        shadowViewport.minDepth = 0.0f;
+        shadowViewport.maxDepth = 1.0f;
 
-    VkRect2D shadowScisors{};
-    shadowScisors.offset = {0, 0};
-    shadowScisors.extent = shadowSize;
+        VkRect2D shadowScisors{};
+        shadowScisors.offset = {
+            (int)shadowSize.height * lightBuffer[i].shadow_map, 0};
+        shadowScisors.extent = {shadowSize.height, shadowSize.height};
 
-    recordDrawScene(commandBuffer, shadowViewport, shadowScisors, imageIndex,
-                    active_scene_data.scene->root, shadowMaterial_h);
+        vkCmdPushConstants(
+            commandBuffer,
+            internal_resources.srsh_mg.get(shadowShader_h).pipeline.layout,
+            VK_SHADER_STAGE_VERTEX_BIT, sizeof(PerObjectPushConstant),
+            sizeof(int), &i);
+
+        recordDrawScene(commandBuffer, shadowViewport, shadowScisors,
+                        imageIndex, active_scene_data.scene->root,
+                        shadowMaterial_h);
+    }
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -1239,7 +1269,7 @@ void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
 
     memcpy(globalBuffersMapped[currentImage], &ubo, sizeof(ubo));
 
-    fillLightBuffer(currentImage);
+    fillLightBuffer(currentImage, ubo.obs);
 }
 
 void SceneRenderer::drawFrame() {

@@ -7,6 +7,7 @@
 
 #include "DependencyTree.hpp"
 #include "Material.hpp"
+#include "Mesh.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "srMaterial.hpp"
 #include "vk_utils/vkBuffer.hh"
@@ -24,7 +25,8 @@ void cleanShaderVkResources(const vkDevice& device, srShader& sr_sh) {
 
 void createShaderVkResources(
     vkDevice device, Shader& shader, srShader& sr_sh, vkRenderPass renderPass,
-    std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts) {
+    std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts,
+    std::vector<VkPushConstantRange> push_constant_ranges) {
     // create shader
     sr_sh.topology = topologyToVulkan.at(shader.topology);
 
@@ -99,18 +101,10 @@ void createShaderVkResources(
         attributeDescriptions.push_back(desc.attrib_desc);
     }
 
-    // for the model matrix
-    VkPushConstantRange mdl_rg{};
-    mdl_rg.offset = 0;
-    mdl_rg.size = sizeof(PerObjectPushConstant);
-    mdl_rg.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    std::vector<VkPushConstantRange> push_constants = {mdl_rg};
-
     sr_sh.pipeline = createGraphicsPipeline(
         device, shader.getVertShaderCode(), shader.getFragShaderCode(),
         rendererDescriptorSetLayouts, bindingDescriptions,
-        attributeDescriptions, push_constants, renderPass.samples,
+        attributeDescriptions, push_constant_ranges, renderPass.samples,
         renderPass.renderPass, sr_sh.topology);
 }
 
@@ -121,10 +115,13 @@ void updateShader(
     Shader& shader = scene_data.scene->sh_mg.get(sh_h);
     DependencyMask flags =
         scene_data.dep_tree->get(shader.representative).flags;
-    if (flags & SObjFlags::NEW)
-        srShaderHandle shh =
-            scene_data.srsh_mg.create("srShader::" + shader.getName());
-    srShader& sr_sh = scene_data.srsh_mg.getRelated(sh_h);
+    if (flags & SObjFlags::NEW) scene_data.srsh_mg.create(sh_h);
+    srShader& sr_sh = scene_data.srsh_mg.get(sh_h);
+
+    VkPushConstantRange pushConstant{};
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(PerObjectPushConstant);
+    pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     if (flags & (SObjFlags::NEW | SObjFlags::DIRTY_SHADER_CODE)) {
         if (flags & SObjFlags::DIRTY_SHADER_CODE and
@@ -134,15 +131,15 @@ void updateShader(
         }
 
         createShaderVkResources(device, shader, sr_sh, renderPass,
-                                rendererDescriptorSetLayouts);
+                                rendererDescriptorSetLayouts, {pushConstant});
     }
 }
 
 void createMeshVkResources(vkDevice device, MeshHandle mesh_h,
                            InternalSceneData& scene_data) {
     Mesh& mesh = scene_data.scene->ms_mg.get(mesh_h);
-    srMeshHandle vkmh = scene_data.srmsh_mg.create("srMesh::" + mesh.getName());
-    srMesh& vkmesh = scene_data.srmsh_mg.getRelated(mesh_h);
+    scene_data.srmsh_mg.create(mesh_h);
+    srMesh& vkmesh = scene_data.srmsh_mg.get(mesh_h);
 
     for (auto& attr : mesh.getAttributes()) {
         srAttribute attrib = std::visit<srAttribute>(
@@ -216,7 +213,7 @@ void createMaterialVkResources(vkDevice device, MaterialHandle math,
                                InternalSceneData& scene_data,
                                VkDescriptorPool materialDescPool) {
     Material& mat = scene_data.scene->mat_mg.get(math);
-    srMaterial& srmt = scene_data.srmat_mg.getRelated(math);
+    srMaterial& srmt = scene_data.srmat_mg.get(math);
     // we have the data layed out
     srmt.values = gbg::allocateParameterValues(mat);
     if (srmt.values.size > 0) {
@@ -249,14 +246,13 @@ void updateMaterial(vkDevice device, MaterialHandle math,
     DependencyMask flags = scene_data.dep_tree->get(mat.representative).flags;
 
     if (flags & SObjFlags::NEW)
-        srMaterialHandle mth =
-            scene_data.srmat_mg.create("srMaterial::" + mat.getName());
+        scene_data.srmat_mg.create(math);
     else if (flags & SObjFlags::SHADER_CHANGED) {
-        srMaterial& srmt = scene_data.srmat_mg.getRelated(math);
+        srMaterial& srmt = scene_data.srmat_mg.get(math);
         cleanMaterialVkResources(device, materialDescPool, srmt);
     }
 
-    srMaterial& srmt = scene_data.srmat_mg.getRelated(math);
+    srMaterial& srmt = scene_data.srmat_mg.get(math);
 
     // clean old vk resources
 
@@ -284,7 +280,7 @@ void updateMaterialDescriptorSet(vkDevice device, MaterialHandle h,
     // no volem cap frame dibuixant-se
     vkDeviceWaitIdle(device.ldevice);
 
-    auto& srmat = scene_data.srmat_mg.getRelated(h);
+    auto& srmat = scene_data.srmat_mg.get(h);
     auto& mat = scene_data.scene->mat_mg.get(h);
 
     std::vector<VkWriteDescriptorSet> descWrites = {};
@@ -316,11 +312,11 @@ void updateMaterialDescriptorSet(vkDevice device, MaterialHandle h,
         if (auto th = std::get_if<TextureHandle>(&val)) {
             VkDescriptorImageInfo imageInfo{};
             if (*th) {
-                imageInfo.imageView = scene_data.srtx_mg.getRelated(*th)
-                                          .textureImage.view.value();
+                imageInfo.imageView =
+                    scene_data.srtx_mg.get(*th).textureImage.view.value();
             } else {
                 imageInfo.imageView =
-                    scene_data.srtx_mg.getRelated(TextureHandle(1, 1))
+                    scene_data.srtx_mg.get(scene_data.scene->defaults.texture)
                         .textureImage.view.value();
             }
             imageInfo.sampler = textureSampler;
@@ -355,8 +351,8 @@ void createMaterialDescriptorSet(vkDevice device, MaterialHandle h,
     if (mat.getValues().empty()) return;  // has no parameters or textures
     ShaderHandle shh = mat.getShaderHandle();
 
-    srShader& srsh = scene_data.srsh_mg.getRelated(shh);
-    srMaterial& srmat = scene_data.srmat_mg.getRelated(h);
+    srShader& srsh = scene_data.srsh_mg.get(shh);
+    srMaterial& srmat = scene_data.srmat_mg.get(h);
 
     VkDescriptorSetAllocateInfo setInfo{};
     setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -377,12 +373,11 @@ void updateTexture(vkDevice device, TextureHandle h,
 
     if (flags & SObjFlags::NEW) {
         if (h) {
-            srTextureHandle tex_h =
-                scene_data.srtx_mg.create("srTexture" + texture.getName());
+            scene_data.srtx_mg.create(h);
         } else {
             h = scene_data.scene->defaults.texture;
         }
-        auto& tex = scene_data.srtx_mg.getRelated(h);
+        auto& tex = scene_data.srtx_mg.get(h);
 
         VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
         if (texture.raw) format = VK_FORMAT_R8G8B8A8_UNORM;

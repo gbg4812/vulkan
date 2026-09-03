@@ -24,7 +24,8 @@ void cleanShaderVkResources(const vkDevice& device, srShader& sr_sh);
 
 void createShaderVkResources(
     vkDevice device, Shader& shader, srShader& sr_sh, vkRenderPass renderPass,
-    std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts);
+    std::vector<VkDescriptorSetLayout> rendererDescriptorSetLayouts,
+    std::vector<VkPushConstantRange> push_constant_ranges);
 
 void createMeshVkResources(vkDevice device, MeshHandle mesh_h,
                            InternalSceneData& scene_data);

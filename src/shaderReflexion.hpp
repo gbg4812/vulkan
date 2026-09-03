@@ -1,13 +1,11 @@
-#pragma  once
+#pragma once
 #include <filesystem>
-#include <iostream>
 #include <map>
 #include <ranges>
 #include <stdexcept>
 
 #include "Mesh.hpp"
 #include "SPIRV-Reflect/spirv_reflect.h"
-#include "Scene.hpp"
 #include "Shader.hpp"
 #include "io_utils/file_utils.hpp"
 #include "shaderc/shaderc.hpp"
@@ -78,7 +76,6 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
                     } else if (flags & SPV_REFLECT_TYPE_FLAG_INT) {
                         shader.addParameter(ParameterTypes::INT_PARM);
                     }
-
                 }
             }
         }

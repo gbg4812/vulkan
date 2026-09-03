@@ -13,19 +13,16 @@ struct srParameterValues {
     size_t size = 0;
 };
 
-RESOURCE_HANDLE(srMaterial);
+struct srMaterial : public Resource<MaterialHandle> {
+    RESOURCE_CONSTR(srMaterial)
 
-struct srMaterial : public Resource<srMaterialHandle> {
-    srMaterial() : Resource(){};
-    srMaterial(std::string name, uint32_t rid) : Resource(name, rid){};
     VkDescriptorSet descriptor_set;
     std::vector<VkDescriptorSet> texture_descriptors;
     vkBuffer paramBuffer;
     srParameterValues values;
 };
 
-
-RESOURCE_MANAGER(srMaterial);
+RELATED_RESOURCE_MANAGER(srMaterial, MaterialHandle);
 
 void fillParameterValues(Material& material, srMaterial& srmat);
 

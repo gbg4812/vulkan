@@ -7,14 +7,16 @@
 #include <cstring>
 #include <memory>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 #include "DependencyTree.hpp"
-#include "GlfwCreateRendererContext.hpp"
 #include "Material.hpp"
+#include "RendererContext.hpp"
 #include "SceneTree.hpp"
-#include "srMesh.hh"
+#include "srLight.hpp"
+#include "vk_utils/vkRenderPass.hpp"
+#include "vk_utils/vkSwapChain.h"
 
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
@@ -22,20 +24,8 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include "InternalSceneData.hpp"
-#include "PerObjectPushConstant.hpp"
 #include "Scene.hpp"
-#include "resourcesUpdate.hpp"
-#include "srLight.hpp"
-#include "srMaterial.hpp"
-#include "srShader.hpp"
-#include "srTexture.hpp"
 #include "tracy/TracyVulkan.hpp"
-#include "vk_utils/vkBuffer.hh"
-#include "vk_utils/vkDevice.hh"
-#include "vk_utils/vkImage.hh"
-#include "vk_utils/vkInstance.hh"
-#include "vk_utils/vkRenderPass.hpp"
-#include "vk_utils/vkSwapChain.h"
 
 namespace gbg {
 
@@ -114,10 +104,11 @@ class SceneRenderer {
     InternalSceneData internal_resources;
     std::unique_ptr<Scene> internal_scene;
 
-    const uint32_t max_obj = 1000;
-    const uint32_t max_mat = 1000;
-    const uint32_t max_tex = 1000;
-    const uint32_t max_light = 10;
+    static constexpr uint32_t max_obj = 1000;
+    static constexpr uint32_t max_mat = 1000;
+    static constexpr uint32_t max_tex = 1000;
+    static constexpr uint32_t max_light = 10;
+    static constexpr uint32_t max_shadow_lights = 10;
 
     VkSampler textureSampler;
 
@@ -126,11 +117,14 @@ class SceneRenderer {
     // to be created
     std::array<vkBuffer, MAX_FRAMES_IN_FLIGHT> lightsBuffers;
     std::array<void*, MAX_FRAMES_IN_FLIGHT> lightsBuffersMapped;
+    std::vector<std::pair<float, int>> lightShadowOrder;
+    std::vector<vkLight> lightBuffer;
     std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
     ShaderHandle shadowShader_h;
     MaterialHandle shadowMaterial_h;
-    VkExtent2D shadowSize = {.width = 1080, .height = 1080};
+    // TODO check for compat
+    VkExtent2D shadowSize = {.width = 1080 * max_shadow_lights, .height = 1080};
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -226,6 +220,6 @@ class SceneRenderer {
 
     void updateGlobalDescriptorSets(uint32_t currentImage);
 
-    void fillLightBuffer(uint32_t currentImage);
+    void fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos);
 };
 }  // namespace gbg

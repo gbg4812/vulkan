@@ -7,28 +7,20 @@
 #include "vk_utils/vkPipeline.hh"
 
 namespace gbg {
-struct srShader : public Resource {
-    srShader() : Resource() {}
-    srShader(std::string name, uint32_t rid) : Resource(name, rid) {}
+struct srShader : public Resource<ShaderHandle> {
+    RESOURCE_CONSTR(srShader)
     vkPipeline pipeline;
     VkDescriptorSetLayout layout;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 
-inline const std::map<PrimitiveInterpretation, VkPrimitiveTopology> topologyToVulkan = {
-    {TRIANGLES, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
-    {POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
-    {LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}
-};
-
-struct srShaderHandle : public ResourceHandle {
-    srShaderHandle() : ResourceHandle() {};
-    srShaderHandle(uint32_t rid, size_t index) : ResourceHandle(rid, index) {};
-};
-
+inline const std::map<PrimitiveInterpretation, VkPrimitiveTopology>
+    topologyToVulkan = {{TRIANGLES, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+                        {POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
+                        {LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}};
 
 void destroySrShader(const vkDevice& device, const srShader& shader);
 
-RESOURCE_MANAGER(srShader);
+RELATED_RESOURCE_MANAGER(srShader, ShaderHandle);
 
 }  // namespace gbg
