@@ -105,7 +105,6 @@ void SceneRenderer::initResources() {
     createGlobalShaderResources();
     createGlobalDescriptorPool();
     createTextureSampler();
-    std::cout << "Globals created" << std::endl;
     createGlobalDescriptorSets();
 
     // Per Material pool and sets
