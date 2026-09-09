@@ -36,6 +36,7 @@ void main() {
 
     vs_out.fpos = vec3(model * vec4(inPosition, 1.0f));
     vs_out.fragTexCoord = inTexCoord;
+    vs_out.fragTexCoord.y = 1.0 - vs_out.fragTexCoord.y;
     vs_out.fTangent = T;
     vs_out.fgNormal = N;
 

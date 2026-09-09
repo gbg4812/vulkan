@@ -56,7 +56,6 @@ float spec(vec3 L, vec3 N, vec3 V, int exp) {
 
 void main() {
     vec2 tex_coords = fs_in.fragTexCoord;
-    tex_coords.y = 1.0 - tex_coords.y;
     vec3 albedo = texture(sampler2D(_texture[0], _sampler), tex_coords).rgb * color;
     vec3 lcolor = vec3(0.0f);
     vec3 V = normalize(ubo.obs - fs_in.fpos);
