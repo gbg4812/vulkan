@@ -1,14 +1,15 @@
 #version 450
 
-layout(push_constant) uniform pc {
+layout(push_constant, std430) uniform pc {
     mat4 model;
 };
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
     vec3 obs;
     float time;
+    int nLights;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;

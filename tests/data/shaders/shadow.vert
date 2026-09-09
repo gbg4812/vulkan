@@ -5,11 +5,12 @@ layout(push_constant, std430) uniform pc {
     int lightIndex;
 };
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
     vec3 obs;
     float time;
+    int nLights;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;
@@ -22,10 +23,11 @@ struct Light {
     vec3 direction;
     vec3 position;
     mat4 proj;
+    float intensity;
     int shadow_map;
 };
 
-layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
+layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
     Light lights[];
 } lightData;
 

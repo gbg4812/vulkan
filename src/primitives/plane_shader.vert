@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec3 objs;
     float time;
+    int nLights;
 } ubo;
 
 layout(location = 0) in vec3 inPosition;

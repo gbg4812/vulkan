@@ -13,6 +13,7 @@ struct vkLight {
     alignas(16) glm::vec3 direction;
     alignas(16) glm::vec3 position;
     alignas(16) glm::mat4 proj;
+    float intensity;
     int shadow_map = -1;
 };
 
