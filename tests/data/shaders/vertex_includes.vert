@@ -1,8 +1,5 @@
-#version 460
-
 layout(push_constant, std430) uniform pc {
     mat4 model;
-    int lightIndex;
 };
 
 layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
@@ -17,20 +14,11 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec3 inTangent;
-
-struct Light {
-    vec3 color;
-    vec3 direction;
-    vec3 position;
-    mat4 proj;
-    float intensity;
-    int shadow_map;
-};
-
-layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
-    Light lights[];
-} lightData;
-
-void main() {
-    gl_Position = lightData.lights[lightIndex].proj * model * vec4(inPosition, 1.0f);
-}
+layout(location = 0) out VS_OUT
+{
+    vec3 fgNormal;
+    vec2 fragTexCoord;
+    vec3 fpos;
+    mat3 fTBN;
+    vec3 fTangent;
+} vs_out;

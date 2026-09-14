@@ -29,6 +29,7 @@
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "glm/ext/matrix_clip_space.hpp"
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -157,8 +158,8 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
                                               glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
                           vklight.position =
                               accumulated_transform * glm::vec4(0., 0., 0., 1.);
-                          vklight.proj = glm::perspective(glm::radians(light.fov),
-                                                          1.0f, 0.1f, 100.0f);
+                          vklight.proj = glm::perspective(
+                              glm::radians(light.fov), 1.0f, 0.1f, 100.0f);
                           vklight.proj[1][1] *= -1;
                           vklight.proj = vklight.proj *
                                          glm::inverse(accumulated_transform);
@@ -991,9 +992,10 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4, 1, 0, 0, 0);
 }
 
-void SceneRenderer::recordDraw3DOverlays(
-    VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor,
-    uint32_t imageIndex, SceneTreeHandle root) {
+void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
+                                         VkViewport viewport, VkRect2D scissor,
+                                         uint32_t imageIndex,
+                                         SceneTreeHandle root) {
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
     std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
@@ -1015,11 +1017,9 @@ void SceneRenderer::recordDraw3DOverlays(
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
         std::visit(
-            overloads{[&](const ModelHandle& mh) {
-                      },
+            overloads{[&](const ModelHandle& mh) {},
                       [&](const CameraHandle& empty) {},
-                      [&](const std::monostate& empty) {
-                      },
+                      [&](const std::monostate& empty) {},
                       [&](const LightHandle& empty) {
                           Model& md = internal_resources.scene->md_mg.getByName(
                               "SpotLight");  // light mesh
@@ -1055,7 +1055,6 @@ void SceneRenderer::recordDrawScene(
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     }
 
-
     while (not Q.empty()) {
         SceneTreeHandle visited = Q.front().first;
         accumulated_transform = Q.front().second;
@@ -1064,22 +1063,20 @@ void SceneRenderer::recordDrawScene(
         auto handle = stn.getResourceH();
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
-        std::visit(
-            overloads{[&](const ModelHandle& mh) {
-                          TracyVkZone(tracyCtx[currentFrame], commandBuffer,
-                                      "DrawModel");
-                          auto& md = active_scene_data.scene->md_mg.get(mh);
-                          recordDrawModel(commandBuffer, viewport, scissor,
-                                          accumulated_transform, md,
-                                          active_scene_data, override);
-                      },
-                      [&](const CameraHandle& empty) {},
-                      [&](const std::monostate& empty) {
-                      },
-                      [&](const LightHandle& empty) {
-                      },
-            },
-            handle);
+        std::visit(overloads{
+                       [&](const ModelHandle& mh) {
+                           TracyVkZone(tracyCtx[currentFrame], commandBuffer,
+                                       "DrawModel");
+                           auto& md = active_scene_data.scene->md_mg.get(mh);
+                           recordDrawModel(commandBuffer, viewport, scissor,
+                                           accumulated_transform, md,
+                                           active_scene_data, override);
+                       },
+                       [&](const CameraHandle& empty) {},
+                       [&](const std::monostate& empty) {},
+                       [&](const LightHandle& empty) {},
+                   },
+                   handle);
 
         SceneTreeHandle child = stn.childH;
         while (child) {
@@ -1207,8 +1204,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
     recordDrawScene(commandBuffer, viewport, scissor, imageIndex,
                     active_scene_data.scene->root);
-    
-    recordDraw3DOverlays(commandBuffer, viewport, scissor, imageIndex, active_scene_data.scene->root);
+
+    recordDraw3DOverlays(commandBuffer, viewport, scissor, imageIndex,
+                         active_scene_data.scene->root);
 
     // ImGui
     {

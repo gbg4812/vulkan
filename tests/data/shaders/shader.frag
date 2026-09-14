@@ -71,18 +71,21 @@ void main() {
         vec2 coords = cam_pos.xy;
         vec3 L = lightData.lights[i].position - fs_in.fpos;
         float dist = length(L);
-        float light = smoothstep(0, 0.01, 1 - length(coords)) * (1.0/(dist*dist)) * lightData.lights[i].intensity;
+        float light = smoothstep(0, 0.01, 1 - length(coords)) * (1.0 / (dist * dist)) * lightData.lights[i].intensity;
         coords += 1.;
         coords /= 2.;
         coords.x /= 10; // alongated texture
         coords.x += lightData.lights[i].shadow_map * (1. / 10.); // move to the correct place
         if (lightData.lights[i].shadow_map >= 0 && light > 0.0f) {
             float shadow = 0;
-            for(int s = 0; s < 4; s++) {
-                vec2 off = {s%2, s/2};
-                float d = (texture(sampler2D(_shadow_map, _sampler), coords + off * (1./1080))).r;
+            for (int s = 0; s < 4; s++) {
+                vec2 off = {
+                        s % 2,
+                        s / 2
+                    };
+                float d = (texture(sampler2D(_shadow_map, _sampler), coords + off * (1. / 1080))).r;
                 if (d >= cam_pos.z - 0.0001 || dot(L, lightData.lights[i].direction) < 0) {
-                    shadow += 1./4.;
+                    shadow += 1. / 4.;
                 }
             }
             light *= shadow;
