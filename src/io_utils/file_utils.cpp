@@ -11,7 +11,8 @@ std::vector<char> readFile(std::string_view filename) {
         throw std::runtime_error("failed to open file!");
     }
 
-    size_t fileSize = std::filesystem::file_size(filename.data());
+    // doesn't count eof and we need it
+    size_t fileSize = std::filesystem::file_size(filename.data()) + 1;
     std::vector<char> buffer(fileSize);
     file.read(buffer.data(), fileSize);
     file.close();
