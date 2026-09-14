@@ -7,3 +7,5 @@ release-build/
 
 __cmake_systeminformation/
 compile_commands.json
+
+Notes.md.pdf

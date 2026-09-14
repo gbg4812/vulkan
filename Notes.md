@@ -1,6 +1,32 @@
-# Vulkan notes
+---
+header-includes:
+  - \usepackage{tcolorbox}
+  - \usepackage{amssymb} # Required if the filter uses math/checkbox symbols
+---
 
-## Vertex Buffer bindings and locations (input attributes)
+# Notes
+
+## Vulkan API Usage
+
+### Dependencies between Vulkan Objects
+
+- when geo is modified only command buffer is needed to change, the pipeline
+  remains.
+- pipeline changes (needed to rebuild) when we change de rendering proces
+  (shaders, passes...)
+- swapchin needs to be rebuild when window/render target changes (size,
+  aspect...)
+
+## Hard Rules
+
+### GPU Objects
+
+Vulkan objects have wrpper structs and utility functions, they don't have
+methods. GPU Objects are manually created and destroyed with functions.
+
+## Shader Interface
+
+### Vertex Buffer bindings and locations (input attributes)
 
 The binding is the identifier of a buffer. The location is the identifier of a
 vertex attribute.
@@ -11,7 +37,7 @@ We can have various vertex attributes combined and repeated in a single buffer.
 We can have various attributes each in a diferent buffer (binding)
 ![arrays](arrays.png)
 
-> [!NOTE] Bindings and locations are independent of each other.
+> [!note] Bindings and locations are independent of each other.
 
 So when creating a pipeline we need to describe the bindings and the
 (attributes/locations).
@@ -33,7 +59,7 @@ Each attribute has:
 
 [source](https://docs.vulkan.org/guide/latest/vertex_input_data_processing.html)
 
-## Descriptors and Sets of Descriptors
+### Descriptors and Sets of Descriptors
 
 Descriptors are like pointers to memory that the shader can use. Descriptor sets
 are sets of descriptors. In the command buffer only descriptor sets can be
@@ -55,17 +81,21 @@ layout(set = 0, binding = 0) uniform UBO0 {
 
 In vulkan (1.1+) the **vector-relaxed** version is used by default.
 
-## Stl vector how to hide parts
+## C++
+
+### Stl vector how to hide parts
 
 First i tried inheriting but when i try to convert a vector& to its
 vector_child& it gives undefined behavior... So the best way seems to be
 composition or give up in protecting attrib vectors.
 
-## Lights Lights Lights
+## Renderer Design
+
+### Lights Lights Lights
 
 My current plan for lights is...? SSBO
 
-### Spot Lights
+#### Spot Lights
 
 1. Lights resource in the scene
    - direction
@@ -79,7 +109,7 @@ My current plan for lights is...? SSBO
    - fill the SSBO with the lights info
    - so 3 buffers for now
 
-## Notes on shadow maps
+### Notes on shadow maps
 
 Steps to follow:
 
@@ -91,3 +121,29 @@ Steps to follow:
 2. Set the shadow depth image view as input texture (descriptor binding) in the
    scene drawing graphics pipeline.
 3. Record the command buffer first the drawing of the shadow render pass and then the drawing of the secene.
+
+#### Cascading Shadow Maps
+
+For directional lights like the sum where they should cover all the view frustum, it is needed a better aproach
+to shadows than large shadow maps. The most wide-spread technique are Cascading Shadow Maps.
+
+The technic proposes dividing the view frustum along its length into 3 or 4 parts and then render a shadow map for each part.
+For the closer details to have more resolution we want to divide the frustum in an smart way. I will try taking the square value of
+the portion between [0, 1] and then scaling it to the actual frustum length.
+
+Given $z_n$ (near plane), $z_f$ (far plane), $F$ (fov), $o$ (observer position), $v$ view vector and $p$ frustum sections, we can define the limit begining of section $s_i$
+as:
+
+$$
+s_i = z_n + \frac{1}{p}i(z_f - z_n)
+$$
+
+$s_i$ is how far along the view vector the section starts.
+
+Now more interestingly we should compute the four points which delimit the section and the center of the section to then calculate the light's projection.
+
+At distance from the observer $d$ the width of the frustum is:
+
+$$
+w_d = sin(fov/2) * 2 * d/cos(fov/2)
+$$
