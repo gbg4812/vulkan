@@ -18,7 +18,6 @@ layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler _sampler;
-layout(set = 1, binding = 1) uniform texture2D _texture[2];
 layout(set = 2, binding = 0) uniform texture2D _shadow_map;
 
 struct Light {

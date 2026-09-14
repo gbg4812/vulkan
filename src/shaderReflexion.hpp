@@ -26,8 +26,6 @@ namespace gbg {
 
 class _Includer : public shaderc::CompileOptions::IncluderInterface {
    public:
-    _Includer(std::vector<std::filesystem::path> paths) : search_paths(paths){};
-
     struct _IncluderInfo {
         std::string content;
         std::string name;
@@ -62,7 +60,7 @@ class _Includer : public shaderc::CompileOptions::IncluderInterface {
         }
 
         info->content = readFile(rs.native()).data();
-        info->name = rs.filename();
+        info->name = rs.native();
         res->content = info->content.data();
         res->content_length = info->content.length();
         res->source_name = info->name.data();
@@ -78,8 +76,7 @@ class _Includer : public shaderc::CompileOptions::IncluderInterface {
         delete data;
     }
 
-   private:
-    std::vector<std::filesystem::path> search_paths;
+    inline static std::vector<std::filesystem::path> search_paths;
 };
 
 enum ShaderType { VERTEX, FRAGMENT };
@@ -193,7 +190,8 @@ inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
 
     shaderc::Compiler cmp{};
     shaderc::CompileOptions copt{};
-    copt.SetIncluder(std::make_unique<_Includer>({path.parent_path()}));
+    _Includer::search_paths.push_back(path.parent_path());
+    copt.SetIncluder(std::make_unique<_Includer>());
 
     shaderc::CompilationResult res =
         cmp.CompileGlslToSpv(data.data(), kind, path.c_str(), copt);
