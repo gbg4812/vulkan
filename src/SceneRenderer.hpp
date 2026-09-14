@@ -57,7 +57,10 @@ struct UniformBufferObjects {
     alignas(16) glm::vec3 obs;
 
     // time
-    alignas(16) float time;
+    float time;
+
+    // how many lights
+    int nLights;
 };
 
 class SceneRenderer {
@@ -205,6 +208,10 @@ class SceneRenderer {
     void recordCommandBuffer(VkCommandBuffer commandBuffer,
                              uint32_t imageIndex);
 
+    void recordDraw3DOverlays(VkCommandBuffer commandBuffer, VkViewport viewport,
+                             VkRect2D scissor, uint32_t imageIndex,
+                             SceneTreeHandle root);
+    
     void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport,
                          VkRect2D scissor, uint32_t imageIndex,
                          SceneTreeHandle root, MaterialHandle override);
@@ -218,8 +225,8 @@ class SceneRenderer {
 
     VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice pdevice);
 
-    void updateGlobalDescriptorSets(uint32_t currentImage);
+    void updateGlobalDescriptorSets();
 
-    void fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos);
+    void fillLightBuffer(glm::vec3 cam_pos);
 };
 }  // namespace gbg

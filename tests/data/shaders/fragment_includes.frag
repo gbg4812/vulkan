@@ -1,9 +1,13 @@
-#version 460
+layout(location = 0) out vec4 outColor;
 
-layout(push_constant, std430) uniform pc {
-    mat4 model;
-    int lightIndex;
-};
+layout(location = 0) in VS_OUT
+{
+    vec3 fgNormal;
+    vec2 fragTexCoord;
+    vec3 fpos;
+    mat3 fTBN;
+    vec3 fTangent;
+} fs_in;
 
 layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
@@ -13,10 +17,9 @@ layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     int nLights;
 } ubo;
 
-layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec3 inNormal;
-layout(location = 2) in vec2 inTexCoord;
-layout(location = 3) in vec3 inTangent;
+layout(set = 0, binding = 1) uniform sampler _sampler;
+layout(set = 1, binding = 1) uniform texture2D _texture[2];
+layout(set = 2, binding = 0) uniform texture2D _shadow_map;
 
 struct Light {
     vec3 color;
@@ -30,7 +33,3 @@ struct Light {
 layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
     Light lights[];
 } lightData;
-
-void main() {
-    gl_Position = lightData.lights[lightIndex].proj * model * vec4(inPosition, 1.0f);
-}

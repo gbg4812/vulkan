@@ -1,10 +1,8 @@
-#version 450
-
-layout(push_constant) uniform pc {
+layout(push_constant, std430) uniform pc {
     mat4 model;
 };
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
     vec3 obs;
@@ -16,7 +14,11 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
 layout(location = 2) in vec2 inTexCoord;
 layout(location = 3) in vec3 inTangent;
-
-void main() {
-    gl_Position = ubo.proj * ubo.view * model * vec4(inPosition, 1.0f);
-}
+layout(location = 0) out VS_OUT
+{
+    vec3 fgNormal;
+    vec2 fragTexCoord;
+    vec3 fpos;
+    mat3 fTBN;
+    vec3 fTangent;
+} vs_out;

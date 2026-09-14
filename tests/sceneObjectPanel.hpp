@@ -33,6 +33,8 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                 [&](gbg::LightHandle handle) {
                     gbg::Light& light = sc.lh_mg.get(handle);
                     ImGui::ColorPicker3("Light Color", (float*)&light.color);
+                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 1000);
+                    ImGui::SliderFloat("FOV",(float*)&light.fov, 0, 180);
                 },
                 [&](auto&& def) {
 

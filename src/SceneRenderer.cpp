@@ -29,6 +29,7 @@
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "glm/ext/matrix_clip_space.hpp"
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -120,7 +121,7 @@ void SceneRenderer::initResources() {
     createSyncObjects();
 }
 
-void SceneRenderer::fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos) {
+void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
     auto& st_mg = active_scene_data.scene->getSceneTreeManager();
 
     lightBuffer.clear();
@@ -157,11 +158,12 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos) {
                                               glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
                           vklight.position =
                               accumulated_transform * glm::vec4(0., 0., 0., 1.);
-                          vklight.proj = glm::perspective(glm::radians(45.0f),
-                                                          1.0f, 0.1f, 100.0f);
+                          vklight.proj = glm::perspective(
+                              glm::radians(light.fov), 1.0f, 0.1f, 100.0f);
                           vklight.proj[1][1] *= -1;
                           vklight.proj = vklight.proj *
                                          glm::inverse(accumulated_transform);
+                          vklight.intensity = light.intensity;
 
                           lightBuffer.push_back(vklight);
                           lightShadowOrder.push_back(
@@ -184,7 +186,7 @@ void SceneRenderer::fillLightBuffer(uint32_t currentImage, glm::vec3 cam_pos) {
         lightBuffer[pair.second].shadow_map = i < max_shadow_lights ? i : -1;
     }
 
-    memcpy(lightsBuffersMapped[currentImage], lightBuffer.data(),
+    memcpy(lightsBuffersMapped[currentFrame], lightBuffer.data(),
            lightBuffer.size() * sizeof(vkLight));
 }
 
@@ -990,6 +992,52 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4, 1, 0, 0, 0);
 }
 
+void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
+                                         VkViewport viewport, VkRect2D scissor,
+                                         uint32_t imageIndex,
+                                         SceneTreeHandle root) {
+    glm::mat4 accumulated_transform = glm::mat4(1.0f);
+
+    std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
+    Q.push({root, glm::mat4(1.f)});
+
+    // draw axis
+    {
+        Model& md = internal_resources.scene->md_mg.getByName("Axis");
+        recordDrawModel(commandBuffer, viewport, scissor, accumulated_transform,
+                        md, internal_resources, MaterialHandle());
+    }
+
+    while (not Q.empty()) {
+        SceneTreeHandle visited = Q.front().first;
+        accumulated_transform = Q.front().second;
+        Q.pop();
+        SceneTreeNode& stn = active_scene_data.scene->st_mg.get(visited);
+        auto handle = stn.getResourceH();
+        accumulated_transform = accumulated_transform * stn.getLocalTransform();
+
+        std::visit(
+            overloads{[&](const ModelHandle& mh) {},
+                      [&](const CameraHandle& empty) {},
+                      [&](const std::monostate& empty) {},
+                      [&](const LightHandle& empty) {
+                          Model& md = internal_resources.scene->md_mg.getByName(
+                              "SpotLight");  // light mesh
+                          recordDrawModel(commandBuffer, viewport, scissor,
+                                          accumulated_transform, md,
+                                          internal_resources, MaterialHandle());
+                      }},
+
+            handle);
+
+        SceneTreeHandle child = stn.childH;
+        while (child) {
+            Q.push({child, accumulated_transform});
+            child = active_scene_data.scene->st_mg.get(child).nextH;
+        }
+    }
+}
+
 void SceneRenderer::recordDrawScene(
     VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor,
     uint32_t imageIndex, SceneTreeHandle root,
@@ -1007,13 +1055,6 @@ void SceneRenderer::recordDrawScene(
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
     }
 
-    // draw axis
-    {
-        Model& md = internal_resources.scene->md_mg.getByName("Axis");
-        recordDrawModel(commandBuffer, viewport, scissor, accumulated_transform,
-                        md, internal_resources, override);
-    }
-
     while (not Q.empty()) {
         SceneTreeHandle visited = Q.front().first;
         accumulated_transform = Q.front().second;
@@ -1022,28 +1063,20 @@ void SceneRenderer::recordDrawScene(
         auto handle = stn.getResourceH();
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
-        std::visit(
-            overloads{[&](const ModelHandle& mh) {
-                          TracyVkZone(tracyCtx[currentFrame], commandBuffer,
-                                      "DrawModel");
-                          auto& md = active_scene_data.scene->md_mg.get(mh);
-                          recordDrawModel(commandBuffer, viewport, scissor,
-                                          accumulated_transform, md,
-                                          active_scene_data, override);
-                      },
-                      [&](const CameraHandle& empty) {},
-                      [&](const std::monostate& empty) {
-
-                      },
-                      [&](const LightHandle& empty) {
-                          Model& md = internal_resources.scene->md_mg.getByName(
-                              "SpotLight");  // light mesh
-                          recordDrawModel(commandBuffer, viewport, scissor,
-                                          accumulated_transform, md,
-                                          internal_resources, override);
-                      }},
-
-            handle);
+        std::visit(overloads{
+                       [&](const ModelHandle& mh) {
+                           TracyVkZone(tracyCtx[currentFrame], commandBuffer,
+                                       "DrawModel");
+                           auto& md = active_scene_data.scene->md_mg.get(mh);
+                           recordDrawModel(commandBuffer, viewport, scissor,
+                                           accumulated_transform, md,
+                                           active_scene_data, override);
+                       },
+                       [&](const CameraHandle& empty) {},
+                       [&](const std::monostate& empty) {},
+                       [&](const LightHandle& empty) {},
+                   },
+                   handle);
 
         SceneTreeHandle child = stn.childH;
         while (child) {
@@ -1172,6 +1205,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     recordDrawScene(commandBuffer, viewport, scissor, imageIndex,
                     active_scene_data.scene->root);
 
+    recordDraw3DOverlays(commandBuffer, viewport, scissor, imageIndex,
+                         active_scene_data.scene->root);
+
     // ImGui
     {
         TracyVkZone(tracyCtx[currentFrame], commandBuffer, "Render ImGui");
@@ -1241,7 +1277,7 @@ VkSampleCountFlagBits SceneRenderer::getMaxUsableSampleCount(
     return VK_SAMPLE_COUNT_1_BIT;
 }
 
-void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
+void SceneRenderer::updateGlobalDescriptorSets() {
     ZoneScoped;
     // cmaera
     static auto startTime = std::chrono::high_resolution_clock::now();
@@ -1266,9 +1302,11 @@ void SceneRenderer::updateGlobalDescriptorSets(uint32_t currentImage) {
     ubo.obs = st_mg.getGlobalTransform(active_scene_data.scene->active_camera) *
               glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
-    memcpy(globalBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    fillLightBuffer(ubo.obs);
 
-    fillLightBuffer(currentImage, ubo.obs);
+    ubo.nLights = lightBuffer.size();
+
+    memcpy(globalBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
 
 void SceneRenderer::drawFrame() {
@@ -1277,8 +1315,14 @@ void SceneRenderer::drawFrame() {
     // el que toca renderitzar (els si els altres no han acabat no importa)
     {
         ZoneScopedN("Wait for Image");
-        vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame],
-                        VK_TRUE, UINT64_MAX);
+        VkResult result =
+            vkWaitForFences(device.ldevice, 1, &inFlightFences[currentFrame],
+                            VK_TRUE, UINT64_MAX);
+        if (result == VK_TIMEOUT) {
+            throw std::runtime_error("Wait for fence timet out");
+        } else if (result != VK_SUCCESS) {
+            throw std::runtime_error("Wait for fences failed");
+        }
     }
 
     uint32_t imageIndex;
@@ -1333,7 +1377,7 @@ void SceneRenderer::drawFrame() {
             }
         }
 
-        updateGlobalDescriptorSets(currentFrame);
+        updateGlobalDescriptorSets();
     }
 
     // Only reset fence if we know that work is going to be submitted

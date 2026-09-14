@@ -1,8 +1,12 @@
 #pragma once
+
 #include <filesystem>
+#include <fstream>
 #include <map>
+#include <memory>
 #include <ranges>
 #include <stdexcept>
+#include <string>
 
 #include "Mesh.hpp"
 #include "SPIRV-Reflect/spirv_reflect.h"
@@ -19,6 +23,64 @@
 // MATERIAL)
 
 namespace gbg {
+
+class _Includer : public shaderc::CompileOptions::IncluderInterface {
+   public:
+    _Includer(std::vector<std::filesystem::path> paths) : search_paths(paths){};
+
+    struct _IncluderInfo {
+        std::string content;
+        std::string name;
+    };
+
+    shaderc_include_result* GetInclude(const char* requested_source,
+                                       shaderc_include_type type,
+                                       const char* requesting_source,
+                                       size_t include_depth) override {
+        std::filesystem::path p = std::filesystem::absolute(requesting_source);
+        std::filesystem::path rs = p.parent_path().append(requested_source);
+        if (not std::filesystem::exists(rs)) {
+            for (auto sp : search_paths) {
+                if (std::filesystem::exists(sp.append(requested_source))) {
+                    rs = sp;
+                    break;
+                }
+            }
+        }
+        _IncluderInfo* info = new _IncluderInfo;
+
+        shaderc_include_result* res = new shaderc_include_result{};
+        res->user_data = info;
+
+        if (not std::filesystem::exists(rs)) {
+            info->content =
+                "File not found :: " + std::string(requested_source);
+            res->content = info->content.data();
+            res->content_length = info->content.length();
+            res->source_name_length = 0;
+            return res;
+        }
+
+        info->content = readFile(rs.native()).data();
+        info->name = rs.filename();
+        res->content = info->content.data();
+        res->content_length = info->content.length();
+        res->source_name = info->name.data();
+        res->source_name_length = info->name.length();
+
+        return res;
+    }
+
+    // Handles shaderc_include_result_release_fn callbacks.
+    void ReleaseInclude(shaderc_include_result* data) override {
+        delete[] data->content;
+        if (data->source_name) delete[] data->source_name;
+        delete data;
+    }
+
+   private:
+    std::vector<std::filesystem::path> search_paths;
+};
 
 enum ShaderType { VERTEX, FRAGMENT };
 
@@ -129,9 +191,12 @@ inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
             break;
     }
 
-    shaderc::Compiler cmp;
+    shaderc::Compiler cmp{};
+    shaderc::CompileOptions copt{};
+    copt.SetIncluder(std::make_unique<_Includer>({path.parent_path()}));
+
     shaderc::CompilationResult res =
-        cmp.CompileGlslToSpv(data.data(), kind, path.filename().c_str());
+        cmp.CompileGlslToSpv(data.data(), kind, path.c_str(), copt);
     if (res.GetCompilationStatus() == shaderc_compilation_status_success) {
         switch (type) {
             case VERTEX:

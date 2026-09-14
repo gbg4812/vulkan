@@ -11,11 +11,12 @@ layout(location = 0) in VS_OUT
     vec3 fTangent;
 } fs_in;
 
-layout(set = 0, binding = 0) uniform UniformBufferObject {
+layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
     mat4 view;
     mat4 proj;
     vec3 obs;
     float time;
+    int nLights;
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler _sampler;
@@ -27,17 +28,16 @@ struct Light {
     vec3 direction;
     vec3 position;
     mat4 proj;
+    float intensity;
     int shadow_map;
 };
 
-layout(std140, set = 0, binding = 2) readonly buffer LightBlock {
+layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
     Light lights[];
 } lightData;
 
 layout(std140, set = 1, binding = 0) uniform MatParms {
     vec3 color;
-    bool normalMap;
-    bool colorMap;
     float ambientI;
     float shaininess;
 };
@@ -56,7 +56,6 @@ float spec(vec3 L, vec3 N, vec3 V, int exp) {
 
 void main() {
     vec2 tex_coords = fs_in.fragTexCoord;
-    tex_coords.y = 1.0 - tex_coords.y;
     vec3 albedo = texture(sampler2D(_texture[0], _sampler), tex_coords).rgb * color;
     vec3 lcolor = vec3(0.0f);
     vec3 V = normalize(ubo.obs - fs_in.fpos);
@@ -66,26 +65,36 @@ void main() {
     n.y *= -1;
     n = normalize(fs_in.fTBN * n);
 
-    for (int i = 0; i < lightData.lights.length(); i++) {
+    for (int i = 0; i < ubo.nLights; i++) {
         vec4 cam_pos = lightData.lights[i].proj * vec4(fs_in.fpos, 1.0f);
         cam_pos /= cam_pos.w;
         vec2 coords = cam_pos.xy;
-        vec3 L = normalize(lightData.lights[i].position - fs_in.fpos);
-        float shadow = smoothstep(0, 0.01, 1 - length(cam_pos.xy));
+        vec3 L = lightData.lights[i].position - fs_in.fpos;
+        float dist = length(L);
+        float light = smoothstep(0, 0.01, 1 - length(coords)) * (1.0 / (dist * dist)) * lightData.lights[i].intensity;
         coords += 1.;
         coords /= 2.;
         coords.x /= 10; // alongated texture
         coords.x += lightData.lights[i].shadow_map * (1. / 10.); // move to the correct place
-        if (lightData.lights[i].shadow_map >= 0) {
-            float d = (texture(sampler2D(_shadow_map, _sampler), coords)).r;
-            if (d < cam_pos.z - 0.0001 || dot(L, lightData.lights[i].direction) < 0) {
-                shadow = 0.0f;
+        if (lightData.lights[i].shadow_map >= 0 && light > 0.0f) {
+            float shadow = 0;
+            for (int s = 0; s < 4; s++) {
+                vec2 off = {
+                        s % 2,
+                        s / 2
+                    };
+                float d = (texture(sampler2D(_shadow_map, _sampler), coords + off * (1. / 1080))).r;
+                if (d >= cam_pos.z - 0.0001 || dot(L, lightData.lights[i].direction) < 0) {
+                    shadow += 1. / 4.;
+                }
             }
+            light *= shadow;
         }
 
+        L = normalize(L);
         vec3 ilum = albedo * diffuse(L, n) * lightData.lights[i].color + (lightData.lights[i].color * spec(L, n, V, int(shaininess)));
 
-        lcolor += ilum * shadow;
+        lcolor += ilum * light;
     }
 
     lcolor += ambientI * albedo;

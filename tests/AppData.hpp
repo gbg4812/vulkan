@@ -31,13 +31,13 @@ struct AppData {
                                   gbg::SObjFlags::NEW);
 
         auto res =
-            gbg::setShaderCode(sh, "./data/shaders/shader.vert", gbg::VERTEX);
+            gbg::setShaderCode(sh, "./data/shaders/default.vert", gbg::VERTEX);
         if (not res.first) {
             std::cout << res.second << std::endl;
             exit(EXIT_FAILURE);
         }
         res =
-            gbg::setShaderCode(sh, "./data/shaders/shader.frag", gbg::FRAGMENT);
+            gbg::setShaderCode(sh, "./data/shaders/default.frag", gbg::FRAGMENT);
         if (not res.first) {
             std::cout << res.second << std::endl;
             exit(EXIT_FAILURE);
@@ -46,16 +46,16 @@ struct AppData {
         dep_tree.propagateChange(sh.representative,
                                  gbg::SObjFlags::DIRTY_SHADER_CODE);
 
-        watch({"./data/shaders/shader.frag", "./data/shaders/shader.vert"},
+        watch({"./data/shaders/default.frag", "./data/shaders/default.vert"},
               (uint32_t)WatchEvents::MODFY, [&]() {
                   auto res = gbg::setShaderCode(
-                      sh, "./data/shaders/shader.vert", gbg::VERTEX);
+                      sh, "./data/shaders/default.vert", gbg::VERTEX);
                   if (not res.first) {
                       std::cout << res.second << std::endl;
                   } else {
                       std::cout << "Shader recompiled successfuly" << std::endl;
                   }
-                  res = gbg::setShaderCode(sh, "./data/shaders/shader.frag",
+                  res = gbg::setShaderCode(sh, "./data/shaders/default.frag",
                                            gbg::FRAGMENT);
                   if (not res.first) {
                       std::cout << res.second << std::endl;
