@@ -125,12 +125,12 @@ int main(int argc, char* argv[]) {
         for (auto h : app.dep_tree.getModified()) {
             auto& n = app.dep_tree.get(h);
             if (n.type == gbg::ResourceTypes::SHADER &&
-                (n.flags & gbg::SObjFlags::DIRTY_SHADER_CODE)) {
+                (n.flags & gbg::SObjFlags::DIRTY_SHADER_CODE || n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Shader& sh = app.scene.sh_mg.get(n.represented);
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
-                (n.flags & gbg::SObjFlags::SHADER_CHANGED)) {
+                (n.flags & gbg::SObjFlags::SHADER_CHANGED || n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Material& mat = app.scene.mat_mg.get(n.represented);
                 gbg::setParametersFromShader(app.scene, mat);
             }

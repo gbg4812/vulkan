@@ -1,14 +1,8 @@
+#ifndef _VERT_INCLUDES_LIB
+#define _VERT_INCLUDES_LIB
 layout(push_constant, std430) uniform pc {
     mat4 model;
 };
-
-layout(std140, set = 0, binding = 0) uniform UniformBufferObject {
-    mat4 view;
-    mat4 proj;
-    vec3 obs;
-    float time;
-    int nLights;
-} ubo;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inNormal;
@@ -22,3 +16,5 @@ layout(location = 0) out VS_OUT
     mat3 fTBN;
     vec3 fTangent;
 } vs_out;
+
+#endif

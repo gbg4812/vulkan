@@ -163,7 +163,7 @@ inline void drawShaderPannel(AppData& app) {
         if (res == NFD_OKAY) {
             if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
             NFD_FreePathU8(outpath);
-            ImGui::OpenPopup("New Shader");
+            ImGui::OpenPopup("Load Shader");
         }
     }
 
@@ -218,10 +218,11 @@ inline void drawShaderPannel(AppData& app) {
                                      gbg::FRAGMENT);
             if (not res.first) {
                 std::cout << res.second << std::endl;
-                sh.setVertShaderCode(
+                sh.setFragShaderCode(
                     sc.sh_mg.get(sc.defaults.shader).getFragShaderCode());
             }
 
+            // rethink watch for it to be less perilous
             watch({std::ranges::find_if(paths, vert)->string(),
                    std::ranges::find_if(paths, frag)->string()},
                   (uint32_t)WatchEvents::MODFY, [&]() {

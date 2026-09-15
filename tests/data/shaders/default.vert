@@ -2,7 +2,8 @@
 
 #extension GL_GOOGLE_include_directive : enable
 
-#include "vertex_includes.vert"
+#include "global_includes_lib.glsl" 
+#include "vert_includes_lib.glsl"
 
 void main() {
     vec3 N = normalize(vec3(model * vec4(inNormal, 0.0f)));
