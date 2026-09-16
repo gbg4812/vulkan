@@ -6,6 +6,7 @@
 #include "InternalSceneData.hpp"
 #include "MaterialFunctions.hpp"
 #include "PerObjectPushConstant.hpp"
+#include "Shader.hpp"
 #include "loaders/objLoader.hpp"
 #include "macros.hpp"
 #include "resourcesUpdate.hpp"
@@ -28,17 +29,18 @@ inline void loadRendererResources(
     auto col_sh_h = sh_mg.create("PlainColorShader");
     auto& col_sh = sh_mg.get(col_sh_h);
     setShaderCode(col_sh, "data/models/RendererResources/plain_color.vert",
-                  VERTEX);
+                  ShaderTypes::VERTEX);
     setShaderCode(col_sh, "data/models/RendererResources/plain_color.frag",
-                  FRAGMENT);
+                  ShaderTypes::FRAGMENT);
     reflectShader(col_sh);
-    col_sh.topology = LINES;
+    col_sh.topology = PrimitiveInterpretation::LINES;
 
     auto white_mt_h = mt_mg.create("White Material");
     auto& white_mt = mt_mg.get(white_mt_h);
     white_mt.setShader(col_sh_h);
     setParametersFromShader(*sc, white_mt);
-    white_mt.setParameterValue<VEC3_PARM>(0, glm::vec3(1.0f, 1.0f, 1.0f));
+    white_mt.setParameterValue<ParameterTypes::VEC3>(
+        0, glm::vec3(1.0f, 1.0f, 1.0f));
 
     objLoader("data/models/RendererResources/RendererObjects.obj", sc, sc->root,
               white_mt_h);

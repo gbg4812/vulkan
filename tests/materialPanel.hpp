@@ -37,8 +37,8 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                     for (auto texh : sc.tx_mg) {
                         auto& tex2 = sc.tx_mg.get(texh);
                         if (ImGui::Selectable(tex2.getName().c_str())) {
-                            mat.setParameterValue<
-                                gbg::ParameterTypes::TEXTURE_PARM>(num, texh);
+                            mat.setParameterValue<gbg::ParameterTypes::TEXTURE>(
+                                num, texh);
                             gbg::setDependent(app.dep_tree, mat,
                                               gbg::SObjFlags::TEXTURE_CHANGED,
                                               tex2, gbg::SObjFlags::NEW);
@@ -56,8 +56,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 if (ImGui::ColorPicker3(
                         ("Parameter" + std::to_string(num)).c_str(),
                         (float*)&col)) {
-                    mat.setParameterValue<gbg::ParameterTypes::VEC3_PARM>(num,
-                                                                          col);
+                    mat.setParameterValue<gbg::ParameterTypes::VEC3>(num, col);
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
@@ -66,8 +65,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 if (ImGui::InputFloat2(
                         ("Parameter" + std::to_string(num)).c_str(),
                         (float*)&col)) {
-                    mat.setParameterValue<gbg::ParameterTypes::VEC2_PARM>(num,
-                                                                          col);
+                    mat.setParameterValue<gbg::ParameterTypes::VEC2>(num, col);
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
@@ -75,8 +73,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 float f = *val;
                 if (ImGui::InputFloat(
                         ("Parameter" + std::to_string(num)).c_str(), &f)) {
-                    mat.setParameterValue<gbg::ParameterTypes::FLOAT_PARM>(num,
-                                                                           f);
+                    mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, f);
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
@@ -84,8 +81,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 int i = *val;
                 if (ImGui::InputInt(("Parameter" + std::to_string(num)).c_str(),
                                     &i)) {
-                    mat.setParameterValue<gbg::ParameterTypes::FLOAT_PARM>(num,
-                                                                           i);
+                    mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, i);
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
                 }
@@ -207,19 +203,22 @@ inline void drawShaderPannel(AppData& app) {
             };
 
             // Continue TODO(GUILLEM):
-            auto res = gbg::setShaderCode(
-                sh, *(std::ranges::find_if(paths, vert)), gbg::VERTEX);
+            auto res =
+                gbg::setShaderCode(sh, *(std::ranges::find_if(paths, vert)),
+                                   gbg::ShaderTypes::VERTEX);
             if (not res.first) {
                 std::cout << res.second << std::endl;
-                sh.setVertShaderCode(
-                    sc.sh_mg.get(sc.defaults.shader).getVertShaderCode());
+                sh.setCode(sc.sh_mg.get(sc.defaults.shader)
+                               .getCode(gbg::ShaderTypes::VERTEX),
+                           gbg::ShaderTypes::VERTEX);
             }
             res = gbg::setShaderCode(sh, *std::ranges::find_if(paths, frag),
-                                     gbg::FRAGMENT);
+                                     gbg::ShaderTypes::FRAGMENT);
             if (not res.first) {
                 std::cout << res.second << std::endl;
-                sh.setFragShaderCode(
-                    sc.sh_mg.get(sc.defaults.shader).getFragShaderCode());
+                sh.setCode(sc.sh_mg.get(sc.defaults.shader)
+                               .getCode(gbg::ShaderTypes::FRAGMENT),
+                           gbg::ShaderTypes::FRAGMENT);
             }
 
             // rethink watch for it to be less perilous
@@ -227,7 +226,8 @@ inline void drawShaderPannel(AppData& app) {
                    std::ranges::find_if(paths, frag)->string()},
                   (uint32_t)WatchEvents::MODFY, [&]() {
                       auto res = gbg::setShaderCode(
-                          sh, *std::ranges::find_if(paths, vert), gbg::VERTEX);
+                          sh, *std::ranges::find_if(paths, vert),
+                          gbg::ShaderTypes::VERTEX);
                       if (not res.first) {
                           std::cout << res.second << std::endl;
                       } else {
@@ -236,7 +236,7 @@ inline void drawShaderPannel(AppData& app) {
                       }
                       res = gbg::setShaderCode(
                           sh, *std::ranges::find_if(paths, frag),
-                          gbg::FRAGMENT);
+                          gbg::ShaderTypes::FRAGMENT);
                       if (not res.first) {
                           std::cout << res.second << std::endl;
                       } else {

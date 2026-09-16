@@ -79,8 +79,6 @@ class _Includer : public shaderc::CompileOptions::IncluderInterface {
     inline static std::vector<std::filesystem::path> search_paths;
 };
 
-enum ShaderType { VERTEX, FRAGMENT };
-
 inline void processShaderModule(const SpvReflectShaderModule& shmod,
                                 Shader& shader) {
     if (shmod.shader_stage & SPV_REFLECT_SHADER_STAGE_VERTEX_BIT) {
@@ -102,10 +100,10 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
         }
     }
 
-    auto nontex =
-        std::views::filter([](ParameterTypes p) { return p != TEXTURE_PARM; });
-    auto tex =
-        std::views::filter([](ParameterTypes p) { return p == TEXTURE_PARM; });
+    auto nontex = std::views::filter(
+        [](ParameterTypes p) { return p != ParameterTypes::TEXTURE; });
+    auto tex = std::views::filter(
+        [](ParameterTypes p) { return p == ParameterTypes::TEXTURE; });
 
     if ((shader.getParameters() | nontex).empty()) {
         SpvReflectResult res;
@@ -122,18 +120,18 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
                         int comps = var.numeric.vector.component_count;
                         switch (comps) {
                             case 2:
-                                shader.addParameter(ParameterTypes::VEC2_PARM);
+                                shader.addParameter(ParameterTypes::VEC2);
                                 break;
                             case 3:
-                                shader.addParameter(ParameterTypes::VEC3_PARM);
+                                shader.addParameter(ParameterTypes::VEC3);
                                 break;
                         }
                     }
                 } else {
                     if (flags & SPV_REFLECT_TYPE_FLAG_FLOAT) {
-                        shader.addParameter(ParameterTypes::FLOAT_PARM);
+                        shader.addParameter(ParameterTypes::FLOAT);
                     } else if (flags & SPV_REFLECT_TYPE_FLAG_INT) {
-                        shader.addParameter(ParameterTypes::INT_PARM);
+                        shader.addParameter(ParameterTypes::INT);
                     }
                 }
             }
@@ -149,41 +147,43 @@ inline void processShaderModule(const SpvReflectShaderModule& shmod,
             bind_matparm->descriptor_type ==
                 SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
             for (int i = 0; i < bind_matparm->count; i++)
-                shader.addParameter(ParameterTypes::TEXTURE_PARM);
+                shader.addParameter(ParameterTypes::TEXTURE);
         }
     }
 }
 
 inline void reflectShader(Shader& shader) {
     shader.clear();
-    if (not shader.getVertShaderCode().empty()) {
-        SpvReflectShaderModule vtmod;
-        spvReflectCreateShaderModule(
-            shader.getVertShaderCode().size() * sizeof(uint32_t),
-            shader.getVertShaderCode().data(), &vtmod);
-        processShaderModule(vtmod, shader);
+    {
+        auto& code = shader.getCode(ShaderTypes::VERTEX);
+        if (not code.empty()) {
+            SpvReflectShaderModule vtmod;
+            spvReflectCreateShaderModule(code.size(), code.data(), &vtmod);
+            processShaderModule(vtmod, shader);
+        }
     }
 
-    if (not shader.getFragShaderCode().empty()) {
-        SpvReflectShaderModule fgmod;
-        spvReflectCreateShaderModule(
-            shader.getFragShaderCode().size() * sizeof(uint32_t),
-            shader.getFragShaderCode().data(), &fgmod);
-        processShaderModule(fgmod, shader);
+    {
+        auto& code = shader.getCode(ShaderTypes::FRAGMENT);
+        if (not code.empty()) {
+            SpvReflectShaderModule vtmod;
+            spvReflectCreateShaderModule(code.size(), code.data(), &vtmod);
+            processShaderModule(vtmod, shader);
+        }
     }
 }
 
 inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
                                                   std::filesystem::path path,
-                                                  ShaderType type) {
+                                                  ShaderTypes type) {
     auto data = readFile(path.string());
 
     shaderc_shader_kind kind;
     switch (type) {
-        case VERTEX:
+        case ShaderTypes::VERTEX:
             kind = shaderc_vertex_shader;
             break;
-        case FRAGMENT:
+        case ShaderTypes::FRAGMENT:
             kind = shaderc_fragment_shader;
             break;
     }
@@ -196,14 +196,7 @@ inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
     shaderc::CompilationResult res =
         cmp.CompileGlslToSpv(data.data(), kind, path.c_str(), copt);
     if (res.GetCompilationStatus() == shaderc_compilation_status_success) {
-        switch (type) {
-            case VERTEX:
-                sh.setVertShaderCode({res.begin(), res.end()});
-                break;
-            case FRAGMENT:
-                sh.setFragShaderCode({res.begin(), res.end()});
-                break;
-        }
+        sh.setCode({res.begin(), res.end()}, type);
     }
     return {res.GetCompilationStatus() == shaderc_compilation_status_success,
             res.GetErrorMessage()};

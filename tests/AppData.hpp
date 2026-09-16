@@ -30,14 +30,14 @@ struct AppData {
                                   gbg::ResourceTypes::SHADER,
                                   gbg::SObjFlags::NEW);
 
-        auto res =
-            gbg::setShaderCode(sh, "./data/shaders/default.vert", gbg::VERTEX);
+        auto res = gbg::setShaderCode(sh, "./data/shaders/default.vert",
+                                      gbg::ShaderTypes::VERTEX);
         if (not res.first) {
             std::cout << res.second << std::endl;
             exit(EXIT_FAILURE);
         }
-        res =
-            gbg::setShaderCode(sh, "./data/shaders/default.frag", gbg::FRAGMENT);
+        res = gbg::setShaderCode(sh, "./data/shaders/default.frag",
+                                 gbg::ShaderTypes::FRAGMENT);
         if (not res.first) {
             std::cout << res.second << std::endl;
             exit(EXIT_FAILURE);
@@ -48,15 +48,16 @@ struct AppData {
 
         watch({"./data/shaders/default.frag", "./data/shaders/default.vert"},
               (uint32_t)WatchEvents::MODFY, [&]() {
-                  auto res = gbg::setShaderCode(
-                      sh, "./data/shaders/default.vert", gbg::VERTEX);
+                  auto res =
+                      gbg::setShaderCode(sh, "./data/shaders/default.vert",
+                                         gbg::ShaderTypes::VERTEX);
                   if (not res.first) {
                       std::cout << res.second << std::endl;
                   } else {
                       std::cout << "Shader recompiled successfuly" << std::endl;
                   }
                   res = gbg::setShaderCode(sh, "./data/shaders/default.frag",
-                                           gbg::FRAGMENT);
+                                           gbg::ShaderTypes::FRAGMENT);
                   if (not res.first) {
                       std::cout << res.second << std::endl;
                   } else {

@@ -59,4 +59,18 @@
     // * `create_worktree` — run this task after creating a new git worktree (e.g. to install dependencies or copy untracked config files into it)
     // "hooks": ["create_worktree"]
   },
+
+  {
+    "label": "Pandoc compile",
+    "command": "echo $ZED_FILE | entr pandoc $ZED_FILE -o $ZED_FILE.pdf --from markdown --template eisvogel --filter pandoc-latex-environment",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "no_focus",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true,
+    "save": "none",
+  },
 ]

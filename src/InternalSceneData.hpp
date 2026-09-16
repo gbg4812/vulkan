@@ -1,22 +1,22 @@
 #pragma once
 #include "DependencyTree.hpp"
+#include "Scene.hpp"
+#include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
 #include "srTexture.hpp"
-#include "srLight.hpp"
-#include "Scene.hpp"
 
 namespace gbg {
-    struct InternalSceneData {
-        srMaterialManager srmat_mg;
-        srShaderManager srsh_mg;
-        srTextureManager srtx_mg;
-        srMeshManager srmsh_mg;
-        srLightManager srlight_mg;
+struct InternalSceneData {
+    srMaterialManager srmat_mg;
+    srShaderManager srsh_mg;
+    srTextureManager srtx_mg;
+    srMeshManager srmsh_mg;
+    srLightManager srlight_mg;
 
-        Scene* scene;
+    Scene* scene;
 
-        DependencyTreeManager* dep_tree;
-    };
-}
+    DependencyTreeManager* dep_tree;
+};
+}  // namespace gbg

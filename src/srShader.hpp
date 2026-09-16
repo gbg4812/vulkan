@@ -15,9 +15,11 @@ struct srShader : public Resource<ShaderHandle> {
 };
 
 inline const std::map<PrimitiveInterpretation, VkPrimitiveTopology>
-    topologyToVulkan = {{TRIANGLES, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
-                        {POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
-                        {LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}};
+    topologyToVulkan = {
+        {PrimitiveInterpretation::TRIANGLES,
+         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST},
+        {PrimitiveInterpretation::POINTS, VK_PRIMITIVE_TOPOLOGY_POINT_LIST},
+        {PrimitiveInterpretation::LINES, VK_PRIMITIVE_TOPOLOGY_LINE_LIST}};
 
 void destroySrShader(const vkDevice& device, const srShader& shader);
 

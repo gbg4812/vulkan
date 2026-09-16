@@ -1,7 +1,20 @@
 ---
+title: "Notes"
+author: [Guillem Baldi]
+date: "2026-09-16"
+lang: "en"
+colorlinks: true
 header-includes:
-  - \usepackage{tcolorbox}
-  - \usepackage{amssymb} # Required if the filter uses math/checkbox symbols
+  - |
+    ```{=latex}
+    \usepackage{awesomebox}
+    ```
+pandoc-latex-environment:
+  noteblock: [note]
+  tipblock: [tip]
+  warningblock: [warning]
+  cautionblock: [caution]
+  importantblock: [important]
 ---
 
 # Notes
@@ -37,7 +50,9 @@ We can have various vertex attributes combined and repeated in a single buffer.
 We can have various attributes each in a diferent buffer (binding)
 ![arrays](arrays.png)
 
-> [!note] Bindings and locations are independent of each other.
+::: note
+Bindings and locations are independent of each other.
+:::
 
 So when creating a pipeline we need to describe the bindings and the
 (attributes/locations).
@@ -147,3 +162,9 @@ At distance from the observer $d$ the width of the frustum is:
 $$
 w_d = sin(fov/2) * 2 * d/cos(fov/2)
 $$
+
+### File changes dependency?
+
+Maybe a file resource manager which holds all watched files and then every
+frame we pull them. Or even pass the handles and the manger pointer to the
+watcher and let it tag the files as "modified" making the dependent resources update.

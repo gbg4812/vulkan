@@ -557,7 +557,8 @@ void SceneRenderer::createShadowResources() {
     // create shader which will be used in the shadow pass for all objects
     shadowShader_h = internal_resources.scene->sh_mg.create("Shadow Shader");
     auto& shadowShader = internal_resources.scene->sh_mg.get(shadowShader_h);
-    setShaderCode(shadowShader, "data/shaders/shadow.vert", ShaderType::VERTEX);
+    setShaderCode(shadowShader, "data/shaders/shadow.vert",
+                  ShaderTypes::VERTEX);
     reflectShader(shadowShader);
 
     shadowShader.shadow = false;
