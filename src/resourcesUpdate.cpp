@@ -9,6 +9,7 @@
 #include "Material.hpp"
 #include "Mesh.hpp"
 #include "PerObjectPushConstant.hpp"
+#include "Shader.hpp"
 #include "srMaterial.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkCommandBuffer.hh"
@@ -44,7 +45,7 @@ void createShaderVkResources(
     }
 
     auto texFilter = [](ParameterTypes p) {
-        return p == ParameterTypes::TEXTURE_PARM;
+        return p == ParameterTypes::TEXTURE;
     };
 
     // creates a binding for each texture
@@ -102,10 +103,10 @@ void createShaderVkResources(
     }
 
     sr_sh.pipeline = createGraphicsPipeline(
-        device, shader.getVertShaderCode(), shader.getFragShaderCode(),
-        rendererDescriptorSetLayouts, bindingDescriptions,
-        attributeDescriptions, push_constant_ranges, renderPass.samples,
-        renderPass.renderPass, sr_sh.topology);
+        device, shader.getCode(ShaderTypes::VERTEX),
+        shader.getCode(ShaderTypes::FRAGMENT), rendererDescriptorSetLayouts,
+        bindingDescriptions, attributeDescriptions, push_constant_ranges,
+        renderPass.samples, renderPass.renderPass, sr_sh.topology);
 }
 
 void updateShader(
@@ -123,9 +124,8 @@ void updateShader(
     pushConstant.size = sizeof(PerObjectPushConstant);
     pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    if (flags & (SObjFlags::NEW | SObjFlags::DIRTY_SHADER_CODE)) {
-        if (flags & SObjFlags::DIRTY_SHADER_CODE and
-            not(flags & SObjFlags::NEW)) {
+    if (flags & (SObjFlags::NEW | SObjFlags::CODE_M)) {
+        if (flags & SObjFlags::CODE_M and not(flags & SObjFlags::NEW)) {
             // clean shader resources
             cleanShaderVkResources(device, sr_sh);
         }
@@ -247,7 +247,7 @@ void updateMaterial(vkDevice device, MaterialHandle math,
 
     if (flags & SObjFlags::NEW)
         scene_data.srmat_mg.create(math);
-    else if (flags & SObjFlags::SHADER_CHANGED) {
+    else if (flags & SObjFlags::PARAMETER_INTERFACE_M) {
         srMaterial& srmt = scene_data.srmat_mg.get(math);
         cleanMaterialVkResources(device, materialDescPool, srmt);
     }
@@ -256,7 +256,7 @@ void updateMaterial(vkDevice device, MaterialHandle math,
 
     // clean old vk resources
 
-    if (flags & (SObjFlags::NEW | SObjFlags::SHADER_CHANGED)) {
+    if (flags & (SObjFlags::NEW | SObjFlags::PARAMETER_INTERFACE_M)) {
         createMaterialVkResources(device, math, scene_data, materialDescPool);
 
         updateParameterValues(device, mat, srmt);
@@ -264,10 +264,10 @@ void updateMaterial(vkDevice device, MaterialHandle math,
         updateMaterialDescriptorSet(device, math, scene_data, textureSampler);
 
     } else {
-        if (flags & (SObjFlags::DIRTY_PARAMETER)) {
+        if (flags & (SObjFlags::PARAMETER_VALUE_M)) {
             updateParameterValues(device, mat, srmt);
         }
-        if (flags & (SObjFlags::TEXTURE_CHANGED)) {
+        if (flags & (SObjFlags::TEXTURE_PARAMETER_VALUE_M)) {
             updateMaterialDescriptorSet(device, math, scene_data,
                                         textureSampler);
         }

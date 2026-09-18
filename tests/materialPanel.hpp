@@ -39,12 +39,13 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         if (ImGui::Selectable(tex2.getName().c_str())) {
                             mat.setParameterValue<gbg::ParameterTypes::TEXTURE>(
                                 num, texh);
-                            gbg::setDependent(app.dep_tree, mat,
-                                              gbg::SObjFlags::TEXTURE_CHANGED,
-                                              tex2, gbg::SObjFlags::NEW);
+                            gbg::setDependent(
+                                app.dep_tree, mat,
+                                gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M, tex2,
+                                gbg::SObjFlags::NEW);
                             app.dep_tree.propagateChange(
                                 mat.representative,
-                                gbg::SObjFlags::TEXTURE_CHANGED);
+                                gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M);
                         }
                     }
 
@@ -58,7 +59,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC3>(num, col);
                     app.dep_tree.propagateChange(
-                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
+                        mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const glm::vec2* vec = std::get_if<glm::vec2>(&value)) {
                 glm::vec2 col = *vec;
@@ -67,7 +68,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC2>(num, col);
                     app.dep_tree.propagateChange(
-                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
+                        mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const float* val = std::get_if<float>(&value)) {
                 float f = *val;
@@ -75,7 +76,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         ("Parameter" + std::to_string(num)).c_str(), &f)) {
                     mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, f);
                     app.dep_tree.propagateChange(
-                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
+                        mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const int* val = std::get_if<int32_t>(&value)) {
                 int i = *val;
@@ -83,7 +84,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                                     &i)) {
                     mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, i);
                     app.dep_tree.propagateChange(
-                        mat.representative, gbg::SObjFlags::DIRTY_PARAMETER);
+                        mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             }
         }
@@ -224,7 +225,7 @@ inline void drawShaderPannel(AppData& app) {
             // rethink watch for it to be less perilous
             watch({std::ranges::find_if(paths, vert)->string(),
                    std::ranges::find_if(paths, frag)->string()},
-                  (uint32_t)WatchEvents::MODFY, [&]() {
+                  WatchEvents::MODFY, [&]() {
                       auto res = gbg::setShaderCode(
                           sh, *std::ranges::find_if(paths, vert),
                           gbg::ShaderTypes::VERTEX);
@@ -244,8 +245,8 @@ inline void drawShaderPannel(AppData& app) {
                                     << std::endl;
                       }
 
-                      app.dep_tree.propagateChange(
-                          sh.representative, gbg::SObjFlags::DIRTY_SHADER_CODE);
+                      app.dep_tree.propagateChange(sh.representative,
+                                                   gbg::SObjFlags::CODE_M);
                   });
             ImGui::CloseCurrentPopup();
         }
@@ -283,12 +284,13 @@ inline void drawNewMaterial(AppData& app) {
                     "Material" + std::to_string(sc.mat_mg.nextIndex()));
                 gbg::createRepresentative(
                     app.dep_tree, mh, sc.mat_mg, gbg::ResourceTypes::MATERIAL,
-                    gbg::SObjFlags::NEW | gbg::SObjFlags::SHADER_CHANGED);
+                    gbg::SObjFlags::NEW |
+                        gbg::SObjFlags::PARAMETER_INTERFACE_M);
                 auto& mt = sc.mat_mg.get(mh);
                 mt.setShader(selected);
-                gbg::setDependent(
-                    app.dep_tree, mt, gbg::SObjFlags::SHADER_CHANGED, sh,
-                    gbg::SObjFlags::DIRTY_SHADER_CODE | gbg::SObjFlags::NEW);
+                gbg::setDependent(app.dep_tree, mt,
+                                  gbg::SObjFlags::PARAMETER_INTERFACE_M, sh,
+                                  gbg::SObjFlags::CODE_M | gbg::SObjFlags::NEW);
 
                 ImGui::CloseCurrentPopup();
             } else {

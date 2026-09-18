@@ -5,6 +5,10 @@
 
 namespace gbg {
 
+/*  idiom:
+ *  - *_M modified (the resource taged needs update and the dependents also)
+ */
+
 enum SObjFlags : gbg::DependencyMask {
     NONE = 0,
     NEW = 1,
@@ -12,12 +16,12 @@ enum SObjFlags : gbg::DependencyMask {
     ALL = std::numeric_limits<gbg::DependencyMask>::max(),
 
     // SHADER FLAGS
-    DIRTY_SHADER_CODE = 1 << 2,
+    CODE_M = 1 << 2,
 
     // MATERIAL FLAGS
-    DIRTY_PARAMETER = 1 << 2,
-    SHADER_CHANGED = 1 << 3,
-    TEXTURE_CHANGED = 1 << 4,
+    PARAMETER_VALUE_M = 1 << 2,
+    PARAMETER_INTERFACE_M = 1 << 3,
+    TEXTURE_PARAMETER_VALUE_M = 1 << 4,
 };
 
 void cleanShaderVkResources(const vkDevice& device, srShader& sr_sh);

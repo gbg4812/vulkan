@@ -208,10 +208,10 @@ class SceneRenderer {
     void recordCommandBuffer(VkCommandBuffer commandBuffer,
                              uint32_t imageIndex);
 
-    void recordDraw3DOverlays(VkCommandBuffer commandBuffer, VkViewport viewport,
-                             VkRect2D scissor, uint32_t imageIndex,
-                             SceneTreeHandle root);
-    
+    void recordDraw3DOverlays(VkCommandBuffer commandBuffer,
+                              VkViewport viewport, VkRect2D scissor,
+                              uint32_t imageIndex, SceneTreeHandle root);
+
     void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport,
                          VkRect2D scissor, uint32_t imageIndex,
                          SceneTreeHandle root, MaterialHandle override);

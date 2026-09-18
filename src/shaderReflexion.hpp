@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shaderc/shaderc.h>
+
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -10,6 +12,7 @@
 
 #include "Mesh.hpp"
 #include "SPIRV-Reflect/spirv_reflect.h"
+#include "Scene.hpp"
 #include "Shader.hpp"
 #include "io_utils/file_utils.hpp"
 #include "shaderc/shaderc.hpp"
@@ -158,7 +161,8 @@ inline void reflectShader(Shader& shader) {
         auto& code = shader.getCode(ShaderTypes::VERTEX);
         if (not code.empty()) {
             SpvReflectShaderModule vtmod;
-            spvReflectCreateShaderModule(code.size(), code.data(), &vtmod);
+            spvReflectCreateShaderModule(code.size() * sizeof(uint32_t),
+                                         code.data(), &vtmod);
             processShaderModule(vtmod, shader);
         }
     }
@@ -167,7 +171,8 @@ inline void reflectShader(Shader& shader) {
         auto& code = shader.getCode(ShaderTypes::FRAGMENT);
         if (not code.empty()) {
             SpvReflectShaderModule vtmod;
-            spvReflectCreateShaderModule(code.size(), code.data(), &vtmod);
+            spvReflectCreateShaderModule(code.size() * sizeof(uint32_t),
+                                         code.data(), &vtmod);
             processShaderModule(vtmod, shader);
         }
     }
@@ -202,4 +207,21 @@ inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
             res.GetErrorMessage()};
 }
 
+inline std::pair<bool, std::string> setGlslShaderCode(
+    Shader& sh, const std::vector<std::filesystem::path> paths) {
+    static auto vert = [](const std::filesystem::path& path) {
+        return path.extension() == ".vert";
+    };
+    static auto frag = [](const std::filesystem::path& path) {
+        return path.extension() == ".frag";
+    };
+
+    auto res_v = gbg::setShaderCode(sh, *(std::ranges::find_if(paths, vert)),
+                                    gbg::ShaderTypes::VERTEX);
+    auto res_f = gbg::setShaderCode(sh, *std::ranges::find_if(paths, frag),
+                                    gbg::ShaderTypes::FRAGMENT);
+    return {res_v.first and res_f.first,
+            std::format("Vertex Diagnostics:: {} \nFragment Diagnostics:: {}",
+                        res_v.second, res_f.second)};
+}
 }  // namespace gbg

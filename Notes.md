@@ -168,3 +168,29 @@ $$
 Maybe a file resource manager which holds all watched files and then every
 frame we pull them. Or even pass the handles and the manger pointer to the
 watcher and let it tag the files as "modified" making the dependent resources update.
+
+## Better Pools
+
+Instead of vectors linked memory chunks for more stability and O(1) cost.
+
+## Conventions:
+
+### Naming
+
+```
+variable_name
+_private_variable_name
+functionName()
+TypeName
+handle_variable_h
+pointer_variable_p
+```
+
+### Sharing Resources
+
+Allways think who is the owner.
+Resources are shared by handle or handle + raw pointer to manager
+Managers are shared by raw pointers. To avoid use after free the owner
+of the Manager must be owner of the object with which has a pointer to the manager.
+
+Owner means it overlives all its possessions and controls they destruction.

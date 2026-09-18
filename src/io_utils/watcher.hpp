@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <string_view>
@@ -26,7 +27,7 @@ enum class WatchEvents {
 };
 
 static int itf_inst = -1;
-static std::map<std::string_view, int> path2wd;
+static std::map<std::filesystem::path, int> path2wd;
 static std::map<int, Watcher> watchers;
 
 inline void init_watch() {
@@ -38,15 +39,15 @@ inline void init_watch() {
 }
 
 template <typename F>
-inline void watch(std::vector<std::string_view> filepaths, uint32_t events,
-                  const F& callback) {
+inline void watch(std::vector<std::filesystem::path> filepaths,
+                  WatchEvents events, const F& callback) {
     for (auto& filepath : filepaths) {
         if (itf_inst == -1) {
             fprintf(stderr, "init_watch needs to be called first!");
             exit(EXIT_FAILURE);
         }
         Watcher wtch;
-        int wd = inotify_add_watch(itf_inst, filepath.data(), events);
+        int wd = inotify_add_watch(itf_inst, filepath.c_str(), (int)events);
         wtch.callback = callback;
         watchers.insert({wd, wtch});
         path2wd.insert({filepath, wd});

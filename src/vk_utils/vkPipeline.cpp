@@ -45,11 +45,11 @@ vkVertexInputDescription getVertexFloatInputDescription(uint32_t attrib_id) {
 }
 
 VkShaderModule createShaderModule(const vkDevice& device,
-                                  std::vector<uint32_t> code) {
+                                  const std::vector<uint32_t>& code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size() * sizeof(uint32_t);
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    createInfo.pCode = code.data();
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device.ldevice, &createInfo, nullptr,
                              &shaderModule) != VK_SUCCESS) {
@@ -65,7 +65,8 @@ vkPipeline createGraphicsPipeline(
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     const std::vector<VkPushConstantRange>& push_constants,
-    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass, VkPrimitiveTopology topology) {
+    VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass,
+    VkPrimitiveTopology topology) {
     vkPipeline pipeline{};
 
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;

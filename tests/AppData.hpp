@@ -6,6 +6,7 @@
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneRenderer.hpp"
+#include "WatchedFile.hpp"
 #include "io_utils/watcher.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
@@ -30,43 +31,21 @@ struct AppData {
                                   gbg::ResourceTypes::SHADER,
                                   gbg::SObjFlags::NEW);
 
-        auto res = gbg::setShaderCode(sh, "./data/shaders/default.vert",
-                                      gbg::ShaderTypes::VERTEX);
+        WatchedFile frag_f("./data/shaders/default.frag", &file_m, &dep_tree);
+        WatchedFile frag_v("./data/shaders/default.vert", &file_m, &dep_tree);
+
+        auto res = gbg::setGlslShaderCode(
+            sh, {"./data/shaders/default.frag", "./data/shaders/default.vert"});
         if (not res.first) {
             std::cout << res.second << std::endl;
             exit(EXIT_FAILURE);
         }
-        res = gbg::setShaderCode(sh, "./data/shaders/default.frag",
-                                 gbg::ShaderTypes::FRAGMENT);
-        if (not res.first) {
-            std::cout << res.second << std::endl;
-            exit(EXIT_FAILURE);
-        }
 
-        dep_tree.propagateChange(sh.representative,
-                                 gbg::SObjFlags::DIRTY_SHADER_CODE);
+        // TODO(guillem): set dependent take handles to node trees and
+        gbg::setDependent(dep_tree, sh, gbg::SObjFlags::CODE_M,
+                          frag_f.representative, );
 
-        watch({"./data/shaders/default.frag", "./data/shaders/default.vert"},
-              (uint32_t)WatchEvents::MODFY, [&]() {
-                  auto res =
-                      gbg::setShaderCode(sh, "./data/shaders/default.vert",
-                                         gbg::ShaderTypes::VERTEX);
-                  if (not res.first) {
-                      std::cout << res.second << std::endl;
-                  } else {
-                      std::cout << "Shader recompiled successfuly" << std::endl;
-                  }
-                  res = gbg::setShaderCode(sh, "./data/shaders/default.frag",
-                                           gbg::ShaderTypes::FRAGMENT);
-                  if (not res.first) {
-                      std::cout << res.second << std::endl;
-                  } else {
-                      std::cout << "Shader recompiled successfuly" << std::endl;
-                  }
-
-                  dep_tree.propagateChange(sh.representative,
-                                           gbg::SObjFlags::DIRTY_SHADER_CODE);
-              });
+        watch({file_m.get(frag_f.h).path}, WatchEvents::MODFY, frag_f);
 
         // Material Creation
         auto& mt_mg = scene.getMaterialManager();
@@ -82,11 +61,11 @@ struct AppData {
 
         gbg::setDependent(dep_tree, mt, gbg::SObjFlags::DELETED, sh,
                           gbg::SObjFlags::DELETED);
-        gbg::setDependent(dep_tree, mt, gbg::SObjFlags::SHADER_CHANGED, sh,
-                          gbg::SObjFlags::DIRTY_SHADER_CODE);
-        gbg::setDependent(dep_tree, mt, gbg::SObjFlags::TEXTURE_CHANGED,
-                          scene.tx_mg.get(scene.defaults.texture),
-                          gbg::SObjFlags::NEW);
+        gbg::setDependent(dep_tree, mt, gbg::SObjFlags::PARAMETER_INTERFACE_M,
+                          sh, gbg::SObjFlags::CODE_M);
+        gbg::setDependent(
+            dep_tree, mt, gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
+            scene.tx_mg.get(scene.defaults.texture), gbg::SObjFlags::NEW);
 
         // Camera
         auto& st_mg = scene.getSceneTreeManager();
@@ -116,4 +95,5 @@ struct AppData {
     gbg::SceneRenderer renderer;
     gbg::Scene scene;
     gbg::DependencyTreeManager dep_tree;
+    gbg::FileManager file_m;
 };
