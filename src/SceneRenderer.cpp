@@ -192,19 +192,19 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
 
 void SceneRenderer::cleanScene(InternalSceneData& scene_data) {
     for (const auto& shader : scene_data.srsh_mg) {
-        destroySrShader(device, scene_data.srsh_mg.get(shader));
+        destroySrShader(device, shader);
     }
 
     for (const auto& material : scene_data.srmat_mg) {
-        destroySrMaterial(device, scene_data.srmat_mg.get(material));
+        destroySrMaterial(device, material);
     }
 
     for (const auto& texture : scene_data.srtx_mg) {
-        destroySrTexture(device, scene_data.srtx_mg.get(texture));
+        destroySrTexture(device, texture);
     }
 
     for (const auto& mesh : scene_data.srmsh_mg) {
-        destroyMesh(device, scene_data.srmsh_mg.get(mesh));
+        destroyMesh(device, mesh);
     }
 }
 
@@ -555,39 +555,37 @@ void SceneRenderer::createShadowResources() {
     }
 
     // create shader which will be used in the shadow pass for all objects
-    shadowShader_h = internal_resources.scene->sh_mg.create("Shadow Shader");
-    auto& shadowShader = internal_resources.scene->sh_mg.get(shadowShader_h);
+    auto& shadowShader =
+        internal_resources.scene->sh_mg.create("Shadow Shader");
+    shadowShader_h = shadowShader.getHandle();
     setShaderCode(shadowShader, "data/shaders/shadow.vert",
                   ShaderTypes::VERTEX);
     reflectShader(shadowShader);
 
     shadowShader.shadow = false;
 
-    shadowMaterial_h =
-        internal_resources.scene->mat_mg.create("Shadow Material");
     auto& shadowMaterial =
-        internal_resources.scene->mat_mg.get(shadowMaterial_h);
+        internal_resources.scene->mat_mg.create("Shadow Material");
 
-    shadowMaterial.setShader(shadowShader_h);
+    shadowMaterial.setShader(shadowShader.getHandle());
     gbg::setParametersFromShader(*internal_resources.scene, shadowMaterial);
 
-    auto srsh_h = internal_resources.srsh_mg.create("srShadowShader");
+    auto& srsh = internal_resources.srsh_mg.create(shadowShader.getHandle());
 
     VkPushConstantRange pushConstants{};
     pushConstants.offset = 0;
     pushConstants.size = sizeof(PerObjectPushConstant) + sizeof(int);
     pushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    createShaderVkResources(device, shadowShader,
-                            internal_resources.srsh_mg.get(srsh_h),
+    createShaderVkResources(device, shadowShader, srsh,
                             renderPasses.at("shadow"),
                             {globalDescriptorSetLayout}, {pushConstants});
 
-    auto sr_mt = internal_resources.srmat_mg.create("srShadowMaterial");
+    auto& sr_mt = internal_resources.srmat_mg.create("srShadowMaterial");
 
     createMaterialVkResources(device, shadowMaterial_h, internal_resources,
                               materialDescPool);
-    fillParameterValues(shadowMaterial, internal_resources.srmat_mg.get(sr_mt));
+    fillParameterValues(shadowMaterial, sr_mt);
     updateMaterialDescriptorSet(device, shadowMaterial_h, internal_resources,
                                 textureSampler);
 

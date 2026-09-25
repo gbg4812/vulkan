@@ -15,20 +15,20 @@
 struct AppData {
     AppData(const gbg::RendererContext& context) : renderer(context) {
         // default texture
-        scene.defaults.texture = scene.tx_mg.create("DefaultTexture");
-        loadTexture("data/models/RendererResources/DefaultTexture.png", &scene,
-                    scene.defaults.texture);
-        gbg::createRepresentative(dep_tree, scene.defaults.texture, scene.tx_mg,
+        auto& def_tex = scene.tx_mg.create("DefaultTexture");
+        loadTexture("data/models/RendererResources/DefaultTexture.png",
+                    def_tex);
+        scene.defaults.texture = def_tex.getHandle();
+        gbg::createRepresentative(dep_tree, def_tex,
                                   gbg::ResourceTypes::TEXTURE,
                                   gbg::SObjFlags::NEW);
 
         auto& sh_mg = scene.getShaderManager();
 
         // Shader Creation
-        scene.defaults.shader = sh_mg.create("DefaultShader");
-        gbg::Shader& sh = sh_mg.get(scene.defaults.shader);
-        gbg::createRepresentative(dep_tree, scene.defaults.shader, sh_mg,
-                                  gbg::ResourceTypes::SHADER,
+        auto& sh = sh_mg.create("DefaultShader");
+        scene.defaults.shader = sh.getHandle();
+        gbg::createRepresentative(dep_tree, sh, gbg::ResourceTypes::SHADER,
                                   gbg::SObjFlags::NEW);
 
         WatchedFile frag_f("./data/shaders/default.frag", &file_m, &dep_tree);
@@ -42,8 +42,7 @@ struct AppData {
         }
 
         // TODO(guillem): set dependent take handles to node trees and
-        gbg::setDependent(dep_tree, sh, gbg::SObjFlags::CODE_M,
-                          frag_f.representative, );
+        gbg::setDependent(dep_tree, sh, gbg::SObjFlags::CODE_M, frag_f.h, gbg);
 
         watch({file_m.get(frag_f.h).path}, WatchEvents::MODFY, frag_f);
 

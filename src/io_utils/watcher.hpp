@@ -1,6 +1,7 @@
 #pragma once
 // API
-// init_watch();
+// Struct watcher;
+// init_watch(watcher);
 // watchedh = watch(filepath, actions, callback)
 // pull_watch_events();
 // unwtach(watchedh)
@@ -31,6 +32,7 @@ static std::map<std::filesystem::path, int> path2wd;
 static std::map<int, Watcher> watchers;
 
 inline void init_watch() {
+    if (itf_inst != -1) return;
     itf_inst = inotify_init1(IN_NONBLOCK);
     if (itf_inst == -1) {
         fprintf(stderr, "Filed to initialize inotify");
