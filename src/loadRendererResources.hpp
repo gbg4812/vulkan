@@ -26,8 +26,7 @@ inline void loadRendererResources(
     auto& mt_mg = sc->getMaterialManager();
     auto& sh_mg = sc->getShaderManager();
 
-    auto col_sh_h = sh_mg.create("PlainColorShader");
-    auto& col_sh = sh_mg.get(col_sh_h);
+    auto& col_sh = sh_mg.create("PlainColorShader");
     setShaderCode(col_sh, "data/models/RendererResources/plain_color.vert",
                   ShaderTypes::VERTEX);
     setShaderCode(col_sh, "data/models/RendererResources/plain_color.frag",
@@ -35,18 +34,17 @@ inline void loadRendererResources(
     reflectShader(col_sh);
     col_sh.topology = PrimitiveInterpretation::LINES;
 
-    auto white_mt_h = mt_mg.create("White Material");
-    auto& white_mt = mt_mg.get(white_mt_h);
-    white_mt.setShader(col_sh_h);
+    auto& white_mt = mt_mg.create("White Material");
+    white_mt.setShader(col_sh.getHandle());
     setParametersFromShader(*sc, white_mt);
     white_mt.setParameterValue<ParameterTypes::VEC3>(
         0, glm::vec3(1.0f, 1.0f, 1.0f));
 
     objLoader("data/models/RendererResources/RendererObjects.obj", sc, sc->root,
-              white_mt_h);
+              white_mt.getHandle());
 
-    for (auto msh_h : ms_mg) {
-        createMeshVkResources(device, msh_h, internal_resources);
+    for (auto& msh : ms_mg) {
+        createMeshVkResources(device, msh.getHandle(), internal_resources);
     }
 
     col_sh.shadow = false;
@@ -56,17 +54,15 @@ inline void loadRendererResources(
     pushConstants.size = sizeof(PerObjectPushConstant);
     pushConstants.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    auto col_srsh_h = internal_resources.srsh_mg.create("srColorShader");
-    auto& col_srsh = internal_resources.srsh_mg.get(col_srsh_h);
+    auto& col_srsh = internal_resources.srsh_mg.create("srColorShader");
     createShaderVkResources(device, col_sh, col_srsh, renderPasses.at("color"),
                             {globalDescSet}, {pushConstants});
 
-    auto col_srmt_h = internal_resources.srmat_mg.create("srWhiteMaterial");
-    auto& col_srmt = internal_resources.srmat_mg.get(col_srmt_h);
-    createMaterialVkResources(device, white_mt_h, internal_resources,
+    auto& col_srmt = internal_resources.srmat_mg.create("srWhiteMaterial");
+    createMaterialVkResources(device, white_mt.getHandle(), internal_resources,
                               materialDescPool);
     updateParameterValues(device, white_mt, col_srmt);
-    updateMaterialDescriptorSet(device, white_mt_h, internal_resources,
-                                textureSampler);
+    updateMaterialDescriptorSet(device, white_mt.getHandle(),
+                                internal_resources, textureSampler);
 }
 }  // namespace gbg

@@ -3,17 +3,18 @@
 
 #include "DependencyTree.hpp"
 #include "DependencyTreeFunctions.hpp"
+#include "FileWatcher.hpp"
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneRenderer.hpp"
-#include "WatchedFile.hpp"
 #include "io_utils/watcher.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
 
 struct AppData {
-    AppData(const gbg::RendererContext& context) : renderer(context) {
+    AppData(const gbg::RendererContext& context)
+        : renderer(context), file_w(file_m, dep_tree) {
         // default texture
         auto& def_tex = scene.tx_mg.create("DefaultTexture");
         loadTexture("data/models/RendererResources/DefaultTexture.png",
@@ -31,6 +32,8 @@ struct AppData {
         gbg::createRepresentative(dep_tree, sh, gbg::ResourceTypes::SHADER,
                                   gbg::SObjFlags::NEW);
 
+        // CONTINUE
+        file_w.createFile("./data/shaders/default.frag");
         WatchedFile frag_f("./data/shaders/default.frag", &file_m, &dep_tree);
         WatchedFile frag_v("./data/shaders/default.vert", &file_m, &dep_tree);
 
@@ -95,4 +98,5 @@ struct AppData {
     gbg::Scene scene;
     gbg::DependencyTreeManager dep_tree;
     gbg::FileManager file_m;
+    FileWatcher file_w;
 };

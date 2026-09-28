@@ -5,4 +5,4 @@ namespace gbg {
 struct PerObjectPushConstant {
     glm::mat4 model;
 };
-}
+}  // namespace gbg

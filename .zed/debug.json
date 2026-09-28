@@ -15,9 +15,8 @@
       },
     },
     "program": "$ZED_WORKTREE_ROOT/build-debug/app",
-    "args": ["data/models/EasyModels/scene.obj"],
     "cwd": "$ZED_WORKTREE_ROOT/tests/",
     "request": "launch",
-    "adapter": "CodeLLDB",
+    "adapter": "GDB",
   },
 ]

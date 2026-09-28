@@ -1343,34 +1343,35 @@ void SceneRenderer::drawFrame() {
 
         const auto& modified = active_scene_data.dep_tree->getModified();
 
+        // TODO think about it
         for (auto nh : modified) {
             auto& n = active_scene_data.dep_tree->get(nh);
             switch (n.type) {
                 case ResourceTypes::TEXTURE:
-                    updateTexture(device, n.represented, active_scene_data,
-                                  textureSampler);
-                    std::cout
-                        << "Updating texture::" << n.represented.getIndex()
-                        << std::endl;
+                    updateTexture(device, n.represented.getRID(),
+                                  active_scene_data, textureSampler);
+                    std::cout << "Updating texture::" << n.represented.getRID()
+                              << std::endl;
                     break;
                 case ResourceTypes::SHADER:
                     updateShader(
-                        device, n.represented, active_scene_data,
+                        device, n.represented.getRID(), active_scene_data,
                         renderPasses.at("color"),
                         {globalDescriptorSetLayout, shadowDescriptorSetLayout});
-                    std::cout << "Updating shader::" << n.represented.getIndex()
+                    std::cout << "Updating shader::" << n.represented.getRID()
                               << std::endl;
                     break;
                 case ResourceTypes::MATERIAL:
-                    updateMaterial(device, n.represented, active_scene_data,
-                                   materialDescPool, textureSampler);
-                    std::cout
-                        << "Updating material::" << n.represented.getIndex()
-                        << std::endl;
+                    updateMaterial(device, n.represented.getRID(),
+                                   active_scene_data, materialDescPool,
+                                   textureSampler);
+                    std::cout << "Updating material::" << n.represented.getRID()
+                              << std::endl;
                     break;
                 case ResourceTypes::MESH:
-                    updateMesh(device, n.represented, active_scene_data);
-                    std::cout << "Updating mesh::" << n.represented.getIndex()
+                    updateMesh(device, n.represented.getRID(),
+                               active_scene_data);
+                    std::cout << "Updating mesh::" << n.represented.getRID()
                               << std::endl;
                     break;
             }
