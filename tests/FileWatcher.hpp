@@ -23,7 +23,7 @@ class FileWatcher {
 
         auto& f = _f_m.create(pt.relative_path());
         f.path = pt;
-        auto rep = gbg::createRepresentative(_d_m, f, FILE_RT);
+        auto rep = gbg::createRepresentative(_d_m, f, FILE_RT, FileFlags::FILE_M);
 
         watch({pt}, WatchEvents::MODFY,
               [this, rep]() { _d_m.propagateChange(rep, FileFlags::FILE_M); });

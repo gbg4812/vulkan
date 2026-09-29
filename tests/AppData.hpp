@@ -68,8 +68,6 @@ struct AppData {
 
         mt.setShader(scene.defaults.shader);
 
-        gbg::setDependent(dep_tree, mt.representative, gbg::SObjFlags::DELETED,
-                          sh.representative, gbg::SObjFlags::DELETED);
         gbg::setDependent(dep_tree, mt.representative,
                           gbg::SObjFlags::PARAMETER_INTERFACE_M,
                           sh.representative, gbg::SObjFlags::CODE_M);
