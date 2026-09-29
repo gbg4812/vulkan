@@ -93,8 +93,7 @@ int main(int argc, char* argv[]) {
 
             if (ImGui::BeginTabBar("Properties")) {
                 if (ImGui::BeginTabItem("Scene Objects")) {
-                    for (auto snh : app.scene.st_mg) {
-                        auto& sn = app.scene.st_mg.get(snh);
+                    for (auto& sn : app.scene.st_mg) {
                         drawSceneObjectPanel(app.scene, sn);
                     }
                     ImGui::EndTabItem();
@@ -102,8 +101,7 @@ int main(int argc, char* argv[]) {
 
                 if (ImGui::BeginTabItem("Materials")) {
                     int i = 0;
-                    for (auto math : app.scene.mat_mg) {
-                        auto& mat = app.scene.mat_mg.get(math);
+                    for (auto& mat : app.scene.mat_mg) {
                         drawMaterialPanel(app, mat);
                         i++;
                     }
@@ -127,13 +125,13 @@ int main(int argc, char* argv[]) {
             if (n.type == gbg::ResourceTypes::SHADER &&
                 (n.flags & gbg::SObjFlags::CODE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
-                gbg::Shader& sh = app.scene.sh_mg.get(n.represented);
+                gbg::Shader& sh = app.scene.sh_mg.get(n.represented.getRID());
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
                 (n.flags & gbg::SObjFlags::PARAMETER_INTERFACE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
-                gbg::Material& mat = app.scene.mat_mg.get(n.represented);
+                gbg::Material& mat = app.scene.mat_mg.get(n.represented.getRID());
                 gbg::setParametersFromShader(app.scene, mat);
             }
         }

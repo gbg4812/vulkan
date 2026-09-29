@@ -34,15 +34,14 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         ("Texture" + std::to_string(num - 1)).c_str(),
                         tex.getName().c_str())) {
                     // for every texture
-                    for (auto texh : sc.tx_mg) {
-                        auto& tex2 = sc.tx_mg.get(texh);
+                    for (auto& tex2 : sc.tx_mg) {
                         if (ImGui::Selectable(tex2.getName().c_str())) {
                             mat.setParameterValue<gbg::ParameterTypes::TEXTURE>(
-                                num, texh);
+                                num, tex2.getHandle());
                             gbg::setDependent(
-                                app.dep_tree, mat,
-                                gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M, tex2,
-                                gbg::SObjFlags::NEW);
+                                app.dep_tree, mat.representative,
+                                gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
+                                tex2.representative, gbg::SObjFlags::NEW);
                             app.dep_tree.propagateChange(
                                 mat.representative,
                                 gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M);
@@ -122,12 +121,12 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
             ImGui::Checkbox("Raw", &raw);
 
             if (ImGui::Button("Confirm")) {
-                auto hand = sc.tx_mg.create(name);
-                gbg::createRepresentative(app.dep_tree, hand, sc.tx_mg,
+                auto& new_tx = sc.tx_mg.create(name);
+                gbg::createRepresentative(app.dep_tree, new_tx,
                                           gbg::ResourceTypes::TEXTURE,
                                           gbg::SObjFlags::NEW);
-                loadTexture(buff, &sc, hand);
-                sc.tx_mg.get(hand).raw = raw;
+                loadTexture(buff, new_tx);
+                new_tx.raw = raw;
                 ImGui::CloseCurrentPopup();
             }
 
@@ -143,8 +142,7 @@ inline void drawShaderPannel(AppData& app) {
     static char buff[1024] = "";
     static std::filesystem::path chosen_path;
 
-    for (auto shh : sc.sh_mg) {
-        auto& shader = sc.sh_mg.get(shh);
+    for (auto& shader : sc.sh_mg) {
         if (ImGui::CollapsingHeader(shader.getName().c_str())) {
             for (auto [num, parm] :
                  shader.getParameters() | std::views::enumerate) {
@@ -169,7 +167,7 @@ inline void drawShaderPannel(AppData& app) {
         auto pt = std::filesystem::path(buff);
         std::string name = pt.filename().replace_extension();
         pt = pt.parent_path();
-        std::list<std::filesystem::path> paths;
+        std::vector<std::filesystem::path> paths;
         for (const auto& pt : std::filesystem::directory_iterator{pt}) {
             if (pt.path().filename().replace_extension() == name) {
                 paths.push_back(pt.path());
@@ -189,65 +187,29 @@ inline void drawShaderPannel(AppData& app) {
 
         if (ImGui::Button("Load")) {
             // Shader Creation
-            gbg::ShaderHandle shh = sc.sh_mg.create(name);
-            gbg::Shader& sh = sc.sh_mg.get(shh);
+            gbg::Shader& sh = sc.sh_mg.create(name);
 
-            gbg::createRepresentative(app.dep_tree, shh, sc.sh_mg,
+            gbg::createRepresentative(app.dep_tree, sh,
                                       gbg::ResourceTypes::SHADER,
                                       gbg::SObjFlags::NEW);
 
-            auto vert = [](const std::filesystem::path& path) {
-                return path.extension() == ".vert";
-            };
-            auto frag = [](const std::filesystem::path& path) {
-                return path.extension() == ".frag";
-            };
-
-            // Continue TODO(GUILLEM):
-            auto res =
-                gbg::setShaderCode(sh, *(std::ranges::find_if(paths, vert)),
-                                   gbg::ShaderTypes::VERTEX);
-            if (not res.first) {
-                std::cout << res.second << std::endl;
-                sh.setCode(sc.sh_mg.get(sc.defaults.shader)
-                               .getCode(gbg::ShaderTypes::VERTEX),
-                           gbg::ShaderTypes::VERTEX);
-            }
-            res = gbg::setShaderCode(sh, *std::ranges::find_if(paths, frag),
-                                     gbg::ShaderTypes::FRAGMENT);
-            if (not res.first) {
-                std::cout << res.second << std::endl;
-                sh.setCode(sc.sh_mg.get(sc.defaults.shader)
-                               .getCode(gbg::ShaderTypes::FRAGMENT),
-                           gbg::ShaderTypes::FRAGMENT);
+            for (auto pt : paths) {
+                auto res = app.file_w.createFile(pt.native())
+                    .and_then([&](gbg::File* file) {
+                        return gbg::setGlslShaderCode(sh, {file->path});
+                    });
+                if (res) {
+                    std::cout << res.value() << std::endl;
+                    sh.setCode(sc.sh_mg.get(sc.defaults.shader)
+                                   .getCode(gbg::ShaderTypes::FRAGMENT),
+                               gbg::ShaderTypes::FRAGMENT);
+                    sh.setCode(sc.sh_mg.get(sc.defaults.shader)
+                                   .getCode(gbg::ShaderTypes::VERTEX),
+                               gbg::ShaderTypes::VERTEX);
+                }
             }
 
-            // rethink watch for it to be less perilous
-            watch({std::ranges::find_if(paths, vert)->string(),
-                   std::ranges::find_if(paths, frag)->string()},
-                  WatchEvents::MODFY, [&]() {
-                      auto res = gbg::setShaderCode(
-                          sh, *std::ranges::find_if(paths, vert),
-                          gbg::ShaderTypes::VERTEX);
-                      if (not res.first) {
-                          std::cout << res.second << std::endl;
-                      } else {
-                          std::cout << "Shader recompiled successfuly"
-                                    << std::endl;
-                      }
-                      res = gbg::setShaderCode(
-                          sh, *std::ranges::find_if(paths, frag),
-                          gbg::ShaderTypes::FRAGMENT);
-                      if (not res.first) {
-                          std::cout << res.second << std::endl;
-                      } else {
-                          std::cout << "Shader recompiled successfuly"
-                                    << std::endl;
-                      }
 
-                      app.dep_tree.propagateChange(sh.representative,
-                                                   gbg::SObjFlags::CODE_M);
-                  });
             ImGui::CloseCurrentPopup();
         }
 
@@ -268,10 +230,9 @@ inline void drawNewMaterial(AppData& app) {
         const char* def = selected ? sc.sh_mg.get(selected).getName().c_str()
                                    : "pick - shader";
         if (ImGui::BeginCombo("Pick Shader", def)) {
-            for (auto shh : sc.sh_mg) {
-                auto& sh = sc.sh_mg.get(shh);
+            for (auto& sh : sc.sh_mg) {
                 if (ImGui::Selectable(sh.getName().c_str())) {
-                    selected = shh;
+                    selected = sh.getHandle();
                 }
             }
             ImGui::EndCombo();
@@ -280,16 +241,16 @@ inline void drawNewMaterial(AppData& app) {
         if (ImGui::Button("Create")) {
             if (selected) {
                 auto& sh = sc.sh_mg.get(selected);
-                auto mh = sc.mat_mg.create(
+                auto& mt = sc.mat_mg.create(
                     "Material" + std::to_string(sc.mat_mg.nextIndex()));
                 gbg::createRepresentative(
-                    app.dep_tree, mh, sc.mat_mg, gbg::ResourceTypes::MATERIAL,
+                    app.dep_tree, mt, gbg::ResourceTypes::MATERIAL,
                     gbg::SObjFlags::NEW |
                         gbg::SObjFlags::PARAMETER_INTERFACE_M);
-                auto& mt = sc.mat_mg.get(mh);
                 mt.setShader(selected);
-                gbg::setDependent(app.dep_tree, mt,
-                                  gbg::SObjFlags::PARAMETER_INTERFACE_M, sh,
+                gbg::setDependent(app.dep_tree, mt.representative,
+                                  gbg::SObjFlags::PARAMETER_INTERFACE_M,
+                                  sh.representative,
                                   gbg::SObjFlags::CODE_M | gbg::SObjFlags::NEW);
 
                 ImGui::CloseCurrentPopup();

@@ -566,6 +566,7 @@ void SceneRenderer::createShadowResources() {
 
     auto& shadowMaterial =
         internal_resources.scene->mat_mg.create("Shadow Material");
+    shadowMaterial_h = shadowMaterial.getHandle();
 
     shadowMaterial.setShader(shadowShader.getHandle());
     gbg::setParametersFromShader(*internal_resources.scene, shadowMaterial);

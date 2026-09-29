@@ -6,6 +6,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -178,9 +179,9 @@ inline void reflectShader(Shader& shader) {
     }
 }
 
-inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
-                                                  std::filesystem::path path,
-                                                  ShaderTypes type) {
+inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
+                                                std::filesystem::path path,
+                                                ShaderTypes type) {
     auto data = readFile(path.string());
 
     shaderc_shader_kind kind;
@@ -203,25 +204,28 @@ inline std::pair<bool, std::string> setShaderCode(gbg::Shader& sh,
     if (res.GetCompilationStatus() == shaderc_compilation_status_success) {
         sh.setCode({res.begin(), res.end()}, type);
     }
-    return {res.GetCompilationStatus() == shaderc_compilation_status_success,
-            res.GetErrorMessage()};
+
+    if (res.GetCompilationStatus() != shaderc_compilation_status_success) {
+        return res.GetErrorMessage();
+    }
+
+    return std::nullopt;
 }
 
-inline std::pair<bool, std::string> setGlslShaderCode(
+inline std::optional<std::string> setGlslShaderCode(
     Shader& sh, const std::vector<std::filesystem::path> paths) {
-    static auto vert = [](const std::filesystem::path& path) {
-        return path.extension() == ".vert";
-    };
-    static auto frag = [](const std::filesystem::path& path) {
-        return path.extension() == ".frag";
-    };
+    static const std::map<std::string, gbg::ShaderTypes> extToShaderType = {
+        {".vert", ShaderTypes::VERTEX}, {".frag", ShaderTypes::FRAGMENT}};
 
-    auto res_v = gbg::setShaderCode(sh, *(std::ranges::find_if(paths, vert)),
-                                    gbg::ShaderTypes::VERTEX);
-    auto res_f = gbg::setShaderCode(sh, *std::ranges::find_if(paths, frag),
-                                    gbg::ShaderTypes::FRAGMENT);
-    return {res_v.first and res_f.first,
-            std::format("Vertex Diagnostics:: {} \nFragment Diagnostics:: {}",
-                        res_v.second, res_f.second)};
+    std::optional<std::string> res = {};
+    for (auto pt : paths) {
+        auto type = extToShaderType.find(pt.extension());
+        if (type == extToShaderType.end()) {
+            continue;
+        }
+        auto c_res = gbg::setShaderCode(sh, pt, type->second);
+        if(c_res) return c_res;
+    }
+    return {};
 }
 }  // namespace gbg

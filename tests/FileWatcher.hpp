@@ -16,10 +16,10 @@ class FileWatcher {
     FileWatcher(gbg::FileManager& f_m, gbg::DependencyTreeManager& dep_m)
         : _f_m(f_m), _d_m(dep_m) {}
 
-    std::expected<gbg::File*, bool> createFile(const std::string_view& path) {
+    std::optional<gbg::File*> createFile(const std::string_view& path) {
         std::filesystem::path pt(path);
         if (not std::filesystem::exists(pt))
-            return std::unexpected<bool>(false);
+            return {};
 
         auto& f = _f_m.create(pt.relative_path());
         f.path = pt;

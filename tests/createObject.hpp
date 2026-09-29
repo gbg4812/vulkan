@@ -17,11 +17,10 @@ inline void drawCreateObject(AppData& app) {
 
     if (ImGui::BeginMenu("Add")) {
         if (ImGui::MenuItem("Light")) {
-            auto lh = scene.lh_mg.create("Light");
-            auto sth =
-                scene.st_mg.create("Light" + std::to_string(lh.getIndex()));
-            scene.st_mg.prependChild(scene.root, sth);
-            scene.st_mg.get(sth).setResource(lh);
+            auto& l = scene.lh_mg.create("Light");
+            auto& st = scene.st_mg.create("Light" + std::to_string(l.getRID()));
+            scene.st_mg.prependChild(scene.root, st.getHandle());
+            st.setResource(l.getHandle());
         }
 
         if (ImGui::MenuItem("Load Model")) {
@@ -36,9 +35,9 @@ inline void drawCreateObject(AppData& app) {
                     gbg::ModelHandle h =
                         std::get<gbg::ModelHandle>(n.getResourceH());
                     auto msh = scene.md_mg.get(h).getMesh();
-                    gbg::createRepresentative(app.dep_tree, msh, scene.ms_mg,
-                                              gbg::ResourceTypes::MESH,
-                                              gbg::SObjFlags::NEW);
+                    gbg::createRepresentative(
+                        app.dep_tree, scene.ms_mg.get(msh),
+                        gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
                 }
                 NFD_FreePathU8(outpath);
             }

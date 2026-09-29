@@ -1,5 +1,8 @@
 #pragma once
+#include <cstdlib>
+#include <expected>
 #include <iostream>
+#include <stdexcept>
 
 #include "DependencyTree.hpp"
 #include "DependencyTreeFunctions.hpp"
@@ -7,7 +10,8 @@
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneRenderer.hpp"
-#include "io_utils/watcher.hpp"
+#include "SceneTree.hpp"
+#include "Shader.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
@@ -32,63 +36,69 @@ struct AppData {
         gbg::createRepresentative(dep_tree, sh, gbg::ResourceTypes::SHADER,
                                   gbg::SObjFlags::NEW);
 
-        // CONTINUE
-        file_w.createFile("./data/shaders/default.frag");
-        WatchedFile frag_f("./data/shaders/default.frag", &file_m, &dep_tree);
-        WatchedFile frag_v("./data/shaders/default.vert", &file_m, &dep_tree);
+        auto vert_f = file_w.createFile("./data/shaders/default.vert");
+        auto frag_f = file_w.createFile("./data/shaders/default.frag");
 
-        auto res = gbg::setGlslShaderCode(
-            sh, {"./data/shaders/default.frag", "./data/shaders/default.vert"});
-        if (not res.first) {
-            std::cout << res.second << std::endl;
-            exit(EXIT_FAILURE);
+        if (frag_f and vert_f) {
+            auto res_v = gbg::setShaderCode(sh, vert_f.value()->path,
+                                            gbg::ShaderTypes::VERTEX);
+            auto res_f = gbg::setShaderCode(sh, frag_f.value()->path,
+                                            gbg::ShaderTypes::FRAGMENT);
+            if (res_v or res_f) {
+                if (res_v) std::cout << res_v.value() << std::endl;
+                if (res_f) std::cout << res_f.value() << std::endl;
+                throw std::runtime_error("Filed to load default shader!");
+            }
+            gbg::setDependent(
+                dep_tree, sh.representative, gbg::SObjFlags::CODE_M,
+                frag_f.value()->representative, FileFlags::FILE_M);
+            gbg::setDependent(
+                dep_tree, sh.representative, gbg::SObjFlags::CODE_M,
+                vert_f.value()->representative, FileFlags::FILE_M);
         }
-
-        // TODO(guillem): set dependent take handles to node trees and
-        gbg::setDependent(dep_tree, sh, gbg::SObjFlags::CODE_M, frag_f.h, gbg);
-
-        watch({file_m.get(frag_f.h).path}, WatchEvents::MODFY, frag_f);
 
         // Material Creation
         auto& mt_mg = scene.getMaterialManager();
 
-        scene.defaults.material = mt_mg.create("DefaultMaterial");
-        gbg::Material& mt = mt_mg.get(scene.defaults.material);
+        gbg::Material& mt = mt_mg.create("DefaultMaterial");
+        scene.defaults.material = mt.getHandle();
 
-        gbg::createRepresentative(dep_tree, scene.defaults.material, mt_mg,
-                                  gbg::ResourceTypes::MATERIAL,
+        gbg::createRepresentative(dep_tree, mt, gbg::ResourceTypes::MATERIAL,
                                   gbg::SObjFlags::NEW);
 
         mt.setShader(scene.defaults.shader);
 
-        gbg::setDependent(dep_tree, mt, gbg::SObjFlags::DELETED, sh,
-                          gbg::SObjFlags::DELETED);
-        gbg::setDependent(dep_tree, mt, gbg::SObjFlags::PARAMETER_INTERFACE_M,
-                          sh, gbg::SObjFlags::CODE_M);
+        gbg::setDependent(dep_tree, mt.representative, gbg::SObjFlags::DELETED,
+                          sh.representative, gbg::SObjFlags::DELETED);
+        gbg::setDependent(dep_tree, mt.representative,
+                          gbg::SObjFlags::PARAMETER_INTERFACE_M,
+                          sh.representative, gbg::SObjFlags::CODE_M);
         gbg::setDependent(
-            dep_tree, mt, gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
-            scene.tx_mg.get(scene.defaults.texture), gbg::SObjFlags::NEW);
+            dep_tree, mt.representative,
+            gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
+            scene.tx_mg.get(scene.defaults.texture).representative,
+            gbg::SObjFlags::NEW);
 
         // Camera
         auto& st_mg = scene.getSceneTreeManager();
         auto& cm_mg = scene.getCameraManager();
-        scene.defaults.camera = cm_mg.create("Camera");
-        gbg::SceneTreeHandle cm_nh = st_mg.create("DefaultCamera");
-        st_mg.get(cm_nh).translation += glm::vec3{12.0f, 5.0f, -3.0f};
-        st_mg.get(cm_nh).rotation += glm::vec3{-0.3f, 1.92f, 0.0f};
-        st_mg.get(cm_nh).setResource(scene.defaults.camera);
-        st_mg.prependChild(scene.root, cm_nh);
-        scene.active_camera = cm_nh;
+        scene.defaults.camera = cm_mg.create("Camera").getHandle();
+        gbg::SceneTreeNode& cm_n = st_mg.create("DefaultCamera");
+        cm_n.translation += glm::vec3{12.0f, 5.0f, -3.0f};
+        cm_n.rotation += glm::vec3{-0.3f, 1.92f, 0.0f};
+        cm_n.setResource(scene.defaults.camera);
+        st_mg.prependChild(scene.root, cm_n.getHandle());
+        scene.active_camera = cm_n.getHandle();
 
         // Light
-        scene.defaults.light = scene.lh_mg.create("Light");
-        gbg::SceneTreeHandle lh_nh = st_mg.create("DefaultLigth");
-        st_mg.get(lh_nh).setResource(scene.defaults.light);
-        st_mg.get(lh_nh).translation = {5, 2, -5};
-        st_mg.get(lh_nh).rotation.y = 130;
-        st_mg.prependChild(scene.root, lh_nh);
+        scene.defaults.light = scene.lh_mg.create("Light").getHandle();
+        gbg::SceneTreeNode& lh_n = st_mg.create("DefaultLigth");
+        lh_n.setResource(scene.defaults.light);
+        lh_n.translation = {5, 2, -5};
+        lh_n.rotation.y = 130;
+        st_mg.prependChild(scene.root, lh_n.getHandle());
 
-        gbg::createRepresentative(dep_tree, scene.root, scene.st_mg,
+        gbg::createRepresentative(dep_tree, st_mg.get(scene.root),
                                   gbg::ResourceTypes::SCENE_TREE_NODE,
                                   gbg::SObjFlags::NEW);
     }

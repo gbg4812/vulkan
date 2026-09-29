@@ -17,6 +17,6 @@
     "program": "$ZED_WORKTREE_ROOT/build-debug/app",
     "cwd": "$ZED_WORKTREE_ROOT/tests/",
     "request": "launch",
-    "adapter": "GDB",
+    "adapter": "CodeLLDB",
   },
 ]

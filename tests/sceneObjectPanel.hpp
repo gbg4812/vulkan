@@ -19,12 +19,12 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                                           sc.mat_mg.get(model.getMaterial())
                                               .getName()
                                               .c_str())) {
-                        for (auto mth : sc.mat_mg) {
-                            bool selected = model.getMaterial() == mth;
+                        for (auto& mt : sc.mat_mg) {
+                            bool selected = model.getMaterial() == mt.getHandle();
                             if (ImGui::Selectable(
-                                    sc.mat_mg.get(mth).getName().c_str(),
+                                    mt.getName().c_str(),
                                     selected)) {
-                                model.setMaterial(mth);
+                                model.setMaterial(mt.getHandle());
                             }
                         }
                         ImGui::EndCombo();
