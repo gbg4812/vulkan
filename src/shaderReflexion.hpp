@@ -179,8 +179,9 @@ inline void reflectShader(Shader& shader) {
     }
 }
 
+// TODO: Rework to avoid code dup
 inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
-                                                std::filesystem::path path,
+                                                const std::filesystem::path& path,
                                                 ShaderTypes type) {
     auto data = readFile(path.string());
 
@@ -202,14 +203,41 @@ inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
     shaderc::CompilationResult res =
         cmp.CompileGlslToSpv(data.data(), kind, path.c_str(), copt);
     if (res.GetCompilationStatus() == shaderc_compilation_status_success) {
-        sh.setCode({res.begin(), res.end()}, type);
+        sh.setCode({res.begin(), res.end()}, FileHandle(), type);
+        return std::nullopt;
     }
 
-    if (res.GetCompilationStatus() != shaderc_compilation_status_success) {
-        return res.GetErrorMessage();
+    return res.GetErrorMessage();
+}
+
+inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
+                                                gbg::File& file,
+                                                ShaderTypes type) {
+    auto data = readFile(file.path.string());
+
+    shaderc_shader_kind kind;
+    switch (type) {
+        case ShaderTypes::VERTEX:
+            kind = shaderc_vertex_shader;
+            break;
+        case ShaderTypes::FRAGMENT:
+            kind = shaderc_fragment_shader;
+            break;
     }
 
-    return std::nullopt;
+    shaderc::Compiler cmp{};
+    shaderc::CompileOptions copt{};
+    _Includer::search_paths.push_back(file.path.parent_path());
+    copt.SetIncluder(std::make_unique<_Includer>());
+
+    shaderc::CompilationResult res =
+        cmp.CompileGlslToSpv(data.data(), kind, file.path.c_str(), copt);
+    if (res.GetCompilationStatus() == shaderc_compilation_status_success) {
+        sh.setCode({res.begin(), res.end()}, file.getHandle(), type);
+        return std::nullopt;
+    }
+
+    return res.GetErrorMessage();
 }
 
 inline std::optional<std::string> setGlslShaderCode(
@@ -224,7 +252,7 @@ inline std::optional<std::string> setGlslShaderCode(
             continue;
         }
         auto c_res = gbg::setShaderCode(sh, pt, type->second);
-        if(c_res) return c_res;
+        if (c_res) return c_res;
     }
     return {};
 }

@@ -14,6 +14,7 @@
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
+#include "extras/File.hpp"
 #include "imgui.h"
 #include "io_utils/watcher.hpp"
 #include "loaders/texLoader.hpp"
@@ -194,21 +195,25 @@ inline void drawShaderPannel(AppData& app) {
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res = app.file_w.createFile(pt.native())
-                    .and_then([&](gbg::File* file) {
-                        return gbg::setGlslShaderCode(sh, {file->path});
-                    });
+                auto res =
+                    app.file_w.createFile(pt.native())
+                        .and_then([&](gbg::File* file) {
+                            return gbg::setGlslShaderCode(sh, {file->path});
+                        });
                 if (res) {
                     std::cout << res.value() << std::endl;
-                    sh.setCode(sc.sh_mg.get(sc.defaults.shader)
-                                   .getCode(gbg::ShaderTypes::FRAGMENT),
+                    sh.setCode(sc.getDefaultShader().getCode(
+                                   gbg::ShaderTypes::FRAGMENT),
+                               sc.getDefaultShader().getCodeFile(
+                                   gbg::ShaderTypes::FRAGMENT),
                                gbg::ShaderTypes::FRAGMENT);
-                    sh.setCode(sc.sh_mg.get(sc.defaults.shader)
-                                   .getCode(gbg::ShaderTypes::VERTEX),
+                    sh.setCode(sc.getDefaultShader().getCode(
+                                   gbg::ShaderTypes::VERTEX),
+                               sc.getDefaultShader().getCodeFile(
+                                   gbg::ShaderTypes::VERTEX),
                                gbg::ShaderTypes::VERTEX);
                 }
             }
-
 
             ImGui::CloseCurrentPopup();
         }

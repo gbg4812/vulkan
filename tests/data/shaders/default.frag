@@ -9,6 +9,7 @@
 layout(std140, set = 1, binding = 0) uniform MatParms {
     vec3 color;
     float ambientI;
+    int samples;
 };
 
 // here you declare the textures you need

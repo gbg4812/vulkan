@@ -40,9 +40,9 @@ struct AppData {
         auto frag_f = file_w.createFile("./data/shaders/default.frag");
 
         if (frag_f and vert_f) {
-            auto res_v = gbg::setShaderCode(sh, vert_f.value()->path,
+            auto res_v = gbg::setShaderCode(sh, *vert_f.value(),
                                             gbg::ShaderTypes::VERTEX);
-            auto res_f = gbg::setShaderCode(sh, frag_f.value()->path,
+            auto res_f = gbg::setShaderCode(sh, *frag_f.value(),
                                             gbg::ShaderTypes::FRAGMENT);
             if (res_v or res_f) {
                 if (res_v) std::cout << res_v.value() << std::endl;

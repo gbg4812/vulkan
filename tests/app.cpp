@@ -9,6 +9,7 @@
 #include "MaterialFunctions.hpp"
 #include "RendererContext.hpp"
 #include "SceneTree.hpp"
+#include "Shader.hpp"
 #include "createObject.hpp"
 #include "materialPanel.hpp"
 #include "resourcesUpdate.hpp"
@@ -126,6 +127,9 @@ int main(int argc, char* argv[]) {
                 (n.flags & gbg::SObjFlags::CODE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Shader& sh = app.scene.sh_mg.get(n.represented.getRID());
+                auto& vert_f = app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::VERTEX));
+                auto& frag_f = app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
+                gbg::setGlslShaderCode(sh, {frag_f.path, vert_f.path});
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
