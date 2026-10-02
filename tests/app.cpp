@@ -127,15 +127,19 @@ int main(int argc, char* argv[]) {
                 (n.flags & gbg::SObjFlags::CODE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Shader& sh = app.scene.sh_mg.get(n.represented.getRID());
-                auto& vert_f = app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::VERTEX));
-                auto& frag_f = app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
-                gbg::setGlslShaderCode(sh, {frag_f.path, vert_f.path});
+                auto& vert_f =
+                    app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::VERTEX));
+                auto& frag_f =
+                    app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
+                gbg::setGlslShaderCode(sh, vert_f);
+                gbg::setGlslShaderCode(sh, frag_f);
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
                 (n.flags & gbg::SObjFlags::PARAMETER_INTERFACE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
-                gbg::Material& mat = app.scene.mat_mg.get(n.represented.getRID());
+                gbg::Material& mat =
+                    app.scene.mat_mg.get(n.represented.getRID());
                 gbg::setParametersFromShader(app.scene, mat);
             }
         }

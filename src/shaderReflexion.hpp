@@ -180,9 +180,8 @@ inline void reflectShader(Shader& shader) {
 }
 
 // TODO: Rework to avoid code dup
-inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
-                                                const std::filesystem::path& path,
-                                                ShaderTypes type) {
+inline std::optional<std::string> setShaderCode(
+    gbg::Shader& sh, const std::filesystem::path& path, ShaderTypes type) {
     auto data = readFile(path.string());
 
     shaderc_shader_kind kind;
@@ -211,7 +210,7 @@ inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
 }
 
 inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
-                                                gbg::File& file,
+                                                const gbg::File& file,
                                                 ShaderTypes type) {
     auto data = readFile(file.path.string());
 
@@ -240,20 +239,13 @@ inline std::optional<std::string> setShaderCode(gbg::Shader& sh,
     return res.GetErrorMessage();
 }
 
-inline std::optional<std::string> setGlslShaderCode(
-    Shader& sh, const std::vector<std::filesystem::path> paths) {
+inline std::optional<std::string> setGlslShaderCode(Shader& sh,
+                                                    const gbg::File& file) {
     static const std::map<std::string, gbg::ShaderTypes> extToShaderType = {
         {".vert", ShaderTypes::VERTEX}, {".frag", ShaderTypes::FRAGMENT}};
 
-    std::optional<std::string> res = {};
-    for (auto pt : paths) {
-        auto type = extToShaderType.find(pt.extension());
-        if (type == extToShaderType.end()) {
-            continue;
-        }
-        auto c_res = gbg::setShaderCode(sh, pt, type->second);
-        if (c_res) return c_res;
-    }
-    return {};
+    auto type = extToShaderType.find(file.path.extension());
+    auto c_res = gbg::setShaderCode(sh, file, type->second);
+    return c_res;
 }
 }  // namespace gbg

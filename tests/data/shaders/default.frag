@@ -10,11 +10,11 @@ layout(std140, set = 1, binding = 0) uniform MatParms {
     vec3 color;
     float ambientI;
     int samples;
+    float bias;
 };
 
 // here you declare the textures you need
 //layout(set = 1, binding = 1) uniform texture2D _texture[2];
-
 
 void main() {
     vec3 lcolor = color * ambientI;
@@ -24,7 +24,7 @@ void main() {
     for (int i = 0; i < ubo.nLights; i++) {
         Light light = lightData.lights[i];
         vec3 w_l = normalize(light.position - fs_in.fpos);
-        lcolor += color * diffuse(w_l, w_n) * spotLight(light, fs_in.fpos, w_n);
+        lcolor += color * diffuse(w_l, w_n) * spotLight(light, fs_in.fpos, w_n, samples, bias);
     }
 
     outColor = vec4(lcolor, 1.0f);

@@ -82,7 +82,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 int i = *val;
                 if (ImGui::InputInt(("Parameter" + std::to_string(num)).c_str(),
                                     &i)) {
-                    mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, i);
+                    mat.setParameterValue<gbg::ParameterTypes::INT>(num, i);
                     app.dep_tree.propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
@@ -195,11 +195,10 @@ inline void drawShaderPannel(AppData& app) {
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res =
-                    app.file_w.createFile(pt.native())
-                        .and_then([&](gbg::File* file) {
-                            return gbg::setGlslShaderCode(sh, {file->path});
-                        });
+                auto res = app.file_w.createFile(pt.native())
+                               .and_then([&](gbg::File* file) {
+                                   return gbg::setGlslShaderCode(sh, *file);
+                               });
                 if (res) {
                     std::cout << res.value() << std::endl;
                     sh.setCode(sc.getDefaultShader().getCode(
@@ -207,11 +206,11 @@ inline void drawShaderPannel(AppData& app) {
                                sc.getDefaultShader().getCodeFile(
                                    gbg::ShaderTypes::FRAGMENT),
                                gbg::ShaderTypes::FRAGMENT);
-                    sh.setCode(sc.getDefaultShader().getCode(
-                                   gbg::ShaderTypes::VERTEX),
-                               sc.getDefaultShader().getCodeFile(
-                                   gbg::ShaderTypes::VERTEX),
-                               gbg::ShaderTypes::VERTEX);
+                    sh.setCode(
+                        sc.getDefaultShader().getCode(gbg::ShaderTypes::VERTEX),
+                        sc.getDefaultShader().getCodeFile(
+                            gbg::ShaderTypes::VERTEX),
+                        gbg::ShaderTypes::VERTEX);
                 }
             }
 
