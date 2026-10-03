@@ -19,7 +19,14 @@ layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
 
 layout(set = 2, binding = 0) uniform texture2D _shadow_map;
 
+vec2 rotate2D(vec2 vec, float angle) {
+    mat2 m = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+
+    return vec * m;
+}
+
 vec3 spotLight(Light light, vec3 w_pos, vec3 w_n, int fsize, float bias) {
+    const float PI = 3.141592653589;
     // compute position from lights perspective
     vec4 cam_pos = light.proj * vec4(w_pos, 1.0f);
     cam_pos /= cam_pos.w;
@@ -34,16 +41,19 @@ vec3 spotLight(Light light, vec3 w_pos, vec3 w_n, int fsize, float bias) {
     coords.x += light.shadow_map * (1. / 10.); // move to the correct place
     if (light.shadow_map >= 0 && bright > 0.0f) {
         float shadow = 0;
-        for (int s = 0; s < fsize * fsize; s++) {
-            vec2 off = {
-                    ((s % fsize) - fsize / 2) * (1. / (1080. * 10.)),
-                    ((s / fsize) - fsize / 2) * (1. / 1080.)
-                };
-            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + off)).r;
-            if (closest >= cam_pos.z - bias) {
-                shadow += 1. / (fsize * fsize);
+        for (int i = 0; i < fsize )
+            for (float s = 0; s < PI * 2; s += PI * 2 / fsize) {
+                vec2 off = {
+                        (1. / (1080. * 10.)),
+                        (1. / 1080.)
+                    };
+                off = rotate2D(off, s) * bias;
+                float closest = (texture(sampler2D(_shadow_map, _sampler), coords + off)).r;
+                if (closest >= cam_pos.z - 0.0005) {
+                    shadow += 1. / fsize;
+                }
             }
-        }
+
         bright *= shadow;
     }
 
