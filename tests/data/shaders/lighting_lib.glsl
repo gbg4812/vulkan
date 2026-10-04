@@ -398,37 +398,34 @@ vec3 spotLight(Light light, vec3 w_pos, vec3 w_n, float max_width) {
     coords.x /= 10; // alongated texture
     coords.x += light.shadow_map * (1. / 10.); // move to the correct place
     if (light.shadow_map >= 0 && bright > 0.0f) {
-        float shadow = 0;
         vec2 off = {
                 (1. / (1080. * 10.)),
                 (1. / 1080.)
             };
 
-        float oc_d = 0;
-        int oc_n = 0;
+        float ocd_min = 0;
+        float ocd_max = 0;
         for (int i = 0; i < search_pattern.length(); i++) {
             float closest = (texture(sampler2D(_shadow_map, _sampler), coords + search_pattern[i] * off * max_width)).r;
-            if (closest >= cam_pos.z - 0.0005) {
-                shadow += 1. / search_pattern.length();
-            } else {
-                oc_d += closest;
-                oc_n += 1;
-            }
+            ocd_min = min(ocd_min, closest - cam_pos.z);
+            ocd_max = max(ocd_max, closest - cam_pos.z);
         }
 
-        float oc_f = 0.1;
-        if (oc_n > 0) {
-            oc_d = oc_d / oc_n;
-            oc_f = clamp((cam_pos.z - oc_d) / cam_pos.z, 0.1, 1);
-        }
-        
-        shadow = 0;
-        for (int i = 0; i < sample_pattern.length(); i++) {
-            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + sample_pattern[i] * off * max_width)).r;
-            if (closest >= cam_pos.z - 0.0005) {
-                shadow += 1. / (sample_pattern.length());
+        float shadow = 0.5;
+        if (abs(ocd_min + ocd_max) < 0.0005) {
+            shadow = 1;
+        } else if(abs(ocd_min + ocd_max) > ocd_max * 1.5) {
+            shadow = 0;
+        } /*else {
+            shadow = 0;
+            for (int i = 0; i < sample_pattern.length(); i++) {
+                float closest = (texture(sampler2D(_shadow_map, _sampler), coords + sample_pattern[i] * off * max_width)).r;
+                if (closest >= cam_pos.z - 0.0005) {
+                    shadow += 1. / (sample_pattern.length());
+                }
             }
-        }
+            }*/
+        
 
         bright *= shadow;
     }

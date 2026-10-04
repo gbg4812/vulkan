@@ -150,6 +150,9 @@ is close to 0 I consider the point as not occluded. If the difference is greater
 than 0 by a good amount then it will be concidered occluded (or in penumbra).
 Then the pattern shuld use a increasing bias.
 
+Problems on the path:
+- When using the descrived aproach there are problems when the occluders are bouth far and close.
+
 #### Cascading Shadow Maps
 
 For directional lights like the sum where they should cover all the view
