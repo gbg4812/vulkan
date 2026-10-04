@@ -36,22 +36,24 @@ vec3 spotLightTST(Light light, vec3 w_pos, vec3 w_n, float max_width) {
                 (1. / 1080.)
             };
 
+        float rand_a = sin(52253*coords.x + 9709039 * coords.y);
         float oc_d = 0;
         int oc_n = 0;
         for (int i = 0; i < search_pattern.length(); i++) {
-            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + search_pattern[i] * off * max_width)).r;
+            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + rotate2D(search_pattern[i], rand_a) * off * max_width)).r;
             if (closest < cam_pos.z - 0.0005) {
                 oc_d += closest;
                 oc_n += 1;
             }
         }
 
+
         float shadow = 0;
         oc_d = oc_d / oc_n;
         float oc_f = clamp(max_width*2*(cam_pos.z-oc_d)/cam_pos.z, 0.1, 1);
         int nsamples = int(sample_pattern.length() * oc_f);
         for (int i = 0; i < nsamples; i++) {
-            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + rotate2D(sample_pattern[i], oc_d*sin(52253*coords.x + 9709039 * coords.y)) * off * max_width)).r;
+            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + rotate2D(sample_pattern[i], rand_a) * off * max_width)).r;
             if (closest >= cam_pos.z - (0.0005 + 0.00001*i)) {
                 shadow += 1. / nsamples;
             }
