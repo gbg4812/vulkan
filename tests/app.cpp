@@ -131,8 +131,10 @@ int main(int argc, char* argv[]) {
                     app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::VERTEX));
                 auto& frag_f =
                     app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
-                gbg::setGlslShaderCode(sh, vert_f);
-                gbg::setGlslShaderCode(sh, frag_f);
+                auto res = gbg::setGlslShaderCode(sh, vert_f);
+                if(res) std::cout << res.value() << std::endl;
+                res = gbg::setGlslShaderCode(sh, frag_f);
+                if(res) std::cout << res.value() << std::endl;
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&

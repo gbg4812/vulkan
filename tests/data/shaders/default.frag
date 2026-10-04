@@ -36,28 +36,24 @@ vec3 spotLightTST(Light light, vec3 w_pos, vec3 w_n, float max_width) {
                 (1. / 1080.)
             };
 
-        float ocd_min = 10;
-        float ocd_max = -10;
+        float oc_d = 0;
+        int oc_n = 0;
         for (int i = 0; i < search_pattern.length(); i++) {
             float closest = (texture(sampler2D(_shadow_map, _sampler), coords + search_pattern[i] * off * max_width)).r;
-            ocd_min = min(ocd_min, closest - cam_pos.z);
-            ocd_max = max(ocd_max, closest - cam_pos.z);
+            if (closest < cam_pos.z - 0.0005) {
+                oc_d += closest;
+                oc_n += 1;
+            }
         }
 
-        float shadow = 0.5;
-        if ( ocd_max < 0.00075 && abs(ocd_min+ocd_max) < 0.0005) {
-            shadow = 1;
-        } else if(ocd_min + ocd_max < ocd_min * 1.7) {
-            shadow = 0;
-        } else {
-            shadow = 0;
-            float oc_f = max_width*2*abs(ocd_min)/cam_pos.z;
-            int nsamples = sample_pattern.length();//int(max(sample_pattern.length()*oc_f, 1));
-            for (int i = 0; i < nsamples; i++) {
-                float closest = (texture(sampler2D(_shadow_map, _sampler), coords + sample_pattern[i] * off * max_width * oc_f)).r;
-                if (closest >= cam_pos.z - (0.0005 + 0.00001*i)) {
-                    shadow += 1. / nsamples;
-                }
+        float shadow = 0;
+        oc_d = oc_d / oc_n;
+        float oc_f = clamp(max_width*2*(cam_pos.z-oc_d)/cam_pos.z, 0.1, 1);
+        int nsamples = int(sample_pattern.length() * oc_f);
+        for (int i = 0; i < nsamples; i++) {
+            float closest = (texture(sampler2D(_shadow_map, _sampler), coords + rotate2D(sample_pattern[i], oc_d*sin(52253*coords.x + 9709039 * coords.y)) * off * max_width)).r;
+            if (closest >= cam_pos.z - (0.0005 + 0.00001*i)) {
+                shadow += 1. / nsamples;
             }
         }
         
