@@ -60,6 +60,7 @@ void copyBuffer(vkDevice device, vkBuffer srcBuffer, vkBuffer dstBuffer) {
 }
 
 void destroyBuffer(vkDevice device, vkBuffer buffer) {
+    if(buffer.buffer == VK_NULL_HANDLE) return;
     vkDestroyBuffer(device.ldevice, buffer.buffer, nullptr);
     vkFreeMemory(device.ldevice, buffer.memory, nullptr);
 }

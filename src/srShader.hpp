@@ -10,7 +10,7 @@ namespace gbg {
 struct srShader : public Resource<ShaderHandle> {
     RESOURCE_CONSTR(srShader)
     vkPipeline pipeline;
-    VkDescriptorSetLayout layout;
+    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 };
 

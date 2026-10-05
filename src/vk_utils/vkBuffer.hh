@@ -9,7 +9,7 @@
 
 namespace gbg {
 struct vkBuffer {
-    VkBuffer buffer;
+    VkBuffer buffer = VK_NULL_HANDLE;
     VkDeviceSize size;
     VkDeviceMemory memory;
     std::optional<VkBufferView> view;

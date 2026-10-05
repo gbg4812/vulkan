@@ -144,12 +144,8 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
 
         std::visit(
             overloads{[&](const ModelHandle& mh) {},
-                      [&](const CameraHandle& empty) {
-
-                      },
-                      [&](const std::monostate& empty) {
-
-                      },
+                      [&](const CameraHandle& empty) {},
+                      [&](const std::monostate& empty) {},
                       [&](const LightHandle& lh) {
                           auto& light = active_scene_data.scene->lh_mg.get(lh);
                           vkLight vklight{};
@@ -159,7 +155,7 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
                           vklight.position =
                               accumulated_transform * glm::vec4(0., 0., 0., 1.);
                           vklight.proj = glm::perspective(
-                              glm::radians(light.fov), 1.0f, 0.1f, 50.0f);
+                              glm::radians(light.fov), 1.0f, 0.1f, 100.0f);
                           vklight.proj[1][1] *= -1;
                           vklight.proj = vklight.proj *
                                          glm::inverse(accumulated_transform);
