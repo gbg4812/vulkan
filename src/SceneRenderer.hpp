@@ -1,6 +1,5 @@
 #pragma once
 
-#include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
@@ -10,6 +9,11 @@
 #include <unordered_map>
 #include <vector>
 
+// This forces the perspective proj matrix to use a depth from 0 to 1 when
+// it transforms the geometry as vulkan likes.
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
 #include "DependencyTree.hpp"
 #include "Material.hpp"
 #include "RendererContext.hpp"
@@ -18,11 +22,6 @@
 #include "vk_utils/vkRenderPass.hpp"
 #include "vk_utils/vkSwapChain.h"
 
-// This forces the perspective proj matrix to use a depth from 0 to 1 when
-// it transforms the geometry as vulkan likes.
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
 #include "InternalSceneData.hpp"
 #include "Scene.hpp"
 #include "tracy/TracyVulkan.hpp"
@@ -227,6 +226,6 @@ class SceneRenderer {
 
     void updateGlobalDescriptorSets();
 
-    void fillLightBuffer(glm::vec3 cam_pos);
+    void fillLightBuffer(glm::mat4 cam_t);
 };
 }  // namespace gbg

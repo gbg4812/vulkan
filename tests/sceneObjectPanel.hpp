@@ -1,4 +1,5 @@
 #pragma once
+#include "Light.hpp"
 #include "Scene.hpp"
 #include "SceneTree.hpp"
 #include "imgui.h"
@@ -31,10 +32,21 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                     }
                 },
                 [&](gbg::LightHandle handle) {
+                    
                     gbg::Light& light = sc.lh_mg.get(handle);
                     ImGui::ColorPicker3("Light Color", (float*)&light.color);
-                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 1000);
+                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 100);
                     ImGui::SliderFloat("FOV",(float*)&light.fov, 0, 180);
+                    
+                    auto name = gbg::light_tToStr.at(light.type);
+                    if(ImGui::BeginCombo("Type", name.data())) {
+                        for(auto [key, value] : gbg::light_tToStr) {
+                            if(ImGui::Selectable(value.data())) {
+                                light.type = key;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
                 },
                 [&](auto&& def) {
 

@@ -15,6 +15,7 @@
       },
     },
     "program": "$ZED_WORKTREE_ROOT/build-debug/app",
+    "args" : ["data/models/EasyModels/CSMTestGeo.obj"],
     "cwd": "$ZED_WORKTREE_ROOT/tests/",
     "request": "launch",
     "adapter": "CodeLLDB",

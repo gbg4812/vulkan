@@ -12,12 +12,13 @@
 #include "SceneRenderer.hpp"
 #include "SceneTree.hpp"
 #include "Shader.hpp"
+#include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
 
 struct AppData {
-    AppData(const gbg::RendererContext& context)
+    AppData(const gbg::RendererContext& context, std::span<char*> argv)
         : renderer(context), file_w(file_m, dep_tree) {
         // default texture
         auto& def_tex = scene.tx_mg.create("DefaultTexture");
@@ -82,8 +83,8 @@ struct AppData {
         auto& cm_mg = scene.getCameraManager();
         scene.defaults.camera = cm_mg.create("Camera").getHandle();
         gbg::SceneTreeNode& cm_n = st_mg.create("DefaultCamera");
-        cm_n.translation += glm::vec3{12.0f, 5.0f, -3.0f};
-        cm_n.rotation += glm::vec3{-0.3f, 1.92f, 0.0f};
+        cm_n.translation = glm::vec3{15.0f, 5.0f, -5.0f};
+        cm_n.rotation = glm::vec3{-22.f, 107.f, 0.0f};
         cm_n.setResource(scene.defaults.camera);
         st_mg.prependChild(scene.root, cm_n.getHandle());
         scene.active_camera = cm_n.getHandle();
@@ -92,13 +93,27 @@ struct AppData {
         scene.defaults.light = scene.lh_mg.create("Light").getHandle();
         gbg::SceneTreeNode& lh_n = st_mg.create("DefaultLigth");
         lh_n.setResource(scene.defaults.light);
-        lh_n.translation = {5, 2, -5};
-        lh_n.rotation.y = 130;
+        lh_n.translation = {0, 0, 0};
+        lh_n.rotation = glm::vec3{-45.f, 180.f, 0.f};
         st_mg.prependChild(scene.root, lh_n.getHandle());
 
         gbg::createRepresentative(dep_tree, st_mg.get(scene.root),
                                   gbg::ResourceTypes::SCENE_TREE_NODE,
                                   gbg::SObjFlags::NEW);
+
+        if (argv.size() > 1) {
+            auto res = gbg::objLoader(argv[1], &scene, scene.root,
+                           scene.defaults.material);
+            for (auto sth : res) {
+                auto& n = scene.st_mg.get(sth);
+                gbg::ModelHandle h =
+                    std::get<gbg::ModelHandle>(n.getResourceH());
+                auto msh = scene.md_mg.get(h).getMesh();
+                gbg::createRepresentative(
+                    dep_tree, scene.ms_mg.get(msh),
+                    gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
+            }
+        }
     }
     bool ui_mode = false;
     glm::vec<2, double> cursor_pos = {};

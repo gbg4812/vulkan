@@ -13,7 +13,7 @@ project(
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
-file(GLOB sources src/*.cpp src/vk_utils/*.cpp src/io_utils/*.cpp)
+file(GLOB sources src/*.cpp src/vk_utils/*.cpp src/io_utils/*.cpp src/geoc/*.cpp)
 
 add_library(${PROJECT_NAME} ${sources})
 

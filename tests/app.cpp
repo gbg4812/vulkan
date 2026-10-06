@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
     init_watch();
     NFD_Init();
 
-    AppData app(context);
+    AppData app(context, std::span(argv, argc));
 
     setupGlfwCallbacks(window, &app);
 

@@ -1,7 +1,5 @@
 #include "SceneRenderer.hpp"
 
-#include <sys/param.h>
-#include <sys/types.h>
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
@@ -15,6 +13,7 @@
 #include <queue>
 #include <ranges>
 #include <stdexcept>
+#include <variant>
 #include <vector>
 
 #include "DependencyTree.hpp"
@@ -23,12 +22,14 @@
 #include "Material.hpp"
 #include "MaterialFunctions.hpp"
 #include "Mesh.hpp"
+#include "Model.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "Resource.hpp"
 #include "SceneTree.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "gbg_traits.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
@@ -37,6 +38,7 @@
 #include "loadRendererResources.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderReflexion.hpp"
+#include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
@@ -121,7 +123,7 @@ void SceneRenderer::initResources() {
     createSyncObjects();
 }
 
-void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
+void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
     auto& st_mg = active_scene_data.scene->getSceneTreeManager();
 
     lightBuffer.clear();
@@ -138,36 +140,43 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
 
         SceneTreeNode& stn = st_mg.get(visited);
 
-        auto handle = stn.getResourceH();
-
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
-        std::visit(
-            overloads{[&](const ModelHandle& mh) {},
-                      [&](const CameraHandle& empty) {},
-                      [&](const std::monostate& empty) {},
-                      [&](const LightHandle& lh) {
-                          auto& light = active_scene_data.scene->lh_mg.get(lh);
-                          vkLight vklight{};
-                          vklight.color = light.color;
-                          vklight.direction = accumulated_transform *
-                                              glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
-                          vklight.position =
-                              accumulated_transform * glm::vec4(0., 0., 0., 1.);
-                          vklight.proj = glm::perspective(
-                              glm::radians(light.fov), 1.0f, 0.1f, 100.0f);
-                          vklight.proj[1][1] *= -1;
-                          vklight.proj = vklight.proj *
-                                         glm::inverse(accumulated_transform);
-                          vklight.intensity = light.intensity;
+        auto handle = stn.getResourceH<SceneObjectTypes::LIGHT>();
 
-                          lightBuffer.push_back(vklight);
-                          lightShadowOrder.push_back(
-                              {glm::length(vklight.position - cam_pos),
-                               lightBuffer.size() - 1});
-                      }},
+        if (handle) {
+            auto& light = active_scene_data.scene->lh_mg.get(handle.value());
+            if (light.type == LightType::SPOT) {
+                vkLight vklight{};
+                vklight.color = light.color;
+                vklight.intensity = light.intensity;
+                vklight.type = to_underlying(light.type);
+                vklight.direction =
+                    accumulated_transform * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
+                vklight.position =
+                    accumulated_transform * glm::vec4(0., 0., 0., 1.);
+                vklight.proj = glm::perspective(glm::radians(light.fov), 1.0f,
+                                                0.1f, 100.0f);
+                // vulkan expects the y cordinate to point downwards so we
+                // invert-it
+                vklight.proj[1][1] *= -1;
 
-            handle);
+                vklight.proj =
+                    vklight.proj * glm::inverse(accumulated_transform);
+                lightBuffer.push_back(vklight);
+                lightShadowOrder.push_back(
+                    {glm::length(vklight.position - glm::vec3(cam_t[3])),
+                     lightBuffer.size() - 1});
+            } else if (light.type == LightType::DIRECTIONAL) {
+                auto lights = gbg::computeDirectionalLights(
+                    light, active_scene_data.scene->getActiveCamera(), cam_t,
+                    glm::inverse(accumulated_transform));
+                for (auto& lh : lights) {
+                    lightBuffer.push_back(lh);
+                    lightShadowOrder.push_back({0, lightBuffer.size() - 1});
+                }
+            }
+        }
 
         SceneTreeHandle child = stn.childH;
         while (child) {
@@ -176,7 +185,7 @@ void SceneRenderer::fillLightBuffer(glm::vec3 cam_pos) {
         }
     }
 
-    std::ranges::sort(lightShadowOrder);
+    std::ranges::stable_sort(lightShadowOrder);
 
     for (auto [i, pair] : lightShadowOrder | std::views::enumerate) {
         lightBuffer[pair.second].shadow_map = i < max_shadow_lights ? i : -1;
@@ -1009,22 +1018,15 @@ void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
         accumulated_transform = Q.front().second;
         Q.pop();
         SceneTreeNode& stn = active_scene_data.scene->st_mg.get(visited);
-        auto handle = stn.getResourceH();
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
-        std::visit(
-            overloads{[&](const ModelHandle& mh) {},
-                      [&](const CameraHandle& empty) {},
-                      [&](const std::monostate& empty) {},
-                      [&](const LightHandle& empty) {
-                          Model& md = internal_resources.scene->md_mg.getByName(
-                              "SpotLight");  // light mesh
-                          recordDrawModel(commandBuffer, viewport, scissor,
-                                          accumulated_transform, md,
-                                          internal_resources, MaterialHandle());
-                      }},
-
-            handle);
+        if (stn.getResourceH<SceneObjectTypes::LIGHT>()) {
+            Model& md = internal_resources.scene->md_mg.getByName(
+                "SpotLight");  // light mesh
+            recordDrawModel(commandBuffer, viewport, scissor,
+                            accumulated_transform, md, internal_resources,
+                            MaterialHandle());
+        }
 
         SceneTreeHandle child = stn.childH;
         while (child) {
@@ -1056,23 +1058,16 @@ void SceneRenderer::recordDrawScene(
         accumulated_transform = Q.front().second;
         Q.pop();
         SceneTreeNode& stn = active_scene_data.scene->st_mg.get(visited);
-        auto handle = stn.getResourceH();
+        auto handle = stn.getResourceH<SceneObjectTypes::MODEL>();
         accumulated_transform = accumulated_transform * stn.getLocalTransform();
 
-        std::visit(overloads{
-                       [&](const ModelHandle& mh) {
-                           TracyVkZone(tracyCtx[currentFrame], commandBuffer,
-                                       "DrawModel");
-                           auto& md = active_scene_data.scene->md_mg.get(mh);
-                           recordDrawModel(commandBuffer, viewport, scissor,
-                                           accumulated_transform, md,
-                                           active_scene_data, override);
-                       },
-                       [&](const CameraHandle& empty) {},
-                       [&](const std::monostate& empty) {},
-                       [&](const LightHandle& empty) {},
-                   },
-                   handle);
+        if (handle) {
+            TracyVkZone(tracyCtx[currentFrame], commandBuffer, "DrawModel");
+            auto& md = active_scene_data.scene->md_mg.get(handle.value());
+            recordDrawModel(commandBuffer, viewport, scissor,
+                            accumulated_transform, md, active_scene_data,
+                            override);
+        }
 
         SceneTreeHandle child = stn.childH;
         while (child) {
@@ -1285,8 +1280,9 @@ void SceneRenderer::updateGlobalDescriptorSets() {
 
     UniformBufferObjects ubo{};
     auto& st_mg = active_scene_data.scene->getSceneTreeManager();
-    ubo.view = glm::inverse(
-        st_mg.getGlobalTransform(active_scene_data.scene->active_camera));
+    auto cam_t =
+        st_mg.getGlobalTransform(active_scene_data.scene->active_camera);
+    ubo.view = glm::inverse(cam_t);
     ubo.proj =
         glm::perspective(glm::radians(45.0f),
                          swapChain.swapChainImageExtent.width /
@@ -1295,10 +1291,9 @@ void SceneRenderer::updateGlobalDescriptorSets() {
     ubo.proj[1][1] *= -1;
 
     ubo.time = time;
-    ubo.obs = st_mg.getGlobalTransform(active_scene_data.scene->active_camera) *
-              glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    ubo.obs = cam_t[3];
 
-    fillLightBuffer(ubo.obs);
+    fillLightBuffer(cam_t);
 
     ubo.nLights = lightBuffer.size();
 

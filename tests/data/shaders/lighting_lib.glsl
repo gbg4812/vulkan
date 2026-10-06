@@ -11,6 +11,7 @@ struct Light {
     mat4 proj;
     float intensity;
     int shadow_map;
+    int type;
 };
 
 layout(std430, set = 0, binding = 2) readonly buffer LightBlock {

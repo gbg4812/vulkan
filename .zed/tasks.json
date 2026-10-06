@@ -29,7 +29,6 @@
     "show_command": true,
     "save": "none",
   },
-
   {
     "label": "Pandoc compile",
     "command": "echo $ZED_FILE | entr pandoc $ZED_FILE -o $ZED_FILE.pdf --from markdown --template eisvogel --filter pandoc-latex-environment",

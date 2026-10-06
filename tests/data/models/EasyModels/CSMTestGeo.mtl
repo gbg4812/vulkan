@@ -1,0 +1,36 @@
+# Blender 5.1.2 MTL File: 'CSMTest.blend'
+# www.blender.org
+
+newmtl modular_fort_01_trim_1
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Ns /home/guillem/Projects/NewViewer_1d403e6/models/textures/modular_fort_01_trim_rough_4k.png
+map_Bump -bm 1.000000 /home/guillem/Projects/NewViewer_1d403e6/models/textures/modular_fort_01_trim_nor_gl_4k.png
+
+newmtl modular_fort_01_wall_1
+Ka 1.000000 1.000000 1.000000
+Kd 0.800000 0.800000 0.800000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Ns /home/guillem/Projects/NewViewer_1d403e6/models/textures/modular_fort_01_wall_rough_4k.png
+map_Bump -bm 1.000000 /home/guillem/Projects/NewViewer_1d403e6/models/textures/modular_fort_01_wall_nor_gl_4k.png
+
+newmtl wooden_crate_01
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd /home/guillem/Projects/NewViewer_1d403e6/models/textures/wooden_crate_01_diff_4k.jpg
+map_Ns /home/guillem/Projects/NewViewer_1d403e6/models/textures/wooden_crate_01_rough_4k.exr
+map_refl /home/guillem/Projects/NewViewer_1d403e6/models/textures/wooden_crate_01_metal_4k.exr
+map_Bump -bm 1.000000 /home/guillem/Projects/NewViewer_1d403e6/models/textures/wooden_crate_01_nor_gl_4k.exr

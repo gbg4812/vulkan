@@ -1,7 +1,6 @@
 #pragma once
 #include "DependencyTree.hpp"
 #include "Scene.hpp"
-#include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
 #include "srShader.hpp"
@@ -13,7 +12,6 @@ struct InternalSceneData {
     srShaderManager srsh_mg;
     srTextureManager srtx_mg;
     srMeshManager srmsh_mg;
-    srLightManager srlight_mg;
 
     Scene* scene;
 
