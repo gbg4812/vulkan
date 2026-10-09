@@ -8,7 +8,6 @@
 #include "Material.hpp"
 #include "MaterialFunctions.hpp"
 #include "RendererContext.hpp"
-#include "SceneTree.hpp"
 #include "Shader.hpp"
 #include "createObject.hpp"
 #include "materialPanel.hpp"
@@ -132,9 +131,9 @@ int main(int argc, char* argv[]) {
                 auto& frag_f =
                     app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
                 auto res = gbg::setGlslShaderCode(sh, vert_f);
-                if(res) std::cout << res.value() << std::endl;
+                if (res) std::cout << res.value() << std::endl;
                 res = gbg::setGlslShaderCode(sh, frag_f);
-                if(res) std::cout << res.value() << std::endl;
+                if (res) std::cout << res.value() << std::endl;
                 gbg::reflectShader(sh);
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&

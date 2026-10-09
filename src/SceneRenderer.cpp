@@ -152,7 +152,7 @@ void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
                 vklight.intensity = light.intensity;
                 vklight.type = to_underlying(light.type);
                 vklight.direction =
-                    accumulated_transform * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
+                    accumulated_transform * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f);
                 vklight.position =
                     accumulated_transform * glm::vec4(0., 0., 0., 1.);
                 vklight.proj = glm::perspective(glm::radians(light.fov), 1.0f,
@@ -170,7 +170,9 @@ void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
             } else if (light.type == LightType::DIRECTIONAL) {
                 auto lights = gbg::computeDirectionalLights(
                     light, active_scene_data.scene->getActiveCamera(), cam_t,
-                    glm::inverse(accumulated_transform));
+                    accumulated_transform,
+                    swapChain.swapChainImageExtent.width /
+                        (float)swapChain.swapChainImageExtent.height);
                 for (auto& lh : lights) {
                     lightBuffer.push_back(lh);
                     lightShadowOrder.push_back({0, lightBuffer.size() - 1});
@@ -1282,12 +1284,13 @@ void SceneRenderer::updateGlobalDescriptorSets() {
     auto& st_mg = active_scene_data.scene->getSceneTreeManager();
     auto cam_t =
         st_mg.getGlobalTransform(active_scene_data.scene->active_camera);
+    auto& cam = active_scene_data.scene->getActiveCamera();
     ubo.view = glm::inverse(cam_t);
     ubo.proj =
-        glm::perspective(glm::radians(45.0f),
+        glm::perspective(glm::radians(cam.fov),
                          swapChain.swapChainImageExtent.width /
                              (float)swapChain.swapChainImageExtent.height,
-                         0.1f, 100.0f);
+                         cam.znear, cam.zfar);
     ubo.proj[1][1] *= -1;
 
     ubo.time = time;

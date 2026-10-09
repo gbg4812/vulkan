@@ -59,7 +59,7 @@ vec3 spotLightTST(Light light, vec3 w_pos, vec3 w_n, float max_width) {
     cam_pos /= cam_pos.w;
     float dist = length(L);
     // spot light mask and decay
-    float bright = smoothstep(0, 0.1, 1 - length(cam_pos.xy)) * (1.0 / (dist * dist)) * light.intensity * max(dot(L, light.direction), 0);
+    float bright = smoothstep(0, 0.1, 1 - length(cam_pos.xy)) * (1.0 / (dist * dist)) * light.intensity * max(dot(L, -light.direction), 0);
 
     if (light.shadow_map > -1 && bright > 0)
         bright *= computeShadow(light, w_pos, cam_pos, max_width);
@@ -67,19 +67,21 @@ vec3 spotLightTST(Light light, vec3 w_pos, vec3 w_n, float max_width) {
     return light.color * bright;
 }
 
-vec3 dirLightTST(Light light, vec3 w_pos, vec3 w_n, float max_width) {
+vec3 dirLightTST(Light light, int i, vec3 w_pos, vec3 w_n, float max_width) {
+    // light.position in directional lights means (znear, zfar, _)
+    vec4 v_pos = ubo.view * vec4(fs_in.fpos, 1.0f);
+    int l_idx = int((((-v_pos.z) - light.position.x) / (light.position.y - light.position.x)) * 4);
+    Light slight = lightData.lights[i + l_idx];
     // compute position from lights perspective
-    vec3 L = light.position - w_pos;
-    vec4 cam_pos = light.proj * vec4(w_pos, 1.0f);
+    vec4 cam_pos = slight.proj * vec4(w_pos, 1.0f);
     cam_pos /= cam_pos.w;
-    float dist = length(L);
-    // spot light mask and decay
-    float bright = light.intensity;
+    float bright = slight.intensity;
 
-    if (light.shadow_map > -1 && bright > 0)
-        bright *= computeShadow(light, w_pos, cam_pos, max_width);
+    if (slight.shadow_map > -1 && bright > 0)
+        bright *= computeShadow(slight, w_pos, cam_pos, max_width);
 
-    return light.color * bright;
+    //return vec3(l_idx == 0, l_idx == 1 || l_idx == 3, l_idx == 2 || l_idx == 3);
+    return slight.color * bright;
 }
 
 void main() {
@@ -89,11 +91,12 @@ void main() {
 
     for (int i = 0; i < ubo.nLights; i++) {
         Light light = lightData.lights[i];
-        vec3 w_l = normalize(light.position - fs_in.fpos);
         if (light.type == 0) {
+            vec3 w_l = normalize(light.position - fs_in.fpos);
             lcolor += color * diffuse(w_l, w_n) * spotLightTST(light, fs_in.fpos, w_n, max_width);
-        } else if(light.type == 1) {
-            lcolor += color * diffuse(w_l, w_n) * dirLightTST(light, fs_in.fpos, w_n, max_width);
+        } else if (light.type == 1) {
+            lcolor += color * diffuse(normalize(-light.direction), w_n) * dirLightTST(light, i, fs_in.fpos, w_n, max_width);
+            i += 3;
         }
     }
 

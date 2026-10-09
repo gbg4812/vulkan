@@ -415,18 +415,17 @@ vec3 spotLight(Light light, vec3 w_pos, vec3 w_n, float max_width) {
         float shadow = 0.5;
         if (abs(ocd_min + ocd_max) < 0.0005) {
             shadow = 1;
-        } else if(abs(ocd_min + ocd_max) > ocd_max * 1.5) {
+        } else if (abs(ocd_min + ocd_max) > ocd_max * 1.5) {
             shadow = 0;
         } /*else {
-            shadow = 0;
-            for (int i = 0; i < sample_pattern.length(); i++) {
-                float closest = (texture(sampler2D(_shadow_map, _sampler), coords + sample_pattern[i] * off * max_width)).r;
-                if (closest >= cam_pos.z - 0.0005) {
-                    shadow += 1. / (sample_pattern.length());
-                }
-            }
-            }*/
-        
+                    shadow = 0;
+                    for (int i = 0; i < sample_pattern.length(); i++) {
+                        float closest = (texture(sampler2D(_shadow_map, _sampler), coords + sample_pattern[i] * off * max_width)).r;
+                        if (closest >= cam_pos.z - 0.0005) {
+                            shadow += 1. / (sample_pattern.length());
+                        }
+                    }
+                    }*/
 
         bright *= shadow;
     }

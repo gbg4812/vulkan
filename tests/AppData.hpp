@@ -81,7 +81,11 @@ struct AppData {
         // Camera
         auto& st_mg = scene.getSceneTreeManager();
         auto& cm_mg = scene.getCameraManager();
-        scene.defaults.camera = cm_mg.create("Camera").getHandle();
+        auto& cm = cm_mg.create("Camera");
+        cm.fov = 45;
+        cm.znear = 0.01;
+        cm.zfar = 100;
+        scene.defaults.camera = cm.getHandle();
         gbg::SceneTreeNode& cm_n = st_mg.create("DefaultCamera");
         cm_n.translation = glm::vec3{15.0f, 5.0f, -5.0f};
         cm_n.rotation = glm::vec3{-22.f, 107.f, 0.0f};
@@ -103,15 +107,15 @@ struct AppData {
 
         if (argv.size() > 1) {
             auto res = gbg::objLoader(argv[1], &scene, scene.root,
-                           scene.defaults.material);
+                                      scene.defaults.material);
             for (auto sth : res) {
                 auto& n = scene.st_mg.get(sth);
                 gbg::ModelHandle h =
                     std::get<gbg::ModelHandle>(n.getResourceH());
                 auto msh = scene.md_mg.get(h).getMesh();
-                gbg::createRepresentative(
-                    dep_tree, scene.ms_mg.get(msh),
-                    gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
+                gbg::createRepresentative(dep_tree, scene.ms_mg.get(msh),
+                                          gbg::ResourceTypes::MESH,
+                                          gbg::SObjFlags::NEW);
             }
         }
     }

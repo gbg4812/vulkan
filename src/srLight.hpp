@@ -21,6 +21,7 @@ struct vkLight {
 std::array<vkLight, 4> computeDirectionalLights(const Light& light,
                                                 const Camera& cam,
                                                 glm::mat4 cam_t,
-                                                glm::mat4 light_view);
+                                                glm::mat4 light_t,
+                                                float aspect);
 
 };  // namespace gbg
