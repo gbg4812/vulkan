@@ -5,7 +5,9 @@
 
 #include <ranges>
 
+#include "Camera.hpp"
 #include "DependencyTree.hpp"
+#include "InternalSceneData.hpp"
 #include "Material.hpp"
 #include "Mesh.hpp"
 #include "PerObjectPushConstant.hpp"
@@ -435,5 +437,17 @@ void updateTexture(vkDevice device, TextureHandle h,
                               device.tqueue);
     }
 }
+
+void updateCamera(vkDevice device, CameraHandle h,
+                  InternalSceneData& scene_data,
+                  InternalSceneData& internal_res) {
+    if (h != scene_data.scene->active_camera) return;
+
+    gbg::Camera& cm = scene_data.scene->getActiveCamera();
+    gbg::DependencyMask flags =
+        scene_data.dep_tree->get(cm.representative).flags;
+
+    if (flags & SObjFlags::NEW) {
+    }
 
 }  // namespace gbg
