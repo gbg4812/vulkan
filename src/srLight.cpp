@@ -5,7 +5,6 @@
 #include "Light.hpp"
 #include "gbg_traits.hpp"
 #include "geoc/frustum_utils.hpp"
-#include "glm/exponential.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/vector_float3.hpp"
 #include "glm/ext/vector_float4.hpp"
@@ -20,8 +19,8 @@ std::array<vkLight, 4> computeDirectionalLights(const Light& light,
     glm::mat4 light_view = glm::inverse(light_t);
     float fr_len = cam.zfar - cam.znear;
     for (int i = 0; i < 4; i++) {
-        float near = cam.znear + (i / 4.0f) * fr_len;
-        float far = cam.znear + ((i + 1) / 4.0f) * fr_len;
+        float near = cam.znear + glm::pow(i / 4.0f, 2) * fr_len;
+        float far = cam.znear + glm::pow((i + 1) / 4.0f, 2)* fr_len;
         res[i].direction = light_t * glm::vec4(0, 0, -1, 0);
         res[i].color = light.color;
         res[i].intensity = light.intensity;
@@ -37,7 +36,7 @@ std::array<vkLight, 4> computeDirectionalLights(const Light& light,
 
         res[i].proj =
             glm::orthoRH_ZO(bbox.first.x, bbox.second.x, bbox.second.y,
-                            bbox.first.y, bbox.first.z, bbox.second.z) *
+                            bbox.first.y, -bbox.second.z, -bbox.first.z) *
             glm::mat4(glm::mat3(light_view));
     }
 

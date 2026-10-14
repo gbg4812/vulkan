@@ -67,4 +67,9 @@ void updateMaterial(vkDevice device, MaterialHandle math,
 
 void updateTexture(vkDevice device, TextureHandle h,
                    InternalSceneData& scene_data, VkSampler textureSampler);
+
+void updateCamera(vkDevice device, CameraHandle h,
+                  InternalSceneData& scene_data,
+                  InternalSceneData& internal_res); 
+
 }  // namespace gbg

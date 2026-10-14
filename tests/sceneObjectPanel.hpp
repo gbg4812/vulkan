@@ -1,4 +1,5 @@
 #pragma once
+#include "Camera.hpp"
 #include "Light.hpp"
 #include "Scene.hpp"
 #include "SceneTree.hpp"
@@ -35,7 +36,7 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                     
                     gbg::Light& light = sc.lh_mg.get(handle);
                     ImGui::ColorPicker3("Light Color", (float*)&light.color);
-                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 100);
+                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 20);
                     ImGui::SliderFloat("FOV",(float*)&light.fov, 0, 180);
                     
                     auto name = gbg::light_tToStr.at(light.type);
@@ -47,6 +48,12 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                         }
                         ImGui::EndCombo();
                     }
+                },
+                [&](gbg::CameraHandle ch) {
+                    auto& cm = sc.cm_mg.get(ch);
+                    ImGui::SliderFloat("FOV", &cm.fov, 10, 100);
+                    ImGui::SliderFloat("Near", &cm.znear, 0.1, 10);
+                    ImGui::SliderFloat("Far", &cm.zfar, 1, 1000);
                 },
                 [&](auto&& def) {
 

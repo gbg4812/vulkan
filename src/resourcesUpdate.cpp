@@ -3,6 +3,7 @@
 #include <string.h>
 #include <vulkan/vulkan_core.h>
 
+#include <algorithm>
 #include <ranges>
 
 #include "Camera.hpp"
@@ -12,6 +13,7 @@
 #include "Mesh.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "Shader.hpp"
+#include "geoc/frustum_utils.hpp"
 #include "srMaterial.hpp"
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkCommandBuffer.hh"
@@ -441,13 +443,37 @@ void updateTexture(vkDevice device, TextureHandle h,
 void updateCamera(vkDevice device, CameraHandle h,
                   InternalSceneData& scene_data,
                   InternalSceneData& internal_res) {
-    if (h != scene_data.scene->active_camera) return;
+    gbg::Scene* isc = internal_res.scene;
+    if (h != scene_data.scene->getActiveCamera().getHandle()) return;
 
     gbg::Camera& cm = scene_data.scene->getActiveCamera();
     gbg::DependencyMask flags =
         scene_data.dep_tree->get(cm.representative).flags;
 
-    if (flags & SObjFlags::NEW) {
+    if (SObjFlags::NEW & flags) {
+        auto& cm_f = isc->ms_mg.create("CameraFrustum");
+        cm_f.addVertex(8);
+        auto& pos_att = cm_f.createAttribute<AttributeTypes::VEC3_ATTR>(0);
+        cm_f.createAttribute<AttributeTypes::VEC2_ATTR>(2);
+        std::ranges::copy(gbg::getFrustumVolume(cm.fov, 1.f, cm.znear, cm.zfar),
+                          pos_att.begin());
+
+        for (uint idx : std::views::iota(1u, 8u)) {
+            cm_f.createFace({idx - 1, idx});
+        }
+
+        for (auto [idx1, idx2] : std::views::zip(std::views::iota(0u, 4u),
+                                                 std::views::iota(4u, 8u))) {
+            cm_f.createFace({idx1, idx2});
+        }
+
+        createMeshVkResources(device, cm_f.getHandle(), internal_res);
+
+        auto& cm_f_md = isc->md_mg.create("CameraFrustum");
+        cm_f_md.setMesh(cm_f.getHandle());
+        cm_f_md.setMaterial(
+            isc->mat_mg.getByName("White Material").getHandle());
     }
+}
 
 }  // namespace gbg

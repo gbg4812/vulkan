@@ -13,7 +13,6 @@
 #include <queue>
 #include <ranges>
 #include <stdexcept>
-#include <variant>
 #include <vector>
 
 #include "DependencyTree.hpp"
@@ -1028,6 +1027,14 @@ void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
             recordDrawModel(commandBuffer, viewport, scissor,
                             accumulated_transform, md, internal_resources,
                             MaterialHandle());
+        } else if (stn.getResourceH<SceneObjectTypes::CAMERA>()) {
+            if (draw_camera_frustum) {
+                Model& md =
+                    internal_resources.scene->md_mg.getByName("CameraFrustum");
+                recordDrawModel(commandBuffer, viewport, scissor,
+                                accumulated_transform, md, internal_resources,
+                                MaterialHandle());
+            }
         }
 
         SceneTreeHandle child = stn.childH;
@@ -1367,6 +1374,12 @@ void SceneRenderer::drawFrame() {
                     updateMesh(device, n.represented.getRID(),
                                active_scene_data);
                     std::cout << "Updating mesh::" << n.represented.getRID()
+                              << std::endl;
+                    break;
+                case ResourceTypes::CAMERA:
+                    updateCamera(device, n.represented.getRID(),
+                                 active_scene_data, internal_resources);
+                    std::cout << "Updating camera::" << n.represented.getRID()
                               << std::endl;
                     break;
             }

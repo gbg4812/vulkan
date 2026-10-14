@@ -82,9 +82,10 @@ struct AppData {
         auto& st_mg = scene.getSceneTreeManager();
         auto& cm_mg = scene.getCameraManager();
         auto& cm = cm_mg.create("Camera");
+        gbg::createRepresentative(dep_tree, cm, gbg::ResourceTypes::CAMERA, gbg::SObjFlags::NEW);
         cm.fov = 45;
-        cm.znear = 0.01;
-        cm.zfar = 100;
+        cm.znear = 1;
+        cm.zfar = 1000;
         scene.defaults.camera = cm.getHandle();
         gbg::SceneTreeNode& cm_n = st_mg.create("DefaultCamera");
         cm_n.translation = glm::vec3{15.0f, 5.0f, -5.0f};

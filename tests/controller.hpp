@@ -1,35 +1,34 @@
-
-#include <X11/Xlib.h>
-
-#include "AppData.hpp"
-#include "GLFW/glfw3.h"
 #include "imgui.h"
+#include "GLFW/glfw3.h"
+#include "AppData.hpp"
 
 inline void updateCamera(AppData& app, GLFWwindow* window, float delta) {
     gbg::Scene& scene = app.scene;
     gbg::SceneTreeNode& cam_node = scene.st_mg.get(scene.active_camera);
     glm::vec3 offset = glm::vec3(0.0f);
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    float vel = 3;
+    if(ImGui::IsKeyDown(ImGuiKey_LeftShift)) vel = 10; 
+    if (ImGui::IsKeyDown(ImGuiKey_W)) {
         offset.z = -1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    if (ImGui::IsKeyDown(ImGuiKey_S)) {
         offset.z = 1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    if (ImGui::IsKeyDown(ImGuiKey_A)) {
         offset.x = -1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    if (ImGui::IsKeyDown(ImGuiKey_D)) {
         offset.x = 1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+    if (ImGui::IsKeyDown(ImGuiKey_Q)) {
         offset.y = 1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+    if (ImGui::IsKeyDown(ImGuiKey_E)) {
         offset.y = -1.0f;
     }
     cam_node.translation +=
         glm::mat3(scene.st_mg.getGlobalTransform(scene.active_camera)) *
-        offset * delta * 2.0f;  // vel 2
+        offset * delta * vel;  // vel 2
 
     double xnew, ynew;
     glfwGetCursorPos(window, &xnew, &ynew);

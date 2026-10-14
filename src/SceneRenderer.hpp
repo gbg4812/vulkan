@@ -43,6 +43,7 @@ enum ResourceTypes : gbg::ResourceType {
     SHADER,
     TEXTURE,
     MESH,
+    CAMERA,
 };
 
 struct UniformBufferObjects {
@@ -125,8 +126,10 @@ class SceneRenderer {
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
     ShaderHandle shadowShader_h;
     MaterialHandle shadowMaterial_h;
+
+    uint32_t shadowRes = 2048;
     // TODO check for compat
-    VkExtent2D shadowSize = {.width = 1080 * max_shadow_lights, .height = 1080};
+    VkExtent2D shadowSize = {.width = shadowRes * max_shadow_lights, .height = shadowRes};
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -135,7 +138,9 @@ class SceneRenderer {
 
     gbg::vkImage depthImage;
 
-    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+    // debug
+    bool draw_camera_frustum = false;
 
    private:
     void initVulkan();
