@@ -18,10 +18,9 @@ struct vkLight {
     int type = to_underlying(LightType::SPOT);
 };
 
-std::array<vkLight, 4> computeDirectionalLights(const Light& light,
-                                                const Camera& cam,
-                                                glm::mat4 cam_t,
-                                                glm::mat4 light_t,
-                                                float aspect);
+std::vector<vkLight> computeDirectionalLights(const Light& light, size_t N,
+                                              const Camera& cam,
+                                              glm::mat4 cam_t,
+                                              glm::mat4 light_t, float aspect);
 
 };  // namespace gbg

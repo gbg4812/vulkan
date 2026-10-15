@@ -168,7 +168,7 @@ void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
                      lightBuffer.size() - 1});
             } else if (light.type == LightType::DIRECTIONAL) {
                 auto lights = gbg::computeDirectionalLights(
-                    light, active_scene_data.scene->getActiveCamera(), cam_t,
+                    light, 4, active_scene_data.scene->getActiveCamera(), cam_t,
                     accumulated_transform,
                     swapChain.swapChainImageExtent.width /
                         (float)swapChain.swapChainImageExtent.height);

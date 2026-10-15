@@ -1,5 +1,6 @@
 #include "srLight.hpp"
 
+#include <print>
 #include <utility>
 
 #include "Light.hpp"
@@ -10,22 +11,25 @@
 #include "glm/ext/vector_float4.hpp"
 
 namespace gbg {
-std::array<vkLight, 4> computeDirectionalLights(const Light& light,
-                                                const Camera& cam,
-                                                glm::mat4 cam_t,
-                                                glm::mat4 light_t,
-                                                float aspect) {
-    std::array<vkLight, 4> res;
+// add constant first size (with an offset?)
+std::vector<vkLight> computeDirectionalLights(const Light& light, size_t N,
+                                              const Camera& cam,
+                                              glm::mat4 cam_t,
+                                              glm::mat4 light_t, float aspect) {
+    std::vector<vkLight> res(N);
     glm::mat4 light_view = glm::inverse(light_t);
     float fr_len = cam.zfar - cam.znear;
-    for (int i = 0; i < 4; i++) {
-        float near = cam.znear + glm::pow(i / 4.0f, 2) * fr_len;
-        float far = cam.znear + glm::pow((i + 1) / 4.0f, 2)* fr_len;
+    for (int i = 0; i < N; i++) {
+        float near = cam.znear + (1. / glm::pow(2, N - i)) * fr_len;
+        if (i == 0) near = cam.znear;
+        float far = cam.znear + (1. / glm::pow(2, N - (i + 1))) * fr_len;
         res[i].direction = light_t * glm::vec4(0, 0, -1, 0);
         res[i].color = light.color;
         res[i].intensity = light.intensity;
         res[i].type = to_underlying(LightType::DIRECTIONAL);
         res[i].position = glm::vec3(cam.znear, cam.zfar, near);
+
+        // std::println("near {}, far {}", near, far);
 
         auto pts = getFrustumVolume(glm::radians(cam.fov), aspect, near, far);
         for (auto& pt : pts) {
@@ -34,10 +38,13 @@ std::array<vkLight, 4> computeDirectionalLights(const Light& light,
         }
         auto bbox = boundingBox3D(pts);
 
-        res[i].proj =
-            glm::orthoRH_ZO(bbox.first.x, bbox.second.x, bbox.second.y,
-                            bbox.first.y, -bbox.second.z, -bbox.first.z) *
-            glm::mat4(glm::mat3(light_view));
+        float side_size = glm::max((bbox.second.x - bbox.first.x),
+                                   (bbox.second.y - bbox.first.y));
+
+        res[i].proj = glm::orthoRH_ZO(bbox.first.x, bbox.first.x + side_size,
+                                      bbox.first.y + side_size, bbox.first.y,
+                                      -bbox.second.z, -bbox.first.z) *
+                      glm::mat4(glm::mat3(light_view));
     }
 
     return res;
