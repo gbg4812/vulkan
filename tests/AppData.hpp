@@ -22,8 +22,10 @@ struct AppData {
         : renderer(context), file_w(file_m, dep_tree) {
         // default texture
         auto& def_tex = scene.tx_mg.create("DefaultTexture");
-        loadTexture("data/models/RendererResources/DefaultTexture.png",
-                    def_tex);
+        if(not loadTexture("./data/textures/DefaultTexture.png",
+                    def_tex)) {
+                        throw std::runtime_error("Failed to load default texture!");
+                    }
         scene.defaults.texture = def_tex.getHandle();
         gbg::createRepresentative(dep_tree, def_tex,
                                   gbg::ResourceTypes::TEXTURE,

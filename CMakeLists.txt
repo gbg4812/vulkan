@@ -17,7 +17,10 @@ file(GLOB sources src/*.cpp src/vk_utils/*.cpp src/io_utils/*.cpp src/geoc/*.cpp
 
 add_library(${PROJECT_NAME} ${sources})
 
-target_include_directories(${PROJECT_NAME} PUBLIC src/)
+set(CONTENTS_DIR ${CMAKE_SOURCE_DIR}/contents/)
+configure_file(src/config/build_constants.hpp.in config/build_constants.hpp)
+
+target_include_directories(${PROJECT_NAME} PUBLIC src/ ${CMAKE_CURRENT_BINARY_DIR}/config)
 
 # External dependencies
 
@@ -30,8 +33,8 @@ GIT_SHALLOW TRUE
 GIT_PROGRESS TRUE
 )
 
-option(TRACY_ENABLE " " ON)
-option(TRACY_ON_DEMAND " " ON)
+option(TRACY_ENABLE "Enable Tracy" $<IF:$<CONFIG:Debug>,ON,OFF>)
+option(TRACY_ON_DEMAND "Tracy on demand" ON)
 FetchContent_MakeAvailable(tracy)
 
 find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
@@ -46,7 +49,7 @@ find_library(SHADERC_LIB
 )
 
 if(LOCAL_SEQ)
-    fetchcontent_declare(
+  fetchcontent_declare(
   sceneeq
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SceneEquipament/)
 endif()
@@ -79,9 +82,15 @@ FetchContent_MakeAvailable(glfw)
 
 add_subdirectory(./external)
 
-set(LIBS "Vulkan::Vulkan;Vulkan::SPIRV-Tools;${SPIRV_REFLECT_LIB};${SHADERC_LIB};glm::glm;stbimage;fmt::fmt;imgui;glfw;TracyClient;SceneEquipament")
+# libs
+list(APPEND LIBS Vulkan::Vulkan Vulkan::SPIRV-Tools ${SPIRV_REFLECT_LIB} ${SHADERC_LIB} glfw)
+list(APPEND LIBS glm::glm stbimage fmt::fmt)
+list(APPEND LIBS imgui SceneEquipament)
 
-target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBS})
+# dev only
+list(APPEND DEV_LIBS TracyClient)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC $<$<CONFIG:Debug>:${DEV_LIBS}> ${LIBS}) 
 
 
 ###########
@@ -99,6 +108,9 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(googletest)
 
+enable_testing()
+
+# The test app target
 FetchContent_Declare(
   nfd
   GIT_REPOSITORY https://github.com/btzy/nativefiledialog-extended.git
@@ -107,7 +119,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(nfd)
 
-enable_testing()
 
 file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLIC)
 

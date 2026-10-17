@@ -3,7 +3,6 @@
 #include <shaderc/shaderc.h>
 
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
@@ -11,9 +10,9 @@
 #include <stdexcept>
 #include <string>
 
+#include "build_constants.hpp"
 #include "Mesh.hpp"
 #include "SPIRV-Reflect/spirv_reflect.h"
-#include "Scene.hpp"
 #include "Shader.hpp"
 #include "io_utils/file_utils.hpp"
 #include "shaderc/shaderc.hpp"
@@ -80,7 +79,7 @@ class _Includer : public shaderc::CompileOptions::IncluderInterface {
         delete data;
     }
 
-    inline static std::vector<std::filesystem::path> search_paths;
+    inline static std::vector<std::filesystem::path> search_paths = {CONTENTS_DIR"shaders/"};
 };
 
 inline void processShaderModule(const SpvReflectShaderModule& shmod,

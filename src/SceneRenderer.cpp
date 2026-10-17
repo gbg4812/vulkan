@@ -255,6 +255,7 @@ void SceneRenderer::cleanup() {
 
     vkDestroyDescriptorSetLayout(device.ldevice, shadowDescriptorSetLayout,
                                  nullptr);
+    vkDestroySampler(device.ldevice, shadowSampler, nullptr);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         vkDestroySemaphore(device.ldevice, imageAvailableSemaphores[i],
@@ -562,7 +563,7 @@ void SceneRenderer::createShadowResources() {
     }
 
     // create sampler
-    
+
     VkSamplerCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     createInfo.magFilter = VK_FILTER_LINEAR;
@@ -586,8 +587,8 @@ void SceneRenderer::createShadowResources() {
     createInfo.maxLod = 1.0f;  // TODO: define constant
     createInfo.mipLodBias = 0.0f;
 
-    if (vkCreateSampler(device.ldevice, &createInfo, nullptr,
-                        &shadowSampler) != VK_SUCCESS) {
+    if (vkCreateSampler(device.ldevice, &createInfo, nullptr, &shadowSampler) !=
+        VK_SUCCESS) {
         throw std::runtime_error("failed to create depth sampler!");
     }
 
@@ -595,7 +596,7 @@ void SceneRenderer::createShadowResources() {
     auto& shadowShader =
         internal_resources.scene->sh_mg.create("Shadow Shader");
     shadowShader_h = shadowShader.getHandle();
-    setShaderCode(shadowShader, "data/shaders/shadow.vert",
+    setShaderCode(shadowShader, CONTENTS_DIR "shaders/shadow.vert",
                   ShaderTypes::VERTEX);
     reflectShader(shadowShader);
 
@@ -633,7 +634,7 @@ void SceneRenderer::createShadowResources() {
     bindings[0].descriptorCount = 1;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    
+
     bindings[1].binding = 1;
     bindings[1].descriptorCount = 1;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -679,7 +680,7 @@ void SceneRenderer::createShadowResources() {
         writes[0].pImageInfo = &imageInfo;
         writes[0].dstBinding = 0;
         writes[0].dstSet = shadowDescriptorSets[i];
-        
+
         VkDescriptorImageInfo samplerInfo{};
         samplerInfo.sampler = shadowSampler;
 
@@ -691,7 +692,8 @@ void SceneRenderer::createShadowResources() {
         writes[1].dstBinding = 1;
         writes[1].dstSet = shadowDescriptorSets[i];
 
-        vkUpdateDescriptorSets(device.ldevice, writes.size(), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(device.ldevice, writes.size(), writes.data(), 0,
+                               nullptr);
     }
 }
 
@@ -874,11 +876,11 @@ void SceneRenderer::createGlobalDescriptorPool() {
     descriptorPoolSizes[0].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorPoolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT*2;
+    descriptorPoolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT * 2;
     descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     descriptorPoolSizes[2].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-    
+
     descriptorPoolSizes[3].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
     descriptorPoolSizes[3].descriptorCount = static_cast<uint32_t>(max_tex);
 
@@ -886,7 +888,7 @@ void SceneRenderer::createGlobalDescriptorPool() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
     poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT*2);
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2);
 
     if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
                                &globalDescriptorPool) != VK_SUCCESS) {
@@ -1429,10 +1431,11 @@ void SceneRenderer::drawFrame() {
                               << std::endl;
                     break;
                 case ResourceTypes::CAMERA:
-                    updateCamera(device, n.represented.getRID(),
-                                 active_scene_data, internal_resources,
-                                 swapChain.swapChainImageExtent.width /
-                                     (float)swapChain.swapChainImageExtent.height);
+                    updateCamera(
+                        device, n.represented.getRID(), active_scene_data,
+                        internal_resources,
+                        swapChain.swapChainImageExtent.width /
+                            (float)swapChain.swapChainImageExtent.height);
                     std::cout << "Updating camera::" << n.represented.getRID()
                               << std::endl;
                     break;
