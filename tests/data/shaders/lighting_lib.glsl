@@ -19,6 +19,7 @@ layout(std430, set = 0, binding = 2) readonly buffer LightBlock {
 } lightData;
 
 layout(set = 2, binding = 0) uniform texture2D _shadow_map;
+layout(set = 2, binding = 1) uniform sampler _shadow_sampler;
 
 vec2 rotate2D(vec2 vec, float angle) {
     mat2 m = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));

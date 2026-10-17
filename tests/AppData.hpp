@@ -1,12 +1,12 @@
 #pragma once
 #include <cstdlib>
-#include <expected>
 #include <iostream>
 #include <stdexcept>
 
 #include "DependencyTree.hpp"
 #include "DependencyTreeFunctions.hpp"
 #include "FileWatcher.hpp"
+#include "Light.hpp"
 #include "RendererContext.hpp"
 #include "Resource.hpp"
 #include "SceneRenderer.hpp"
@@ -82,10 +82,11 @@ struct AppData {
         auto& st_mg = scene.getSceneTreeManager();
         auto& cm_mg = scene.getCameraManager();
         auto& cm = cm_mg.create("Camera");
-        gbg::createRepresentative(dep_tree, cm, gbg::ResourceTypes::CAMERA, gbg::SObjFlags::NEW);
-        cm.fov = 45;
+        gbg::createRepresentative(dep_tree, cm, gbg::ResourceTypes::CAMERA,
+                                  gbg::SObjFlags::NEW);
+        cm.fov = 60;
         cm.znear = 1;
-        cm.zfar = 1000;
+        cm.zfar = 200;
         scene.defaults.camera = cm.getHandle();
         gbg::SceneTreeNode& cm_n = st_mg.create("DefaultCamera");
         cm_n.translation = glm::vec3{15.0f, 5.0f, -5.0f};
@@ -95,11 +96,14 @@ struct AppData {
         scene.active_camera = cm_n.getHandle();
 
         // Light
-        scene.defaults.light = scene.lh_mg.create("Light").getHandle();
+        auto& lh =  scene.lh_mg.create("Light");
+        scene.defaults.light = lh.getHandle();
+        lh.type = gbg::LightType::DIRECTIONAL;
+        lh.intensity = 1.0f;
         gbg::SceneTreeNode& lh_n = st_mg.create("DefaultLigth");
         lh_n.setResource(scene.defaults.light);
         lh_n.translation = {0, 0, 0};
-        lh_n.rotation = glm::vec3{-45.f, 180.f, 0.f};
+        lh_n.rotation = glm::vec3{-60.f, 180.f, 0.f};
         st_mg.prependChild(scene.root, lh_n.getHandle());
 
         gbg::createRepresentative(dep_tree, st_mg.get(scene.root),

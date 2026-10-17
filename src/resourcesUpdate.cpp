@@ -4,6 +4,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <algorithm>
+#include <print>
 #include <ranges>
 
 #include "Camera.hpp"
@@ -442,7 +443,7 @@ void updateTexture(vkDevice device, TextureHandle h,
 
 void updateCamera(vkDevice device, CameraHandle h,
                   InternalSceneData& scene_data,
-                  InternalSceneData& internal_res) {
+                  InternalSceneData& internal_res, float aspect) {
     gbg::Scene* isc = internal_res.scene;
     if (h != scene_data.scene->getActiveCamera().getHandle()) return;
 
@@ -455,8 +456,21 @@ void updateCamera(vkDevice device, CameraHandle h,
         cm_f.addVertex(8);
         auto& pos_att = cm_f.createAttribute<AttributeTypes::VEC3_ATTR>(0);
         cm_f.createAttribute<AttributeTypes::VEC2_ATTR>(2);
-        std::ranges::copy(gbg::getFrustumVolume(cm.fov, 1.f, cm.znear, cm.zfar),
-                          pos_att.begin());
+        auto frustum = gbg::getFrustumVolume(glm::radians(cm.fov), aspect,
+                                             cm.znear, cm.zfar);
+
+        auto cm_t = scene_data.scene->st_mg.getGlobalTransform(scene_data.scene->active_camera);
+
+        for(auto& pt : frustum) {
+            pt = cm_t * glm::vec4(pt, 1.f);
+        }
+
+        std::println("Frustum:");
+        for (const auto& pt : frustum) {
+            std::println("x: {}, y: {}, z: {}", pt.x, pt.y, pt.z);
+        }
+
+        std::ranges::copy(frustum, pos_att.begin());
 
         for (uint idx : std::views::iota(1u, 8u)) {
             cm_f.createFace({idx - 1, idx});

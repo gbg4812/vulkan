@@ -29,7 +29,7 @@ std::vector<vkLight> computeDirectionalLights(const Light& light, size_t N,
         res[i].type = to_underlying(LightType::DIRECTIONAL);
         res[i].position = glm::vec3(cam.znear, cam.zfar, near);
 
-        // std::println("near {}, far {}", near, far);
+        //std::println("near {}, far {}", near, far);
 
         auto pts = getFrustumVolume(glm::radians(cam.fov), aspect, near, far);
         for (auto& pt : pts) {
@@ -37,6 +37,9 @@ std::vector<vkLight> computeDirectionalLights(const Light& light, size_t N,
             pt = light_view * glm::vec4(pt, 0.0f);
         }
         auto bbox = boundingBox3D(pts);
+
+        // std::println("bbox {}: min ({}, {}), max ({}, {})", i, bbox.first.x,
+        //              bbox.first.y, bbox.second.x, bbox.second.y);
 
         float side_size = glm::max((bbox.second.x - bbox.first.x),
                                    (bbox.second.y - bbox.first.y));

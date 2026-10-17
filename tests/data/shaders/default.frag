@@ -73,14 +73,12 @@ float computeShadow(Light light, vec3 w_pos, vec4 cam_pos, float max_width, vec3
         };
 
     float shadow = 0;
-    int kernel_width = 9;
+    int kernel_width = 7;
     for (int i = 0; i < kernel_width; i++) {
         for (int j = 0; j < kernel_width; j++) {
             vec2 sampl = (vec2(i, j) - kernel_width / 2);
-            float closest = texture(sampler2D(_shadow_map, _sampler), coords + sampl * off).r;
-            if (closest >= cam_pos.z - (0.0005 + 0.001 * length(sampl))) {
-                shadow += 1 / (pow(kernel_width, 2));
-            }
+            float closest = texture(sampler2DShadow(_shadow_map, _shadow_sampler), vec3(coords + sampl * off, cam_pos.z - (0.0005 + length(sampl) * 0.001 + max(0, dot(w_n, L)) * 0.001))).r;
+            shadow += (1-closest) / pow(kernel_width, 2);
         }
     }
 

@@ -30,6 +30,7 @@
 #include "backends/imgui_impl_vulkan.h"
 #include "gbg_traits.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_transform.hpp"
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
@@ -560,6 +561,36 @@ void SceneRenderer::createShadowResources() {
         }
     }
 
+    // create sampler
+    
+    VkSamplerCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.magFilter = VK_FILTER_LINEAR;
+    createInfo.minFilter = VK_FILTER_LINEAR;
+
+    createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(device.pdevice, &properties);
+    createInfo.anisotropyEnable = VK_TRUE;
+    createInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+    createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
+    createInfo.unnormalizedCoordinates = VK_FALSE;
+    createInfo.compareEnable = VK_TRUE;
+    createInfo.compareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
+
+    createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    createInfo.minLod = 0.0f;
+    createInfo.maxLod = 1.0f;  // TODO: define constant
+    createInfo.mipLodBias = 0.0f;
+
+    if (vkCreateSampler(device.ldevice, &createInfo, nullptr,
+                        &shadowSampler) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create depth sampler!");
+    }
+
     // create shader which will be used in the shadow pass for all objects
     auto& shadowShader =
         internal_resources.scene->sh_mg.create("Shadow Shader");
@@ -597,16 +628,22 @@ void SceneRenderer::createShadowResources() {
                                 textureSampler);
 
     // create descriptor layout for the shadow map textures
-    VkDescriptorSetLayoutBinding shadowBind;
-    shadowBind.binding = 0;
-    shadowBind.descriptorCount = 1;
-    shadowBind.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    shadowBind.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings;
+    bindings[0].binding = 0;
+    bindings[0].descriptorCount = 1;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    
+    bindings[1].binding = 1;
+    bindings[1].descriptorCount = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    bindings[1].pImmutableSamplers = nullptr;
+    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
     VkDescriptorSetLayoutCreateInfo descSetLayInfo{};
     descSetLayInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descSetLayInfo.bindingCount = 1;
-    descSetLayInfo.pBindings = &shadowBind;
+    descSetLayInfo.bindingCount = bindings.size();
+    descSetLayInfo.pBindings = bindings.data();
 
     if (vkCreateDescriptorSetLayout(device.ldevice, &descSetLayInfo, nullptr,
                                     &shadowDescriptorSetLayout) != VK_SUCCESS) {
@@ -621,7 +658,7 @@ void SceneRenderer::createShadowResources() {
     // perspectives
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = materialDescPool;
+    allocInfo.descriptorPool = globalDescriptorPool;
     allocInfo.descriptorSetCount = shadowDescriptorSets.size();
     allocInfo.pSetLayouts = layouts.data();
 
@@ -634,17 +671,27 @@ void SceneRenderer::createShadowResources() {
         VkDescriptorImageInfo imageInfo{};
         imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         imageInfo.imageView = shadowImages[i].view.value();
-        imageInfo.sampler = textureSampler;
 
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.descriptorCount = 1;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        write.pImageInfo = &imageInfo;
-        write.dstBinding = 0;
-        write.dstSet = shadowDescriptorSets[i];
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        writes[0].pImageInfo = &imageInfo;
+        writes[0].dstBinding = 0;
+        writes[0].dstSet = shadowDescriptorSets[i];
+        
+        VkDescriptorImageInfo samplerInfo{};
+        samplerInfo.sampler = shadowSampler;
 
-        vkUpdateDescriptorSets(device.ldevice, 1, &write, 0, nullptr);
+        VkWriteDescriptorSet writeSampler{};
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        writes[1].pImageInfo = &samplerInfo;
+        writes[1].dstBinding = 1;
+        writes[1].dstSet = shadowDescriptorSets[i];
+
+        vkUpdateDescriptorSets(device.ldevice, writes.size(), writes.data(), 0, nullptr);
     }
 }
 
@@ -822,22 +869,24 @@ void SceneRenderer::createGlobalShaderResources() {
 }
 
 void SceneRenderer::createGlobalDescriptorPool() {
-    std::array<VkDescriptorPoolSize, 3> descriptorPoolSizes{};
+    std::array<VkDescriptorPoolSize, 4> descriptorPoolSizes{};
     descriptorPoolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     descriptorPoolSizes[0].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     descriptorPoolSizes[1].type = VK_DESCRIPTOR_TYPE_SAMPLER;
-    descriptorPoolSizes[1].descriptorCount =
-        static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    descriptorPoolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT*2;
     descriptorPoolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     descriptorPoolSizes[2].descriptorCount =
         static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    
+    descriptorPoolSizes[3].type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    descriptorPoolSizes[3].descriptorCount = static_cast<uint32_t>(max_tex);
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.size());
     poolInfo.pPoolSizes = descriptorPoolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT*2);
 
     if (vkCreateDescriptorPool(device.ldevice, &poolInfo, nullptr,
                                &globalDescriptorPool) != VK_SUCCESS) {
@@ -998,10 +1047,10 @@ void SceneRenderer::recordDrawModel(VkCommandBuffer commandBuffer,
     vkCmdDrawIndexed(commandBuffer, mesh.indexBuffer.size / 4, 1, 0, 0, 0);
 }
 
-void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
-                                         VkViewport viewport, VkRect2D scissor,
-                                         uint32_t imageIndex,
-                                         SceneTreeHandle root) {
+void SceneRenderer::recordDraw3DOverlays(
+    VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor,
+    uint32_t imageIndex, SceneTreeHandle root,
+    MaterialHandle override_material = MaterialHandle()) {
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
     std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
@@ -1011,7 +1060,7 @@ void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
     {
         Model& md = internal_resources.scene->md_mg.getByName("Axis");
         recordDrawModel(commandBuffer, viewport, scissor, accumulated_transform,
-                        md, internal_resources, MaterialHandle());
+                        md, internal_resources, override_material);
     }
 
     while (not Q.empty()) {
@@ -1026,14 +1075,14 @@ void SceneRenderer::recordDraw3DOverlays(VkCommandBuffer commandBuffer,
                 "SpotLight");  // light mesh
             recordDrawModel(commandBuffer, viewport, scissor,
                             accumulated_transform, md, internal_resources,
-                            MaterialHandle());
+                            override_material);
         } else if (stn.getResourceH<SceneObjectTypes::CAMERA>()) {
             if (draw_camera_frustum) {
                 Model& md =
                     internal_resources.scene->md_mg.getByName("CameraFrustum");
                 recordDrawModel(commandBuffer, viewport, scissor,
-                                accumulated_transform, md, internal_resources,
-                                MaterialHandle());
+                                glm::mat4(1.0f), md, internal_resources,
+                                override_material);
             }
         }
 
@@ -1163,6 +1212,9 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
         recordDrawScene(commandBuffer, shadowViewport, shadowScisors,
                         imageIndex, active_scene_data.scene->root,
                         shadowMaterial_h);
+        /*recordDraw3DOverlays(commandBuffer, shadowViewport, shadowScisors,
+                             imageIndex, active_scene_data.scene->root,
+                             shadowMaterial_h);*/
     }
 
     vkCmdEndRenderPass(commandBuffer);
@@ -1378,7 +1430,9 @@ void SceneRenderer::drawFrame() {
                     break;
                 case ResourceTypes::CAMERA:
                     updateCamera(device, n.represented.getRID(),
-                                 active_scene_data, internal_resources);
+                                 active_scene_data, internal_resources,
+                                 swapChain.swapChainImageExtent.width /
+                                     (float)swapChain.swapChainImageExtent.height);
                     std::cout << "Updating camera::" << n.represented.getRID()
                               << std::endl;
                     break;

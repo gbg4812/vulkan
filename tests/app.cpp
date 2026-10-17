@@ -26,14 +26,14 @@
 #include "imgui.h"
 #include "io_utils/watcher.hpp"
 
-#define TRACY_ENABLE 1
-#include "tracy/Tracy.hpp"
-
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
+#define TRACY_ENABLE 1
 const bool enableValidationLayers = true;
 #endif
+
+#include "tracy/Tracy.hpp"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;

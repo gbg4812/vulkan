@@ -15,16 +15,15 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
 #include "DependencyTree.hpp"
+#include "InternalSceneData.hpp"
 #include "Material.hpp"
 #include "RendererContext.hpp"
+#include "Scene.hpp"
 #include "SceneTree.hpp"
 #include "srLight.hpp"
+#include "tracy/TracyVulkan.hpp"
 #include "vk_utils/vkRenderPass.hpp"
 #include "vk_utils/vkSwapChain.h"
-
-#include "InternalSceneData.hpp"
-#include "Scene.hpp"
-#include "tracy/TracyVulkan.hpp"
 
 namespace gbg {
 
@@ -114,6 +113,7 @@ class SceneRenderer {
     static constexpr uint32_t max_shadow_lights = 10;
 
     VkSampler textureSampler;
+    VkSampler shadowSampler;
 
     std::unordered_map<std::string, vkRenderPass> renderPasses;
 
@@ -129,7 +129,8 @@ class SceneRenderer {
 
     uint32_t shadowRes = 2048;
     // TODO check for compat
-    VkExtent2D shadowSize = {.width = shadowRes * max_shadow_lights, .height = shadowRes};
+    VkExtent2D shadowSize = {.width = shadowRes * max_shadow_lights,
+                             .height = shadowRes};
 
     std::vector<gbg::vkBuffer> globalBuffers;
     std::vector<void*> globalBuffersMapped;
@@ -140,7 +141,7 @@ class SceneRenderer {
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_4_BIT;
     // debug
-    bool draw_camera_frustum = false;
+    bool draw_camera_frustum = true;
 
    private:
     void initVulkan();
@@ -214,7 +215,8 @@ class SceneRenderer {
 
     void recordDraw3DOverlays(VkCommandBuffer commandBuffer,
                               VkViewport viewport, VkRect2D scissor,
-                              uint32_t imageIndex, SceneTreeHandle root);
+                              uint32_t imageIndex, SceneTreeHandle root,
+                              MaterialHandle override_material);
 
     void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport,
                          VkRect2D scissor, uint32_t imageIndex,

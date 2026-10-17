@@ -46,7 +46,7 @@ find_library(SHADERC_LIB
 )
 
 if(LOCAL_SEQ)
-  fetchcontent_declare(
+    fetchcontent_declare(
   sceneeq
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SceneEquipament/)
 endif()

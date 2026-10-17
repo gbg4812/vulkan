@@ -16,14 +16,15 @@
 namespace gbg {
 
 /**
+ *
  * @param fov in radians
  */
 std::array<glm::vec3, 8> getFrustumVolume(float fov, float aspect, float near,
                                           float far) {
-    float a = fov / 2;
-    float nh = glm::sin(a) * near / glm::cos(a);
+    float a2 = fov / 2;
+    float nh = glm::tan(a2) * near;
     float nw = nh * aspect;
-    float fh = glm::sin(a) * far / glm::cos(a);
+    float fh = glm::tan(a2) * far;
     float fw = fh * aspect;
 
     std::array<glm::vec3, 8> res = {

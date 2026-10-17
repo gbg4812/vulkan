@@ -70,6 +70,6 @@ void updateTexture(vkDevice device, TextureHandle h,
 
 void updateCamera(vkDevice device, CameraHandle h,
                   InternalSceneData& scene_data,
-                  InternalSceneData& internal_res); 
+                  InternalSceneData& internal_res, float aspect);
 
 }  // namespace gbg
