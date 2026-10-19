@@ -1,15 +1,10 @@
-
 import global_resources;
 import lighting_lib;
 
 public struct VSIn {
-    [[vk::location(0)]]
     float3 inPosition;
-    [[vk::location(1)]]
     float3 inNormal;
-    [[vk::location(2)]]
     float2 inTexCoord;
-    [[vk::location(3)]]
     float3 inTangent;
 }
 
@@ -23,20 +18,20 @@ public struct VSOut {
 }
 
 struct MatParms {
-    float3 color;
+    float3 color = {0.1, 0.4, 0.3};
     float ambient_i = 0.01;
     float max_width = 5;
 }
 
 // here you can add as many as you want
-[[vk_binding(1, 0)]]
+[vk_binding(0, 1)]
 ConstantBuffer<MatParms> mat;
 
 // here you declare the textures you need
-//[[vk_binding(1, 1)]]
+//[vk_binding(1, 1)]
 // Texture2D _texture[2];
 
-[[shader("vertex")]]
+[shader("vertex")]
 VSOut mainVertex(VSIn vs_in, uniform float4x4 model) : VSOUT {
     float3 N = normalize(mul(model, float4(vs_in.inNormal, 0.0f)).xyz);
     float3 T = normalize(mul(model, float4(vs_in.inTangent, 0.0f)).xyz);
@@ -53,11 +48,12 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) : VSOUT {
     vs_out.w_tangent = T;
     vs_out.w_n = N;
 
-    vs_out.c_position = mul(ubo.proj, mul(ubo.view, mul(model, float4(vs_in.inPosition, 1.0f))));
+    vs_out.c_position = mul(
+        ubo.proj, mul(ubo.view, mul(model, float4(vs_in.inPosition, 1.0f))));
     return vs_out;
 }
 
-[[shader("pixel")]]
+[shader("pixel")]
 float4 mainPixel(VSOut fs_in: VSOUT) : SV_Target0 {
     float3 lcolor = mat.color * mat.ambient_i;
 

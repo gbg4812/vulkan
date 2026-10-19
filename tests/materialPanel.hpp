@@ -20,10 +20,9 @@
 #include "loaders/texLoader.hpp"
 #include "nfd.h"
 #include "resourcesUpdate.hpp"
-#include "shaderReflexion.hpp"
 
 inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
-    gbg::Scene& sc = app.scene;
+    gbg::Scene& sc = *app.scene;
     ImGui::PushID(mat.getRID());
     if (ImGui::CollapsingHeader(mat.getName().c_str())) {
         for (auto [num, value] : mat.getValues() | std::views::enumerate) {
@@ -40,10 +39,10 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                             mat.setParameterValue<gbg::ParameterTypes::TEXTURE>(
                                 num, tex2.getHandle());
                             gbg::setDependent(
-                                app.dep_tree, mat.representative,
+                                *app.dep_tree, mat.representative,
                                 gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
                                 tex2.representative, gbg::SObjFlags::NEW);
-                            app.dep_tree.propagateChange(
+                            app.dep_tree->propagateChange(
                                 mat.representative,
                                 gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M);
                         }
@@ -58,7 +57,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         ("Parameter" + std::to_string(num)).c_str(),
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC3>(num, col);
-                    app.dep_tree.propagateChange(
+                    app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const glm::vec2* vec = std::get_if<glm::vec2>(&value)) {
@@ -67,7 +66,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                         ("Parameter" + std::to_string(num)).c_str(),
                         (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC2>(num, col);
-                    app.dep_tree.propagateChange(
+                    app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const float* val = std::get_if<float>(&value)) {
@@ -75,7 +74,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 if (ImGui::InputFloat(
                         ("Parameter" + std::to_string(num)).c_str(), &f)) {
                     mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, f);
-                    app.dep_tree.propagateChange(
+                    app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const int* val = std::get_if<int32_t>(&value)) {
@@ -83,7 +82,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 if (ImGui::InputInt(("Parameter" + std::to_string(num)).c_str(),
                                     &i)) {
                     mat.setParameterValue<gbg::ParameterTypes::INT>(num, i);
-                    app.dep_tree.propagateChange(
+                    app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             }
@@ -123,7 +122,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
 
             if (ImGui::Button("Confirm")) {
                 auto& new_tx = sc.tx_mg.create(name);
-                gbg::createRepresentative(app.dep_tree, new_tx,
+                gbg::createRepresentative(*app.dep_tree, new_tx,
                                           gbg::ResourceTypes::TEXTURE,
                                           gbg::SObjFlags::NEW);
                 loadTexture(buff, new_tx);
@@ -138,17 +137,18 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
 }
 
 inline void drawShaderPannel(AppData& app) {
-    gbg::Scene& sc = app.scene;
+    gbg::Scene& sc = *app.scene;
     nfdu8char_t* outpath = nullptr;
     static char buff[1024] = "";
     static std::filesystem::path chosen_path;
 
     for (auto& shader : sc.sh_mg) {
         if (ImGui::CollapsingHeader(shader.getName().c_str())) {
-            for (auto [num, parm] :
-                 shader.getParameters() | std::views::enumerate) {
-                ImGui::Text("Position: %ld, Type: %s", num,
-                            gbg::parmTypeToString[to_underlying(parm)].data());
+            for (auto parm : shader.getParameters()) {
+                ImGui::Text(
+                    "%s %s",
+                    gbg::parmTypeToString[parm.default_value.index()].data(),
+                    parm.name.c_str());
             }
         }
     }
@@ -190,27 +190,21 @@ inline void drawShaderPannel(AppData& app) {
             // Shader Creation
             gbg::Shader& sh = sc.sh_mg.create(name);
 
-            gbg::createRepresentative(app.dep_tree, sh,
+            gbg::createRepresentative(*app.dep_tree, sh,
                                       gbg::ResourceTypes::SHADER,
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res = app.file_w.createFile(pt.native())
-                               .and_then([&](gbg::File* file) {
-                                   return gbg::setGlslShaderCode(sh, *file);
-                               });
+                auto res =
+                    app.file_w.createFile(pt.native())
+                        .and_then([&](gbg::FileHandle file_h) {
+                            sh.addCodeFile(file_h, gbg::ShaderTypes::COMBINED);
+                            return gbg::compileShader(app.file_m, sh);
+                        });
                 if (res) {
                     std::cout << res.value() << std::endl;
-                    sh.setCode(sc.getDefaultShader().getCode(
-                                   gbg::ShaderTypes::FRAGMENT),
-                               sc.getDefaultShader().getCodeFile(
-                                   gbg::ShaderTypes::FRAGMENT),
-                               gbg::ShaderTypes::FRAGMENT);
-                    sh.setCode(
-                        sc.getDefaultShader().getCode(gbg::ShaderTypes::VERTEX),
-                        sc.getDefaultShader().getCodeFile(
-                            gbg::ShaderTypes::VERTEX),
-                        gbg::ShaderTypes::VERTEX);
+                } else {
+                    std::cout << res.error() << std::endl;
                 }
             }
 
@@ -222,7 +216,7 @@ inline void drawShaderPannel(AppData& app) {
 }
 
 inline void drawNewMaterial(AppData& app) {
-    gbg::Scene& sc = app.scene;
+    gbg::Scene& sc = *app.scene;
     if (ImGui::Button("New Material")) {
         ImGui::OpenPopup("New Material");
     }
@@ -248,11 +242,11 @@ inline void drawNewMaterial(AppData& app) {
                 auto& mt = sc.mat_mg.create(
                     "Material" + std::to_string(sc.mat_mg.nextIndex()));
                 gbg::createRepresentative(
-                    app.dep_tree, mt, gbg::ResourceTypes::MATERIAL,
+                    *app.dep_tree, mt, gbg::ResourceTypes::MATERIAL,
                     gbg::SObjFlags::NEW |
                         gbg::SObjFlags::PARAMETER_INTERFACE_M);
                 mt.setShader(selected);
-                gbg::setDependent(app.dep_tree, mt.representative,
+                gbg::setDependent(*app.dep_tree, mt.representative,
                                   gbg::SObjFlags::PARAMETER_INTERFACE_M,
                                   sh.representative,
                                   gbg::SObjFlags::CODE_M | gbg::SObjFlags::NEW);

@@ -8,8 +8,8 @@ public struct PerFrameGlobalU {
     public int nLights;
 }
 
-[[vk_binding(0, 0)]]
+[[vk::binding(0, 0)]]
 public ConstantBuffer<PerFrameGlobalU> ubo;
 
-[[vk_binding(0, 1)]]
+[[vk::binding(1, 0)]]
 public SamplerState _sampler;

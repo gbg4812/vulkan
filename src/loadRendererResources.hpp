@@ -1,17 +1,18 @@
 #pragma once
 #include <vulkan/vulkan_core.h>
 
+#include <expected>
 #include <stdexcept>
 #include <unordered_map>
 
-#include "build_constants.hpp"
 #include "InternalSceneData.hpp"
 #include "MaterialFunctions.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "Shader.hpp"
+#include "build_constants.hpp"
 #include "loaders/objLoader.hpp"
 #include "resourcesUpdate.hpp"
-#include "shaderReflexion.hpp"
+#include "shaderUtils.hpp"
 #include "srMaterial.hpp"
 #include "vk_utils/vkRenderPass.hpp"
 
@@ -21,30 +22,35 @@ inline void loadRendererResources(
     InternalSceneData& internal_resources,
     const std::unordered_map<std::string, vkRenderPass>& renderPasses,
     VkDescriptorPool materialDescPool, VkSampler textureSampler) {
-    Scene* sc = internal_resources.scene;
+    auto sc = internal_resources.scene;
 
     auto& ms_mg = sc->getMeshManager();
     auto& mt_mg = sc->getMaterialManager();
     auto& sh_mg = sc->getShaderManager();
 
     auto& col_sh = sh_mg.create("PlainColorShader");
-    setShaderCode(col_sh, CONTENTS_DIR"shaders/plain_color.vert",
-                  ShaderTypes::VERTEX);
-    setShaderCode(col_sh, CONTENTS_DIR"shaders/plain_color.frag",
-                  ShaderTypes::FRAGMENT);
-    reflectShader(col_sh);
+    auto& col_sh_f = internal_resources.file_m->create(
+        CONTENTS_DIR "/shaders/slang/plain_color.slang");
+
     col_sh.topology = PrimitiveInterpretation::LINES;
+    col_sh.addCodeFile(col_sh_f.getHandle(), ShaderTypes::COMBINED);
+
+    auto res = compileShader(*internal_resources.file_m, col_sh);
+    if (not res) {
+        std::cout << res.error() << std::endl;
+    }
 
     auto& white_mt = mt_mg.create("White Material");
     white_mt.setShader(col_sh.getHandle());
-    setParametersFromShader(*sc, white_mt);
+    setParametersFromShader(col_sh, white_mt);
     white_mt.setParameterValue<ParameterTypes::VEC3>(
         0, glm::vec3(1.0f, 1.0f, 1.0f));
 
-    if(objLoader(CONTENTS_DIR"models/RendererObjects.obj", sc, sc->root,
-              white_mt.getHandle()).empty()) {
-                  throw std::runtime_error("Failed to load renderer objects");
-              }
+    if (objLoader(CONTENTS_DIR "models/RendererObjects.obj", sc.get(), sc->root,
+                  white_mt.getHandle())
+            .empty()) {
+        throw std::runtime_error("Failed to load renderer objects");
+    }
 
     for (auto& msh : ms_mg) {
         createMeshVkResources(device, msh.getHandle(), internal_resources);

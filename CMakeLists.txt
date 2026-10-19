@@ -3,13 +3,13 @@ cmake_minimum_required(VERSION 3.14)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(
     VkSceneRenderEngine
     VERSION 0.1
     LANGUAGES CXX
 )
-
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS true)
 
@@ -24,7 +24,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC src/ ${CMAKE_CURRENT_BINARY_DI
 
 # External dependencies
 
-
 FetchContent_Declare (
 tracy
 GIT_REPOSITORY https://github.com/wolfpld/tracy.git
@@ -33,20 +32,18 @@ GIT_SHALLOW TRUE
 GIT_PROGRESS TRUE
 )
 
-option(TRACY_ENABLE "Enable Tracy" $<IF:$<CONFIG:Debug>,ON,OFF>)
-option(TRACY_ON_DEMAND "Tracy on demand" ON)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(_tracy_default ON)
+else()
+    set(_tracy_default OFF)
+endif()
+
+option(TRACY_ENABLE " " ${_tracy_default})
+option(TRACY_ON_DEMAND " " ON)
 FetchContent_MakeAvailable(tracy)
 
-find_package(Vulkan COMPONENTS SPIRV-Tools REQUIRED)
-
-find_library(SPIRV_REFLECT_LIB
-    NAMES spirv-reflect-static spirv_reflect
-    PATHS "$ENV{VULKAN_SDK}/lib"
-)
-find_library(SHADERC_LIB
-    NAMES shaderc_combined
-    PATHS "$ENV{VULKAN_SDK}/lib"
-)
+find_package(Vulkan REQUIRED)
+find_package(slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake" REQUIRED)
 
 if(LOCAL_SEQ)
   fetchcontent_declare(
@@ -60,18 +57,11 @@ fetchcontent_declare(
   GIT_TAG        master)
 fetchcontent_makeavailable(sceneeq)
 
-fetchcontent_declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-fetchcontent_makeavailable(fmt)
-
 FetchContent_Declare(
     glm
     GIT_REPOSITORY	https://github.com/g-truc/glm.git
     GIT_TAG 8d1fd52e5ab5590e2c81768ace50c72bae28f2ed
 )
-
 FetchContent_MakeAvailable(glm)
 
 FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG master)
@@ -83,14 +73,14 @@ FetchContent_MakeAvailable(glfw)
 add_subdirectory(./external)
 
 # libs
-list(APPEND LIBS Vulkan::Vulkan Vulkan::SPIRV-Tools ${SPIRV_REFLECT_LIB} ${SHADERC_LIB} glfw)
-list(APPEND LIBS glm::glm stbimage fmt::fmt)
+list(APPEND LIBS Vulkan::Vulkan slang::slang glfw)
+list(APPEND LIBS glm::glm stbimage)
 list(APPEND LIBS imgui SceneEquipament)
 
 # dev only
 list(APPEND DEV_LIBS TracyClient)
 
-target_link_libraries(${PROJECT_NAME} PUBLIC $<$<CONFIG:Debug>:${DEV_LIBS}> ${LIBS}) 
+target_link_libraries(${PROJECT_NAME} PUBLIC $<$<CONFIG:Debug>:${DEV_LIBS}> ${LIBS})
 
 
 ###########
@@ -119,9 +109,18 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(nfd)
 
-
-file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLIC)
-
 add_executable(app tests/app.cpp)
 
 target_link_libraries(app PRIVATE "${PROJECT_NAME};nfd")
+
+include(CMakePrintHelpers)
+
+# Print the C++ compiler path, ID, and version
+cmake_print_variables(CMAKE_CXX_COMPILER)
+cmake_print_variables(CMAKE_CXX_COMPILER_ID)
+cmake_print_variables(CMAKE_CXX_COMPILER_VERSION)
+
+# Print global C++ compilation flags
+cmake_print_variables(CMAKE_CXX_FLAGS)
+cmake_print_variables(CMAKE_CXX_FLAGS_DEBUG)
+cmake_print_variables(CMAKE_CXX_FLAGS_RELEASE)

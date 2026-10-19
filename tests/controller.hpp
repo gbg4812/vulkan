@@ -3,7 +3,7 @@
 #include "AppData.hpp"
 
 inline void updateCamera(AppData& app, GLFWwindow* window, float delta) {
-    gbg::Scene& scene = app.scene;
+    gbg::Scene& scene = *app.scene;
     gbg::SceneTreeNode& cam_node = scene.st_mg.get(scene.active_camera);
     glm::vec3 offset = glm::vec3(0.0f);
     float vel = 3;

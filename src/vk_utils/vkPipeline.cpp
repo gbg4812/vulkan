@@ -4,6 +4,7 @@
 
 #include <stdexcept>
 
+#include "Shader.hpp"
 #include "glm/glm.hpp"
 #include "io_utils/file_utils.hpp"
 #include "vk_utils/vkDevice.hh"
@@ -59,8 +60,8 @@ VkShaderModule createShaderModule(const vkDevice& device,
 }
 
 vkPipeline createGraphicsPipeline(
-    const vkDevice& device, const std::vector<uint32_t>& vertShaderCode,
-    const std::vector<uint32_t>& fragShaderCode,
+    const vkDevice& device, const std::vector<uint32_t>& shaderByteCode,
+    ShaderTypes type,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
@@ -71,28 +72,25 @@ vkPipeline createGraphicsPipeline(
 
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
-    if (not vertShaderCode.empty()) {
-        VkShaderModule vertShaderModule =
-            createShaderModule(device, vertShaderCode);
+    if (not shaderByteCode.empty()) {
+        VkShaderModule shaderModule =
+            createShaderModule(device, shaderByteCode);
         VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
         vertShaderStageInfo.sType =
             VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStageInfo.module = vertShaderModule;
-        vertShaderStageInfo.pName = "main";
+        vertShaderStageInfo.module = shaderModule;
+        vertShaderStageInfo.pName = "mainVertex";
         shaderStages.push_back(vertShaderStageInfo);
-    }
-
-    if (not fragShaderCode.empty()) {
-        VkShaderModule fragShaderModule =
-            createShaderModule(device, fragShaderCode);
-        VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-        fragShaderStageInfo.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragShaderStageInfo.module = fragShaderModule;
-        fragShaderStageInfo.pName = "main";
-        shaderStages.push_back(fragShaderStageInfo);
+        if (type == ShaderTypes::COMBINED) {
+            VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
+            fragShaderStageInfo.sType =
+                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            fragShaderStageInfo.module = shaderModule;
+            fragShaderStageInfo.pName = "mainPixel";
+            shaderStages.push_back(fragShaderStageInfo);
+        }
     }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};

@@ -13,7 +13,7 @@
 #include "resourcesUpdate.hpp"
 
 inline void drawCreateObject(AppData& app) {
-    gbg::Scene& scene = app.scene;
+    gbg::Scene& scene = *app.scene;
 
     if (ImGui::BeginMenu("Add")) {
         if (ImGui::MenuItem("Light")) {
@@ -36,7 +36,7 @@ inline void drawCreateObject(AppData& app) {
                         std::get<gbg::ModelHandle>(n.getResourceH());
                     auto msh = scene.md_mg.get(h).getMesh();
                     gbg::createRepresentative(
-                        app.dep_tree, scene.ms_mg.get(msh),
+                        *app.dep_tree, scene.ms_mg.get(msh),
                         gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
                 }
                 NFD_FreePathU8(outpath);

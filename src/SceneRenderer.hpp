@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "extras/File.hpp"
+
 // This forces the perspective proj matrix to use a depth from 0 to 1 when
 // it transforms the geometry as vulkan likes.
 #define GLM_FORCE_RADIANS
@@ -65,7 +67,8 @@ struct UniformBufferObjects {
 class SceneRenderer {
    public:
     SceneRenderer(RendererContext context);
-    void setScene(gbg::Scene* scene, gbg::DependencyTreeManager* dep_tree);
+    void setScene(std::shared_ptr<Scene> scene,
+                  std::shared_ptr<DependencyTreeManager> dep_tree);
     void run();
     void resizeSwapchain(uint32_t width, uint32_t height);
     void cleanup();
@@ -104,7 +107,7 @@ class SceneRenderer {
     InternalSceneData active_scene_data;
 
     InternalSceneData internal_resources;
-    std::unique_ptr<Scene> internal_scene;
+    FileManager file_m;
 
     static constexpr uint32_t max_obj = 1000;
     static constexpr uint32_t max_mat = 1000;
@@ -124,8 +127,6 @@ class SceneRenderer {
     std::vector<vkLight> lightBuffer;
     std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
-    ShaderHandle shadowShader_h;
-    MaterialHandle shadowMaterial_h;
 
     uint32_t shadowRes = 2048;
     // TODO check for compat

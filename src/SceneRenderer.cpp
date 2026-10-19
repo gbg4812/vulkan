@@ -6,7 +6,9 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+#include <expected>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -28,6 +30,7 @@
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "backends/imgui_impl_vulkan.h"
+#include "extras/File.hpp"
 #include "gbg_traits.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
@@ -37,7 +40,7 @@
 #include "imgui.h"
 #include "loadRendererResources.hpp"
 #include "resourcesUpdate.hpp"
-#include "shaderReflexion.hpp"
+#include "shaderUtils.hpp"
 #include "srLight.hpp"
 #include "srMaterial.hpp"
 #include "srMesh.hh"
@@ -61,8 +64,8 @@ SceneRenderer::SceneRenderer(RendererContext context)
       device(context.device) {
     width = static_cast<uint32_t>(context.width);
     height = static_cast<uint32_t>(context.height);
-    internal_scene = std::make_unique<Scene>();
-    internal_resources.scene = internal_scene.get();
+    internal_resources.scene = std::make_shared<Scene>();
+    internal_resources.file_m = std::make_shared<FileManager>();
     initVulkan();
     initImgui();
 }
@@ -83,7 +86,8 @@ void SceneRenderer::initImgui() {
     ImGui_ImplVulkan_Init(&info);
 }
 
-void SceneRenderer::setScene(Scene* scene, DependencyTreeManager* dep_tree) {
+void SceneRenderer::setScene(std::shared_ptr<Scene> scene,
+                             std::shared_ptr<DependencyTreeManager> dep_tree) {
     active_scene_data.scene = scene;
     active_scene_data.dep_tree = dep_tree;
     vkDeviceWaitIdle(device.ldevice);
@@ -593,21 +597,22 @@ void SceneRenderer::createShadowResources() {
     }
 
     // create shader which will be used in the shadow pass for all objects
-    auto& shadowShader =
-        internal_resources.scene->sh_mg.create("Shadow Shader");
-    shadowShader_h = shadowShader.getHandle();
-    setShaderCode(shadowShader, CONTENTS_DIR "shaders/shadow.vert",
-                  ShaderTypes::VERTEX);
-    reflectShader(shadowShader);
+    auto& shadowShader = internal_resources.scene->sh_mg.create("ShadowShader");
+    auto& shad_file = internal_resources.file_m->create(CONTENTS_DIR "shaders/slang/shadow.slang");
+    shadowShader.addCodeFile(shad_file.getHandle(), ShaderTypes::VERTEX);
+    auto res = compileShader(*internal_resources.file_m, shadowShader);
+    if (not res) {
+        std::cout << res.error();
+        exit(EXIT_FAILURE);
+    }
 
     shadowShader.shadow = false;
 
     auto& shadowMaterial =
-        internal_resources.scene->mat_mg.create("Shadow Material");
-    shadowMaterial_h = shadowMaterial.getHandle();
+        internal_resources.scene->mat_mg.create("ShadowMaterial");
 
     shadowMaterial.setShader(shadowShader.getHandle());
-    gbg::setParametersFromShader(*internal_resources.scene, shadowMaterial);
+    gbg::setParametersFromShader(shadowShader, shadowMaterial);
 
     auto& srsh = internal_resources.srsh_mg.create(shadowShader.getHandle());
 
@@ -622,11 +627,11 @@ void SceneRenderer::createShadowResources() {
 
     auto& sr_mt = internal_resources.srmat_mg.create("srShadowMaterial");
 
-    createMaterialVkResources(device, shadowMaterial_h, internal_resources,
-                              materialDescPool);
+    createMaterialVkResources(device, shadowMaterial.getHandle(),
+                              internal_resources, materialDescPool);
     fillParameterValues(shadowMaterial, sr_mt);
-    updateMaterialDescriptorSet(device, shadowMaterial_h, internal_resources,
-                                textureSampler);
+    updateMaterialDescriptorSet(device, shadowMaterial.getHandle(),
+                                internal_resources, textureSampler);
 
     // create descriptor layout for the shadow map textures
     std::array<VkDescriptorSetLayoutBinding, 2> bindings;
@@ -1106,7 +1111,7 @@ void SceneRenderer::recordDrawScene(
     Q.push({root, glm::mat4(1.f)});
 
     if (override) {
-        bindMaterial(commandBuffer, shadowMaterial_h, internal_resources);
+        bindMaterial(commandBuffer, override, internal_resources);
 
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
@@ -1191,6 +1196,8 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     vkCmdBeginRenderPass(commandBuffer, &shadowRenderPassInfo,
                          VK_SUBPASS_CONTENTS_INLINE);
 
+    auto& shadowMaterial = internal_resources.scene->mat_mg.getByName("ShadowMaterial");
+
     for (auto [_, i] : std::views::take(lightShadowOrder, max_shadow_lights)) {
         VkViewport shadowViewport{};
         shadowViewport.x = shadowSize.height * lightBuffer[i].shadow_map;
@@ -1207,13 +1214,14 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
 
         vkCmdPushConstants(
             commandBuffer,
-            internal_resources.srsh_mg.get(shadowShader_h).pipeline.layout,
+            internal_resources.srsh_mg.get(shadowMaterial.getShaderHandle())
+                .pipeline.layout,
             VK_SHADER_STAGE_VERTEX_BIT, sizeof(PerObjectPushConstant),
             sizeof(int), &i);
 
         recordDrawScene(commandBuffer, shadowViewport, shadowScisors,
                         imageIndex, active_scene_data.scene->root,
-                        shadowMaterial_h);
+                        shadowMaterial.getHandle());
         /*recordDraw3DOverlays(commandBuffer, shadowViewport, shadowScisors,
                              imageIndex, active_scene_data.scene->root,
                              shadowMaterial_h);*/
@@ -1395,7 +1403,7 @@ void SceneRenderer::drawFrame() {
             throw std::runtime_error("failed to recreate swapchain image!");
         }
 
-        Scene* scene = active_scene_data.scene;
+        auto scene = active_scene_data.scene;
 
         const auto& modified = active_scene_data.dep_tree->getModified();
 

@@ -6,6 +6,7 @@
 #include <set>
 #include <stdexcept>
 
+#include "shaderUtils.hpp"
 #include "vk_utils/vkDevice.hh"
 #include "vk_utils/vkInstance.hh"
 #include "vk_utils/vkSwapChain.h"
@@ -114,6 +115,9 @@ inline RendererContext glfwCreateRendererContext(
     vkDevice device = createDevice(physicalDevice, deviceExtensions, surface);
     context.device = device;
     glfwGetFramebufferSize(window, &context.width, &context.height);
+
+    initShaderCompiler();
+    
     return context;
 }
 }  // namespace gbg

@@ -1,5 +1,5 @@
-
 import global_resources;
+module lighting_lib;
 
 public struct Light {
     public float3 color;
@@ -11,11 +11,13 @@ public struct Light {
     public int type;
 };
 
-[[vk_binding(0, 2)]]
+[[vk::binding(2, 0)]]
 public StructuredBuffer<Light> lights;
 
-[[vk_binding(0, 2)]]
+[[vk::binding(0, 2)]]
 uniform DepthTexture2D _shadow_map;
+
+[[vk::binding(1, 2)]]
 uniform SamplerComparisonState _shadow_sampler;
 
 float2 rotate2D(float2 vec, float angle) {
@@ -36,7 +38,7 @@ static const float2 sample_pattern[] = {
 };
 
 public float computeSoftShadow(Light light, float3 w_pos, float4 cam_pos,
-                        float max_width, float3 w_n) {
+                               float max_width, float3 w_n) {
     float3 L = normalize(light.position - w_pos);
     float2 coords = cam_pos.xy;
     coords += 1.;
@@ -78,8 +80,8 @@ public float computeSoftShadow(Light light, float3 w_pos, float4 cam_pos,
     return shadow;
 }
 
-public float computeShadow(Light light, float3 w_pos, float4 cam_pos, float max_width,
-                    float3 w_n) {
+public float computeShadow(Light light, float3 w_pos, float4 cam_pos,
+                           float max_width, float3 w_n) {
     float3 L = normalize(light.position - w_pos);
     float2 coords = cam_pos.xy;
     coords += 1.;
@@ -104,7 +106,8 @@ public float computeShadow(Light light, float3 w_pos, float4 cam_pos, float max_
     return shadow;
 }
 
-public float3 spotLight(Light light, float3 w_pos, float3 w_n, float max_width) {
+public float3 spotLight(Light light, float3 w_pos, float3 w_n,
+                        float max_width) {
     // compute position from lights perspective
     float3 L = light.position - w_pos;
     float4 cam_pos = mul(light.proj, float4(w_pos, 1.0f));
@@ -121,9 +124,10 @@ public float3 spotLight(Light light, float3 w_pos, float3 w_n, float max_width) 
     return light.color * bright;
 }
 
-public float3 dirLight(Light light, int i, float3 w_pos, float3 w_n, float max_width) {
+public float3 dirLight(Light light, int i, float3 w_pos, float3 w_n,
+                       float max_width) {
     float4 v_pos = mul(ubo.view, float4(w_pos, 1.0f));
-    
+
     // light.position in directional lights means (znear, zfar, _)
     float z_p =
         ((-v_pos.z) - light.position.x) / (light.position.y - light.position.x);

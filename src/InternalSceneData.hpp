@@ -13,8 +13,8 @@ struct InternalSceneData {
     srTextureManager srtx_mg;
     srMeshManager srmsh_mg;
 
-    Scene* scene;
-
-    DependencyTreeManager* dep_tree;
+    std::shared_ptr<Scene> scene = nullptr;
+    std::shared_ptr<DependencyTreeManager> dep_tree = nullptr;
+    std::shared_ptr<FileManager> file_m = nullptr;
 };
 }  // namespace gbg

@@ -13,11 +13,9 @@
 #include "materialPanel.hpp"
 #include "resourcesUpdate.hpp"
 #include "sceneObjectPanel.hpp"
-#include "shaderReflexion.hpp"
 #define GLFW_INCLUDE_VULKAN
 #include "AppData.hpp"
 #include "GLFW/glfw3.h"
-#include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
@@ -58,7 +56,7 @@ int main(int argc, char* argv[]) {
 
     std::setlocale(LC_NUMERIC, "C");
 
-    app.renderer.setScene(&app.scene, &app.dep_tree);
+    app.renderer.setScene(app.scene, app.dep_tree);
 
     double time = glfwGetTime();
 
@@ -93,15 +91,15 @@ int main(int argc, char* argv[]) {
 
             if (ImGui::BeginTabBar("Properties")) {
                 if (ImGui::BeginTabItem("Scene Objects")) {
-                    for (auto& sn : app.scene.st_mg) {
-                        drawSceneObjectPanel(app.scene, sn);
+                    for (auto& sn : app.scene->st_mg) {
+                        drawSceneObjectPanel(*app.scene, sn);
                     }
                     ImGui::EndTabItem();
                 }
 
                 if (ImGui::BeginTabItem("Materials")) {
                     int i = 0;
-                    for (auto& mat : app.scene.mat_mg) {
+                    for (auto& mat : app.scene->mat_mg) {
                         drawMaterialPanel(app, mat);
                         i++;
                     }
@@ -120,28 +118,22 @@ int main(int argc, char* argv[]) {
         }
 
         // update
-        for (auto h : app.dep_tree.getModified()) {
-            auto& n = app.dep_tree.get(h);
+        for (auto h : app.dep_tree->getModified()) {
+            auto& n = app.dep_tree->get(h);
             if (n.type == gbg::ResourceTypes::SHADER &&
                 (n.flags & gbg::SObjFlags::CODE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
-                gbg::Shader& sh = app.scene.sh_mg.get(n.represented.getRID());
-                auto& vert_f =
-                    app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::VERTEX));
-                auto& frag_f =
-                    app.file_m.get(sh.getCodeFile(gbg::ShaderTypes::FRAGMENT));
-                auto res = gbg::setGlslShaderCode(sh, vert_f);
-                if (res) std::cout << res.value() << std::endl;
-                res = gbg::setGlslShaderCode(sh, frag_f);
-                if (res) std::cout << res.value() << std::endl;
-                gbg::reflectShader(sh);
+                gbg::Shader& sh = app.scene->sh_mg.get(n.represented.getRID());
+                auto res = gbg::compileShader(app.file_m, sh);
+                std::cout << res.value() << std::endl;
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
                 (n.flags & gbg::SObjFlags::PARAMETER_INTERFACE_M ||
                  n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Material& mat =
-                    app.scene.mat_mg.get(n.represented.getRID());
-                gbg::setParametersFromShader(app.scene, mat);
+                    app.scene->mat_mg.get(n.represented.getRID());
+                gbg::Shader& sh = app.scene->sh_mg.get(mat.getShaderHandle());
+                gbg::setParametersFromShader(sh, mat);
             }
         }
 
@@ -151,7 +143,7 @@ int main(int argc, char* argv[]) {
         app.renderer.drawFrame();
 
         // clear
-        app.dep_tree.clearModified();
+        app.dep_tree->clearModified();
 
         FrameMark;
 

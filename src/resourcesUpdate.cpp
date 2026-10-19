@@ -14,6 +14,7 @@
 #include "Mesh.hpp"
 #include "PerObjectPushConstant.hpp"
 #include "Shader.hpp"
+#include "gbg_traits.hpp"
 #include "geoc/frustum_utils.hpp"
 #include "srMaterial.hpp"
 #include "vk_utils/vkBuffer.hh"
@@ -49,13 +50,14 @@ void createShaderVkResources(
         materialBindings.push_back(matParmsLayoutBinding);
     }
 
-    auto texFilter = [](ParameterTypes p) {
-        return p == ParameterTypes::TEXTURE;
+    auto texFilter = [](const ShaderParameter& p) {
+        return p.default_value.index() ==
+               to_underlying(ParameterTypes::TEXTURE);
     };
 
     // creates a binding for each texture
     int textureCount = 0;
-    for (ParameterTypes p :
+    for (const auto& p :
          shader.getParameters() | std::ranges::views::filter(texFilter)) {
         textureCount++;
     }
@@ -107,9 +109,12 @@ void createShaderVkResources(
         attributeDescriptions.push_back(desc.attrib_desc);
     }
 
+    ShaderTypes type=  ShaderTypes::COMBINED;
+    if(shader.getCode(ShaderTypes::COMBINED).empty())
+        type = ShaderTypes::VERTEX;
+
     sr_sh.pipeline = createGraphicsPipeline(
-        device, shader.getCode(ShaderTypes::VERTEX),
-        shader.getCode(ShaderTypes::FRAGMENT), rendererDescriptorSetLayouts,
+        device, shader.getCode(ShaderTypes::VERTEX), ShaderTypes::VERTEX, rendererDescriptorSetLayouts,
         bindingDescriptions, attributeDescriptions, push_constant_ranges,
         renderPass.samples, renderPass.renderPass, sr_sh.topology);
 }
@@ -194,7 +199,7 @@ void createMeshVkResources(vkDevice device, MeshHandle mesh_h,
 
 void updateMesh(vkDevice device, MeshHandle mesh_h,
                 InternalSceneData& scene_data) {
-    Scene* scene = scene_data.scene;
+    auto scene = scene_data.scene;
     auto& mesh = scene->ms_mg.get(mesh_h);
 
     DependencyMask flags = scene_data.dep_tree->get(mesh.representative).flags;
@@ -444,7 +449,7 @@ void updateTexture(vkDevice device, TextureHandle h,
 void updateCamera(vkDevice device, CameraHandle h,
                   InternalSceneData& scene_data,
                   InternalSceneData& internal_res, float aspect) {
-    gbg::Scene* isc = internal_res.scene;
+    auto isc = internal_res.scene;
     if (h != scene_data.scene->getActiveCamera().getHandle()) return;
 
     gbg::Camera& cm = scene_data.scene->getActiveCamera();
@@ -459,9 +464,10 @@ void updateCamera(vkDevice device, CameraHandle h,
         auto frustum = gbg::getFrustumVolume(glm::radians(cm.fov), aspect,
                                              cm.znear, cm.zfar);
 
-        auto cm_t = scene_data.scene->st_mg.getGlobalTransform(scene_data.scene->active_camera);
+        auto cm_t = scene_data.scene->st_mg.getGlobalTransform(
+            scene_data.scene->active_camera);
 
-        for(auto& pt : frustum) {
+        for (auto& pt : frustum) {
             pt = cm_t * glm::vec4(pt, 1.f);
         }
 
