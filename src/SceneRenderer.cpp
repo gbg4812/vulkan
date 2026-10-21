@@ -37,6 +37,7 @@
 #include "glm/geometric.hpp"
 #include "glm/glm.hpp"
 #include "glm/gtc/matrix_transform.hpp"
+#include "glm/matrix.hpp"
 #include "imgui.h"
 #include "loadRendererResources.hpp"
 #include "resourcesUpdate.hpp"
@@ -164,13 +165,17 @@ void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
                 // vulkan expects the y cordinate to point downwards so we
                 // invert-it
                 vklight.proj[1][1] *= -1;
-
                 vklight.proj =
                     vklight.proj * glm::inverse(accumulated_transform);
+                
+                // slang row-major fix
+                //vklight.proj = glm::transpose(vklight.proj);
+                
                 lightBuffer.push_back(vklight);
                 lightShadowOrder.push_back(
                     {glm::length(vklight.position - glm::vec3(cam_t[3])),
                      lightBuffer.size() - 1});
+                
             } else if (light.type == LightType::DIRECTIONAL) {
                 auto lights = gbg::computeDirectionalLights(
                     light, 4, active_scene_data.scene->getActiveCamera(), cam_t,
@@ -599,7 +604,7 @@ void SceneRenderer::createShadowResources() {
     // create shader which will be used in the shadow pass for all objects
     auto& shadowShader = internal_resources.scene->sh_mg.create("ShadowShader");
     auto& shad_file = internal_resources.file_m->create(CONTENTS_DIR "shaders/slang/shadow.slang");
-    shadowShader.addCodeFile(shad_file.getHandle(), ShaderTypes::VERTEX);
+    shadowShader.appendCodeFile(shad_file.getHandle());
     auto res = compileShader(*internal_resources.file_m, shadowShader);
     if (not res) {
         std::cout << res.error();
@@ -1354,13 +1359,19 @@ void SceneRenderer::updateGlobalDescriptorSets() {
     auto cam_t =
         st_mg.getGlobalTransform(active_scene_data.scene->active_camera);
     auto& cam = active_scene_data.scene->getActiveCamera();
+    
+    // slang row-major fix
     ubo.view = glm::inverse(cam_t);
+    
     ubo.proj =
         glm::perspective(glm::radians(cam.fov),
                          swapChain.swapChainImageExtent.width /
                              (float)swapChain.swapChainImageExtent.height,
                          cam.znear, cam.zfar);
     ubo.proj[1][1] *= -1;
+    
+    // slang row-major fix
+    ubo.proj = ubo.proj;
 
     ubo.time = time;
     ubo.obs = cam_t[3];
@@ -1421,7 +1432,7 @@ void SceneRenderer::drawFrame() {
                     updateShader(
                         device, n.represented.getRID(), active_scene_data,
                         renderPasses.at("color"),
-                        {globalDescriptorSetLayout, shadowDescriptorSetLayout});
+                        {globalDescriptorSetLayout , shadowDescriptorSetLayout});
                     std::cout << "Updating shader::" << n.represented.getRID()
                               << std::endl;
                     break;

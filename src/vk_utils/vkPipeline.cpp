@@ -59,9 +59,9 @@ VkShaderModule createShaderModule(const vkDevice& device,
     return shaderModule;
 }
 
+// pull out shader module creation
 vkPipeline createGraphicsPipeline(
-    const vkDevice& device, const std::vector<uint32_t>& shaderByteCode,
-    ShaderTypes type,
+    const vkDevice& device, const std::vector<vkShaderStage>& shaderStages,
     const std::vector<VkDescriptorSetLayout>& desc_sets_layouts,
     const std::vector<VkVertexInputBindingDescription>& binding_desc,
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
@@ -70,27 +70,17 @@ vkPipeline createGraphicsPipeline(
     VkPrimitiveTopology topology) {
     vkPipeline pipeline{};
 
-    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-
-    if (not shaderByteCode.empty()) {
-        VkShaderModule shaderModule =
-            createShaderModule(device, shaderByteCode);
-        VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
-        vertShaderStageInfo.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertShaderStageInfo.module = shaderModule;
-        vertShaderStageInfo.pName = "mainVertex";
-        shaderStages.push_back(vertShaderStageInfo);
-        if (type == ShaderTypes::COMBINED) {
-            VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
-            fragShaderStageInfo.sType =
-                VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-            fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-            fragShaderStageInfo.module = shaderModule;
-            fragShaderStageInfo.pName = "mainPixel";
-            shaderStages.push_back(fragShaderStageInfo);
-        }
+    std::vector<VkPipelineShaderStageCreateInfo> vk_shaderStages;
+    for (const auto& stage : shaderStages) {
+        VkPipelineShaderStageCreateInfo vk_stage{};
+        vk_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        vk_stage.stage = stage.stage;
+        vk_stage.module = stage.module;
+        if (stage.stage == VK_SHADER_STAGE_VERTEX_BIT)
+            vk_stage.pName = "mainVertex";
+        else if (stage.stage == VK_SHADER_STAGE_FRAGMENT_BIT)
+            vk_stage.pName = "mainPixel";
+        vk_shaderStages.push_back(vk_stage);
     }
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
@@ -214,8 +204,8 @@ vkPipeline createGraphicsPipeline(
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.stageCount = shaderStages.size();
-    pipelineInfo.pStages = shaderStages.data();
+    pipelineInfo.stageCount = vk_shaderStages.size();
+    pipelineInfo.pStages = vk_shaderStages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
     pipelineInfo.pViewportState = &viewportInfo;
@@ -236,10 +226,6 @@ vkPipeline createGraphicsPipeline(
                                   &pipelineInfo, nullptr,
                                   &pipeline.pipeline) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
-    }
-
-    for (auto stage : shaderStages) {
-        vkDestroyShaderModule(device.ldevice, stage.module, nullptr);
     }
 
     return pipeline;

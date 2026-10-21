@@ -13,14 +13,13 @@ public struct VSOut {
     float3 w_n;
     float2 tex_coord;
     float3 w_pos;
-    float3x3 w_TBN;
+    float3 w_bitangent;
     float3 w_tangent;
 }
 
 struct MatParms {
-    float3 color = {0.1, 0.4, 0.3};
+    float3 color = { 0.1, 0.4, 0.3 };
     float ambient_i = 0.01;
-    float max_width = 5;
 }
 
 // here you can add as many as you want
@@ -32,7 +31,7 @@ ConstantBuffer<MatParms> mat;
 // Texture2D _texture[2];
 
 [shader("vertex")]
-VSOut mainVertex(VSIn vs_in, uniform float4x4 model) : VSOUT {
+VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {
     float3 N = normalize(mul(model, float4(vs_in.inNormal, 0.0f)).xyz);
     float3 T = normalize(mul(model, float4(vs_in.inTangent, 0.0f)).xyz);
 
@@ -40,7 +39,7 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) : VSOUT {
     float3 B = normalize(cross(N, T));
 
     VSOut vs_out;
-    vs_out.w_TBN = float3x3(T, B, N);
+    vs_out.w_bitangent = B;
 
     vs_out.w_pos = mul(model, float4(vs_in.inPosition, 1.0f)).xyz;
     vs_out.tex_coord = vs_in.inTexCoord;
@@ -54,7 +53,7 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) : VSOUT {
 }
 
 [shader("pixel")]
-float4 mainPixel(VSOut fs_in: VSOUT) : SV_Target0 {
+float4 mainPixel(VSOut fs_in) : SV_Target0 {
     float3 lcolor = mat.color * mat.ambient_i;
 
     float3 w_n = normalize(fs_in.w_n);
@@ -64,10 +63,10 @@ float4 mainPixel(VSOut fs_in: VSOUT) : SV_Target0 {
         if (light.type == 0) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
             lcolor += mat.color * diffuse(w_l, w_n) *
-                      spotLight(light, fs_in.w_pos, w_n, mat.max_width);
+                      spotLight(light, fs_in.w_pos, w_n, 5);
         } else if (light.type == 1) {
             lcolor += mat.color * diffuse(normalize(-light.direction), w_n) *
-                      dirLight(light, i, fs_in.w_pos, w_n, mat.max_width);
+                      dirLight(light, i, fs_in.w_pos, w_n, 5);
             i += 3;
         }
     }

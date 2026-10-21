@@ -44,7 +44,7 @@ struct AppData {
         auto watch_res =
             file_w.createFile("./data/shaders/slang/default.slang");
         if (watch_res) {
-            sh.addCodeFile(watch_res.value(), gbg::ShaderTypes::COMBINED);
+            sh.appendCodeFile(watch_res.value());
             auto compile_res = gbg::compileShader(file_m, sh);
             if (not compile_res) {
                 throw std::runtime_error(compile_res.error());
@@ -55,6 +55,8 @@ struct AppData {
                               gbg::SObjFlags::CODE_M,
                               file_m.get(watch_res.value()).representative,
                               FileFlags::FILE_M);
+        } else {
+            std::cout << watch_res.error() << std::endl;
         }
 
         // Material Creation
@@ -97,7 +99,7 @@ struct AppData {
         // Light
         auto& lh = scene->lh_mg.create("Light");
         scene->defaults.light = lh.getHandle();
-        lh.type = gbg::LightType::DIRECTIONAL;
+        lh.type = gbg::LightType::SPOT;
         lh.intensity = 1.0f;
         gbg::SceneTreeNode& lh_n = st_mg.create("DefaultLigth");
         lh_n.setResource(scene->defaults.light);

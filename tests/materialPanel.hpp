@@ -198,7 +198,7 @@ inline void drawShaderPannel(AppData& app) {
                 auto res =
                     app.file_w.createFile(pt.native())
                         .and_then([&](gbg::FileHandle file_h) {
-                            sh.addCodeFile(file_h, gbg::ShaderTypes::COMBINED);
+                            sh.appendCodeFile(file_h);
                             return gbg::compileShader(app.file_m, sh);
                         });
                 if (res) {

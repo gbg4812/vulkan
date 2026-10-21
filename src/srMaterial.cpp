@@ -6,8 +6,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <variant>
 
 #include "ParameterTypes.hpp"
+#include "glm/fwd.hpp"
 #include "traits/traits.hpp"
 #include "vk_utils/vkBuffer.hh"
 namespace gbg {

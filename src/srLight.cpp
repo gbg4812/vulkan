@@ -1,6 +1,5 @@
 #include "srLight.hpp"
 
-#include <print>
 #include <utility>
 
 #include "Light.hpp"
@@ -48,6 +47,8 @@ std::vector<vkLight> computeDirectionalLights(const Light& light, size_t N,
                                       bbox.first.y + side_size, bbox.first.y,
                                       -bbox.second.z, -bbox.first.z) *
                       glm::mat4(glm::mat3(light_view));
+        // slang row-major fix
+        res[i].proj = res[i].proj;
     }
 
     return res;

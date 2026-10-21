@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <print>
+#include <queue>
 #include <ranges>
 
 #include "Camera.hpp"
@@ -20,6 +21,7 @@
 #include "vk_utils/vkBuffer.hh"
 #include "vk_utils/vkCommandBuffer.hh"
 #include "vk_utils/vkImage.hh"
+#include "vk_utils/vkPipeline.hh"
 
 namespace gbg {
 
@@ -109,14 +111,34 @@ void createShaderVkResources(
         attributeDescriptions.push_back(desc.attrib_desc);
     }
 
-    ShaderTypes type=  ShaderTypes::COMBINED;
-    if(shader.getCode(ShaderTypes::COMBINED).empty())
-        type = ShaderTypes::VERTEX;
+    std::vector<vkShaderStage> stages;
+    std::list<VkShaderModule> destroyModuleQueue;
+    for (const auto& code : shader.getCodes()) {
+        VkShaderModule module = createShaderModule(device, code.code);
+        destroyModuleQueue.push_back(module);
+
+        if ((code.flags & ShaderTypeFlags::SHADER_TYPE_VERTEX) !=
+            ShaderTypeFlags::NONE) {
+            vkShaderStage stage = {.module = module,
+                                   .stage = VK_SHADER_STAGE_VERTEX_BIT};
+            stages.push_back(stage);
+        }
+        if ((code.flags & ShaderTypeFlags::SHADER_TYPE_FRAGMENT) !=
+            ShaderTypeFlags::NONE) {
+            vkShaderStage stage = {.module = module,
+                                   .stage = VK_SHADER_STAGE_FRAGMENT_BIT};
+            stages.push_back(stage);
+        }
+    }
 
     sr_sh.pipeline = createGraphicsPipeline(
-        device, shader.getCode(ShaderTypes::VERTEX), ShaderTypes::VERTEX, rendererDescriptorSetLayouts,
-        bindingDescriptions, attributeDescriptions, push_constant_ranges,
-        renderPass.samples, renderPass.renderPass, sr_sh.topology);
+        device, stages, rendererDescriptorSetLayouts, bindingDescriptions,
+        attributeDescriptions, push_constant_ranges, renderPass.samples,
+        renderPass.renderPass, sr_sh.topology);
+
+    for(auto module : destroyModuleQueue) {
+        vkDestroyShaderModule(device.ldevice, module, nullptr);
+    }
 }
 
 void updateShader(

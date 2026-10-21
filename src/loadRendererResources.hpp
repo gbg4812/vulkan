@@ -33,7 +33,8 @@ inline void loadRendererResources(
         CONTENTS_DIR "/shaders/slang/plain_color.slang");
 
     col_sh.topology = PrimitiveInterpretation::LINES;
-    col_sh.addCodeFile(col_sh_f.getHandle(), ShaderTypes::COMBINED);
+    col_sh.appendCodeFile(col_sh_f.getHandle());
+    col_sh.shadow = false;
 
     auto res = compileShader(*internal_resources.file_m, col_sh);
     if (not res) {
@@ -56,7 +57,6 @@ inline void loadRendererResources(
         createMeshVkResources(device, msh.getHandle(), internal_resources);
     }
 
-    col_sh.shadow = false;
 
     VkPushConstantRange pushConstants{};
     pushConstants.offset = 0;

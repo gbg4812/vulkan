@@ -1,8 +1,8 @@
 {
     "rdocCaptureSettings": 1,
     "settings": {
-        "autoStart": false,
-        "commandLine": "",
+        "autoStart": true,
+        "commandLine": "./data/models/EasyModels/scene.obj",
         "environment": [
         ],
         "executable": "/home/guillem/Projects/vulkan/build-debug/app",
@@ -23,6 +23,6 @@
             "verifyBufferAccess": false
         },
         "queuedFrameCap": 0,
-        "workingDir": ""
+        "workingDir": "/home/guillem/Projects/vulkan/tests"
     }
 }

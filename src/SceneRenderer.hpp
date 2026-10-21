@@ -142,7 +142,7 @@ class SceneRenderer {
 
     VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_4_BIT;
     // debug
-    bool draw_camera_frustum = true;
+    bool draw_camera_frustum = false;
 
    private:
     void initVulkan();

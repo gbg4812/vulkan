@@ -5,7 +5,7 @@
   {
     "label": "Run Renderdoc",
     "command": "qrenderdoc",
-    "args": ["./tools/capture-app.cap"],
+    "args": ["$ZED_WORKTREE_ROOT/tools/capture-app.cap"],
     "use_new_terminal": false,
     "allow_concurrent_runs": false,
     "reveal": "no_focus",

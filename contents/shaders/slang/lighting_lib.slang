@@ -11,13 +11,13 @@ public struct Light {
     public int type;
 };
 
-[[vk::binding(2, 0)]]
-public StructuredBuffer<Light> lights;
+[vk_binding(2, 0)]
+public StructuredBuffer<Light, Std430DataLayout> lights;
 
-[[vk::binding(0, 2)]]
+[vk_binding(0, 2)]
 uniform DepthTexture2D _shadow_map;
 
-[[vk::binding(1, 2)]]
+[vk_binding(1, 2)]
 uniform SamplerComparisonState _shadow_sampler;
 
 float2 rotate2D(float2 vec, float angle) {
