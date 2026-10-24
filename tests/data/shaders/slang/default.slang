@@ -20,15 +20,11 @@ public struct VSOut {
 struct MatParms {
     float3 color = { 0.1, 0.4, 0.3 };
     float ambient_i = 0.01;
-}
+};
 
 // here you can add as many as you want
 [vk_binding(0, 1)]
 ConstantBuffer<MatParms> mat;
-
-// here you declare the textures you need
-//[vk_binding(1, 1)]
-// Texture2D _texture[2];
 
 [shader("vertex")]
 VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {

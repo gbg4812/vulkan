@@ -1,5 +1,4 @@
 #pragma once
-#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -9,14 +8,13 @@
 
 #include "AppData.hpp"
 #include "DependencyTreeFunctions.hpp"
-#include "Resource.hpp"
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "extras/File.hpp"
 #include "imgui.h"
-#include "io_utils/watcher.hpp"
+#include "loadRendererResources.hpp"
 #include "loaders/texLoader.hpp"
 #include "nfd.h"
 #include "resourcesUpdate.hpp"
@@ -24,15 +22,20 @@
 inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
     gbg::Scene& sc = *app.scene;
     ImGui::PushID(mat.getRID());
+    gbg::Shader& shader = sc.sh_mg.get(mat.getShaderHandle());
     if (ImGui::CollapsingHeader(mat.getName().c_str())) {
-        for (auto [num, value] : mat.getValues() | std::views::enumerate) {
+        for (const auto& element :
+             std::views::zip(shader.getParameters(), mat.getValues(),
+                             std::views::iota(0))) {
+            std::string name = std::get<0>(element).name;
+            auto& value = std::get<1>(element);
+            int num = std::get<2>(element);
+            ImGui::PushID(num);
             if (const gbg::TextureHandle* h =
-                    std::get_if<gbg::TextureHandle>(&value)) {
+                    std::get_if<gbg::TextureHandle>(&std::get<1>(element))) {
                 gbg::TextureHandle tx_h = *h ? *h : sc.defaults.texture;
                 auto& tex = sc.tx_mg.get(tx_h);
-                if (ImGui::BeginCombo(
-                        ("Texture" + std::to_string(num - 1)).c_str(),
-                        tex.getName().c_str())) {
+                if (ImGui::BeginCombo(name.c_str(), tex.getName().c_str())) {
                     // for every texture
                     for (auto& tex2 : sc.tx_mg) {
                         if (ImGui::Selectable(tex2.getName().c_str())) {
@@ -53,39 +56,34 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
 
             } else if (const glm::vec3* vec = std::get_if<glm::vec3>(&value)) {
                 glm::vec3 col = *vec;
-                if (ImGui::ColorPicker3(
-                        ("Parameter" + std::to_string(num)).c_str(),
-                        (float*)&col)) {
+                if (ImGui::ColorPicker3(name.c_str(), (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC3>(num, col);
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const glm::vec2* vec = std::get_if<glm::vec2>(&value)) {
                 glm::vec2 col = *vec;
-                if (ImGui::InputFloat2(
-                        ("Parameter" + std::to_string(num)).c_str(),
-                        (float*)&col)) {
+                if (ImGui::InputFloat2(name.c_str(), (float*)&col)) {
                     mat.setParameterValue<gbg::ParameterTypes::VEC2>(num, col);
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const float* val = std::get_if<float>(&value)) {
                 float f = *val;
-                if (ImGui::InputFloat(
-                        ("Parameter" + std::to_string(num)).c_str(), &f)) {
+                if (ImGui::InputFloat(name.c_str(), &f)) {
                     mat.setParameterValue<gbg::ParameterTypes::FLOAT>(num, f);
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             } else if (const int* val = std::get_if<int32_t>(&value)) {
                 int i = *val;
-                if (ImGui::InputInt(("Parameter" + std::to_string(num)).c_str(),
-                                    &i)) {
+                if (ImGui::InputInt(name.c_str(), &i)) {
                     mat.setParameterValue<gbg::ParameterTypes::INT>(num, i);
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
             }
+            ImGui::PopID();
         }
 
         static bool raw = false;
@@ -153,13 +151,25 @@ inline void drawShaderPannel(AppData& app) {
         }
     }
 
-    if (ImGui::Button("New Shader")) {
+    if (ImGui::Button("Import Shader")) {
         nfdopendialognargs_t args = {0};
         nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
         if (res == NFD_OKAY) {
             if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
             NFD_FreePathU8(outpath);
             ImGui::OpenPopup("Load Shader");
+        }
+    }
+
+    if (ImGui::Button("Create Shader")) {
+        nfdsavedialogu8args_t args = {0};
+        args.defaultPath = "./data/shaders/slang/";
+        nfdresult_t res = NFD_SaveDialogU8_With(&outpath, &args);
+        if (res == NFD_OKAY) {
+            if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
+            NFD_FreePathU8(outpath);
+            auto pt = std::filesystem::path(buff);
+            std::filesystem::copy("./data/shaders/slang/default.slang", pt);
         }
     }
 
@@ -195,12 +205,16 @@ inline void drawShaderPannel(AppData& app) {
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res =
-                    app.file_w.createFile(pt.native())
-                        .and_then([&](gbg::FileHandle file_h) {
-                            sh.appendCodeFile(file_h);
-                            return gbg::compileShader(app.file_m, sh);
-                        });
+                auto res = app.file_w.createFile(pt.native())
+                               .and_then([&](gbg::FileHandle file_h) {
+                                   sh.appendCodeFile(file_h);
+                                   gbg::setDependent(
+                                       *app.dep_tree, sh.representative,
+                                       gbg::SObjFlags::CODE_M,
+                                       app.file_m.get(file_h).representative,
+                                       FileFlags::FILE_M);
+                                   return gbg::compileShader(app.file_m, sh);
+                               });
                 if (res) {
                     std::cout << res.value() << std::endl;
                 } else {

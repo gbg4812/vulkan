@@ -1,5 +1,5 @@
-import global_resources;
 module lighting_lib;
+import global_resources;
 
 public struct Light {
     public float3 color;

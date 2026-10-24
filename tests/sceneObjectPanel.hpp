@@ -7,7 +7,7 @@
 #include "traits/traits.hpp"
 
 inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
-    ImGui::PushID(sn.getName().c_str());
+    ImGui::PushID(sn.getRID());
     if (ImGui::CollapsingHeader(sn.getName().c_str())) {
         ImGui::InputFloat3("Translation", (float*)&sn.translation);
         ImGui::InputFloat3("Rotation", (float*)&sn.rotation);
@@ -22,10 +22,10 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                                               .getName()
                                               .c_str())) {
                         for (auto& mt : sc.mat_mg) {
-                            bool selected = model.getMaterial() == mt.getHandle();
-                            if (ImGui::Selectable(
-                                    mt.getName().c_str(),
-                                    selected)) {
+                            bool selected =
+                                model.getMaterial() == mt.getHandle();
+                            if (ImGui::Selectable(mt.getName().c_str(),
+                                                  selected)) {
                                 model.setMaterial(mt.getHandle());
                             }
                         }
@@ -33,16 +33,16 @@ inline void drawSceneObjectPanel(gbg::Scene& sc, gbg::SceneTreeNode& sn) {
                     }
                 },
                 [&](gbg::LightHandle handle) {
-                    
                     gbg::Light& light = sc.lh_mg.get(handle);
                     ImGui::ColorPicker3("Light Color", (float*)&light.color);
-                    ImGui::SliderFloat("Intensity",(float*)&light.intensity, 0, 20);
-                    ImGui::SliderFloat("FOV",(float*)&light.fov, 0, 180);
-                    
+                    ImGui::SliderFloat("Intensity", (float*)&light.intensity, 0,
+                                       20);
+                    ImGui::SliderFloat("FOV", (float*)&light.fov, 0, 180);
+
                     auto name = gbg::light_tToStr.at(light.type);
-                    if(ImGui::BeginCombo("Type", name.data())) {
-                        for(auto [key, value] : gbg::light_tToStr) {
-                            if(ImGui::Selectable(value.data())) {
+                    if (ImGui::BeginCombo("Type", name.data())) {
+                        for (auto [key, value] : gbg::light_tToStr) {
+                            if (ImGui::Selectable(value.data())) {
                                 light.type = key;
                             }
                         }

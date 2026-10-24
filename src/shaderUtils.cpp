@@ -37,7 +37,6 @@ Slang::ComPtr<slang::ISession> createSession(const char* shader_dir) {
     entries[2].value = {slang::CompilerOptionValueKind::Int, 1, 0, nullptr,
                         nullptr};
 
-
     desc.compilerOptionEntries = entries.data();
     desc.compilerOptionEntryCount = entries.size();
 
@@ -61,23 +60,19 @@ void reflectParameters(Shader& shader,
                        slang::TypeLayoutReflection* scopeTypeLayout) {
     switch (scopeTypeLayout->getKind()) {
         case slang::TypeReflection::Kind::Struct: {
-            std::println("parameters: ");
             int paramCount = scopeTypeLayout->getFieldCount();
             for (int i = 0; i < paramCount; i++) {
                 slang::VariableLayoutReflection* fieldVarLayout =
                     scopeTypeLayout->getFieldByIndex(i);
-                std::println("{}", fieldVarLayout->getName());
                 if (std::strcmp(fieldVarLayout->getName(), "mat") == 0) {
                     auto matTypeLayout =
                         fieldVarLayout->getTypeLayout()->getElementTypeLayout();
-                    std::println("{}", matTypeLayout->getType()->getName());
 
                     for (int j = 0; j < matTypeLayout->getFieldCount(); j++) {
                         slang::VariableLayoutReflection* matFieldLayout =
                             matTypeLayout->getFieldByIndex(j);
                         auto matFieldTypeLayout =
                             matFieldLayout->getTypeLayout();
-                        std::println("{}", matFieldLayout->getName());
                         ISlangBlob* blob;
                         matFieldLayout->getVariable()->getDefaultValueBlob(
                             &blob);
@@ -120,7 +115,9 @@ void reflectParameters(Shader& shader,
                                 if ((matFieldTypeLayout->getResourceShape() &
                                      SLANG_RESOURCE_BASE_SHAPE_MASK) ==
                                     SLANG_TEXTURE_2D) {
-                                    shader.addParameter(TextureHandle());
+                                    auto offset = matFieldLayout->getOffset(
+                                        matFieldLayout->getCategory());
+                                    shader.addParameter(TextureHandle(), name);
                                 }
                             } break;
                         }
@@ -265,9 +262,9 @@ std::expected<std::string, std::string> compileShader(FileManager& f_m,
     slang::EntryPointReflection* fg_entry_pt =
         layout->findEntryPointByName("mainPixel");
     if (fg_entry_pt) {
-      reflectParameters(shader, scopeTypeLayout);  
-      shader.setCodeTypeFlags(0, ShaderTypeFlags::SHADER_TYPE_FRAGMENT);
-    } 
+        reflectParameters(shader, scopeTypeLayout);
+        shader.setCodeTypeFlags(0, ShaderTypeFlags::SHADER_TYPE_FRAGMENT);
+    }
 
     return diagnostics;
 }

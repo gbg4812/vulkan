@@ -125,7 +125,10 @@ int main(int argc, char* argv[]) {
                  n.flags & gbg::SObjFlags::NEW)) {
                 gbg::Shader& sh = app.scene->sh_mg.get(n.represented.getRID());
                 auto res = gbg::compileShader(app.file_m, sh);
-                std::cout << res.value() << std::endl;
+                if (res)
+                    std::cout << res.value() << std::endl;
+                else
+                    std::cout << res.error() << std::endl;
             }
             if (n.type == gbg::ResourceTypes::MATERIAL &&
                 (n.flags & gbg::SObjFlags::PARAMETER_INTERFACE_M ||

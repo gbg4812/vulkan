@@ -58,19 +58,15 @@ void createShaderVkResources(
     };
 
     // creates a binding for each texture
-    int textureCount = 0;
-    for (const auto& p :
-         shader.getParameters() | std::ranges::views::filter(texFilter)) {
-        textureCount++;
-    }
-
-    if (textureCount) {
+    for (const auto& [idx, p] : shader.getParameters() |
+                                    std::ranges::views::filter(texFilter) |
+                                    std::ranges::views::enumerate) {
         VkDescriptorSetLayoutBinding texBinding{};
-        texBinding.binding = 1;
+        texBinding.binding = idx + 1;
         texBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         texBinding.stageFlags =
-            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        texBinding.descriptorCount = textureCount;
+            VK_SHADER_STAGE_FRAGMENT_BIT;  // consider vertex maybe some time
+        texBinding.descriptorCount = 1;
         texBinding.pImmutableSamplers = nullptr;
         materialBindings.push_back(texBinding);
     }
@@ -136,7 +132,7 @@ void createShaderVkResources(
         attributeDescriptions, push_constant_ranges, renderPass.samples,
         renderPass.renderPass, sr_sh.topology);
 
-    for(auto module : destroyModuleQueue) {
+    for (auto module : destroyModuleQueue) {
         vkDestroyShaderModule(device.ldevice, module, nullptr);
     }
 }
