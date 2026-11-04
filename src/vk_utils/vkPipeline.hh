@@ -16,8 +16,8 @@ struct vkVertexInputDescription {
 };
 
 struct vkPipeline {
-    VkPipeline pipeline;
-    VkPipelineLayout layout;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
 };
 
 struct vkShaderStage {

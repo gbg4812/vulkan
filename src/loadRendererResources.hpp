@@ -48,7 +48,7 @@ inline void loadRendererResources(
         0, glm::vec3(1.0f, 1.0f, 1.0f));
 
     if (objLoader(CONTENTS_DIR "models/RendererObjects.obj", sc.get(), sc->root,
-                  white_mt.getHandle())
+                  col_sh.getHandle(), white_mt.getHandle())
             .empty()) {
         throw std::runtime_error("Failed to load renderer objects");
     }
@@ -56,7 +56,6 @@ inline void loadRendererResources(
     for (auto& msh : ms_mg) {
         createMeshVkResources(device, msh.getHandle(), internal_resources);
     }
-
 
     VkPushConstantRange pushConstants{};
     pushConstants.offset = 0;

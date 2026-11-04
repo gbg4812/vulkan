@@ -16,6 +16,7 @@
 #include "Texture.hpp"
 #include "extras/File.hpp"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "io_utils/watcher.hpp"
 #include "loaders/texLoader.hpp"
 #include "nfd.h"
@@ -140,7 +141,6 @@ inline void drawShaderPannel(AppData& app) {
     gbg::Scene& sc = *app.scene;
     nfdu8char_t* outpath = nullptr;
     static char buff[1024] = "";
-    static std::filesystem::path chosen_path;
 
     for (auto& shader : sc.sh_mg) {
         if (ImGui::CollapsingHeader(shader.getName().c_str())) {
@@ -153,17 +153,61 @@ inline void drawShaderPannel(AppData& app) {
         }
     }
 
-    if (ImGui::Button("New Shader")) {
+    if (ImGui::Button("Create Shader")) {
+        nfdsavedialogu8args_t args = {0};
+        args.defaultPath = "./data/shaders/NewShader.slang";
+        nfdresult_t res = NFD_SaveDialogU8_With(&outpath, &args);
+        if (res == NFD_OKAY) {
+            if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
+            NFD_FreePathU8(outpath);
+            ImGui::OpenPopup("Chose Base Shader");
+        }
+    }
+
+    if (ImGui::BeginPopupModal("Chose Base Shader", NULL,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginCombo("Existing Shaders", "chose-shader")) {
+            for (auto& sh : sc.sh_mg) {
+                if (ImGui::Selectable(sh.getName().c_str())) {
+                    auto source = app.file_m.get(sh.getCodeFile(0)).path;
+                    auto dest = std::filesystem::path(buff);
+                    std::filesystem::copy(source, dest);
+
+                    gbg::Shader& sh =
+                        sc.sh_mg.create(dest.filename().replace_extension());
+
+                    gbg::createRepresentative(*app.dep_tree, sh,
+                                              gbg::ResourceTypes::SHADER,
+                                              gbg::SObjFlags::NEW);
+
+                    auto res = app.file_w.createFile(dest);
+                    if (res) {
+                        sh.appendCodeFile(res.value());
+                        auto& sh_f = app.file_m.get(res.value());
+                        gbg::setDependent(*app.dep_tree, sh.representative,
+                                          gbg::SObjFlags::CODE_M,
+                                          sh_f.representative, FILE_M);
+                    } else {
+                        std::cout << res.error() << std::endl;
+                    }
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::Button("Import Shader")) {
         nfdopendialognargs_t args = {0};
         nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
         if (res == NFD_OKAY) {
             if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
             NFD_FreePathU8(outpath);
-            ImGui::OpenPopup("Load Shader");
+            ImGui::OpenPopup("Chose Shader Files");
         }
     }
 
-    if (ImGui::BeginPopupModal("Load Shader", NULL,
+    if (ImGui::BeginPopupModal("Chose Shader Files", NULL,
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         auto pt = std::filesystem::path(buff);
         std::string name = pt.filename().replace_extension();
@@ -195,14 +239,13 @@ inline void drawShaderPannel(AppData& app) {
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res =
-                    app.file_w.createFile(pt.native())
-                        .and_then([&](gbg::FileHandle file_h) {
-                            sh.appendCodeFile(file_h);
-                            return gbg::compileShader(app.file_m, sh);
-                        });
+                auto res = app.file_w.createFile(pt.native());
                 if (res) {
-                    std::cout << res.value() << std::endl;
+                    sh.appendCodeFile(res.value());
+                    auto& sh_f = app.file_m.get(res.value());
+                    gbg::setDependent(*app.dep_tree, sh.representative,
+                                      gbg::SObjFlags::CODE_M,
+                                      sh_f.representative, FILE_M);
                 } else {
                     std::cout << res.error() << std::endl;
                 }

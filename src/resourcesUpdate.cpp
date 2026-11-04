@@ -136,7 +136,7 @@ void createShaderVkResources(
         attributeDescriptions, push_constant_ranges, renderPass.samples,
         renderPass.renderPass, sr_sh.topology);
 
-    for(auto module : destroyModuleQueue) {
+    for (auto module : destroyModuleQueue) {
         vkDestroyShaderModule(device.ldevice, module, nullptr);
     }
 }
@@ -149,6 +149,7 @@ void updateShader(
     DependencyMask flags =
         scene_data.dep_tree->get(shader.representative).flags;
     if (flags & SObjFlags::NEW) scene_data.srsh_mg.create(sh_h);
+    if (shader.getByteCode(0).empty()) return;
     srShader& sr_sh = scene_data.srsh_mg.get(sh_h);
 
     VkPushConstantRange pushConstant{};
@@ -157,7 +158,8 @@ void updateShader(
     pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     if (flags & (SObjFlags::NEW | SObjFlags::CODE_M)) {
-        if (flags & SObjFlags::CODE_M and not(flags & SObjFlags::NEW)) {
+        if (flags & SObjFlags::CODE_M and
+            not(sr_sh.pipeline.pipeline == VK_NULL_HANDLE)) {
             // clean shader resources
             cleanShaderVkResources(device, sr_sh);
         }

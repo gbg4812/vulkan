@@ -37,7 +37,6 @@ Slang::ComPtr<slang::ISession> createSession(const char* shader_dir) {
     entries[2].value = {slang::CompilerOptionValueKind::Int, 1, 0, nullptr,
                         nullptr};
 
-
     desc.compilerOptionEntries = entries.data();
     desc.compilerOptionEntryCount = entries.size();
 
@@ -265,9 +264,9 @@ std::expected<std::string, std::string> compileShader(FileManager& f_m,
     slang::EntryPointReflection* fg_entry_pt =
         layout->findEntryPointByName("mainPixel");
     if (fg_entry_pt) {
-      reflectParameters(shader, scopeTypeLayout);  
-      shader.setCodeTypeFlags(0, ShaderTypeFlags::SHADER_TYPE_FRAGMENT);
-    } 
+        reflectParameters(shader, scopeTypeLayout);
+        shader.setCodeTypeFlags(0, ShaderTypeFlags::SHADER_TYPE_FRAGMENT);
+    }
 
     return diagnostics;
 }

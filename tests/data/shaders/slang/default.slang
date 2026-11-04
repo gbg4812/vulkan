@@ -17,9 +17,23 @@ public struct VSOut {
     float3 w_tangent;
 }
 
+/**
+ * Material parameters:
+ * vec3 ambient_color;
+ * vec3 diffuse_color;
+ * vec3 specular_color;
+ * float specular_exponent;
+ * texture albedo;
+ * texture bump;
+ */
+
 struct MatParms {
-    float3 color = { 0.1, 0.4, 0.3 };
-    float ambient_i = 0.01;
+    float3 ambient = { 0, 0, 0 };
+    float3 diffuse = { 0, 0, 0 };
+    float3 specular = { 0, 0, 0 };
+    float spec_exponent = 64;
+    Texture2D albedo;
+    Texture2D bump;
 }
 
 // here you can add as many as you want
@@ -54,7 +68,7 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {
 
 [shader("pixel")]
 float4 mainPixel(VSOut fs_in) : SV_Target0 {
-    float3 lcolor = mat.color * mat.ambient_i;
+    float3 lcolor = mat.ambient;
 
     float3 w_n = normalize(fs_in.w_n);
 
@@ -62,10 +76,10 @@ float4 mainPixel(VSOut fs_in) : SV_Target0 {
         Light light = lights[i];
         if (light.type == 0) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
-            lcolor += mat.color * diffuse(w_l, w_n) *
+            lcolor += diffuse(w_l, w_n) *
                       spotLight(light, fs_in.w_pos, w_n, 5);
         } else if (light.type == 1) {
-            lcolor += mat.color * diffuse(normalize(-light.direction), w_n) *
+            lcolor += mat.diffuse * diffuse(normalize(-light.direction), w_n) *
                       dirLight(light, i, fs_in.w_pos, w_n, 5);
             i += 3;
         }

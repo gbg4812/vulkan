@@ -22,7 +22,7 @@ void fillParameterValues(Material& material, srMaterial& srmat) {
         size_t val_size = std::visit<size_t>(
             overloads{[](TextureHandle handle) { return 0; },
                       [](auto&& val) { return sizeof(decltype(val)); },
-                      [](const vec3_t& val) { return sizeof(float_t) * 3; }},
+                      [](const vec3_t& val) { return sizeof(float_t) * 4; }},
             value);
         size_t padd = 0;
         if (val_size == 0) continue;
@@ -51,7 +51,7 @@ srParameterValues allocateParameterValues(Material& material) {
                 [](const float_t& val) -> size_t { return sizeof(float_t); },
                 [](const vec2_t& val) -> size_t { return sizeof(vec2_t); },
                 [](const vec3_t& val) -> size_t {
-                    return sizeof(float_t) * 3;
+                    return sizeof(float_t) * 4;
                 }},
             value);
         size_t padd = 0;

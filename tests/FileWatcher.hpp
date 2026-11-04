@@ -17,10 +17,11 @@ class FileWatcher {
         : _f_m(f_m), _d_m(dep_m) {}
 
     std::expected<gbg::FileHandle, std::string> createFile(
-        const std::string_view& path) {
+        const std::filesystem::path& path) {
         std::filesystem::path pt(path);
         if (not std::filesystem::exists(pt))
-            return std::unexpected(std::format("File not found! ({})", path));
+            return std::unexpected(
+                std::format("File not found! ({})", path.string()));
 
         auto& f = _f_m.create(pt.relative_path());
         f.path = pt;
@@ -36,7 +37,6 @@ class FileWatcher {
     void poll() { poll_watchers(); }
 
    private:
-    std::vector<gbg::FileHandle> _files;
     gbg::FileManager& _f_m;
     gbg::DependencyTreeManager& _d_m;
 };

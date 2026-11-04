@@ -29,6 +29,7 @@ inline void drawCreateObject(AppData& app) {
             nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
             if (res == NFD_OKAY) {
                 auto sthl = gbg::objLoader(outpath, &scene, scene.root,
+                                           scene.defaults.shader,
                                            scene.defaults.material);
                 for (auto sth : sthl) {
                     auto& n = scene.st_mg.get(sth);
