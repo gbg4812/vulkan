@@ -128,7 +128,7 @@ class SceneRenderer {
     std::array<VkFramebuffer, MAX_FRAMES_IN_FLIGHT> shadowFrameBuffer;
     std::array<vkImage, MAX_FRAMES_IN_FLIGHT> shadowImages;
 
-    uint32_t shadowRes = 2048;
+    uint32_t shadowRes = 1024;
     // TODO check for compat
     VkExtent2D shadowSize = {.width = shadowRes * max_shadow_lights,
                              .height = shadowRes};

@@ -1,0 +1,13 @@
+# Blender 5.2.2 LTS MTL File: 'TestGeo.blend'
+# www.blender.org
+
+newmtl rock_wall_13
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd textures/rock_wall_13_diff_1k.jpg
+map_Ns textures/rock_wall_13_rough_1k.exr
+map_Bump -bm 1.000000 textures/rock_wall_13_nor_gl_1k.exr

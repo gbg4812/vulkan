@@ -1,4 +1,6 @@
 #pragma once
+#include <fcntl.h>
+
 #include <string>
 
 #include "AppData.hpp"
@@ -16,6 +18,7 @@ inline void drawCreateObject(AppData& app) {
     gbg::Scene& scene = *app.scene;
 
     static std::filesystem::path chosen_path;
+    bool open_popup = false;
 
     if (ImGui::BeginMenu("Add")) {
         if (ImGui::MenuItem("Light")) {
@@ -32,14 +35,20 @@ inline void drawCreateObject(AppData& app) {
             if (res == NFD_OKAY) {
                 chosen_path = outpath;
                 NFD_FreePathU8(outpath);
-                ImGui::OpenPopup("Chose Base Shader");
+                open_popup = true;
             }
         }
 
         ImGui::EndMenu();
     }
 
-    if (ImGui::BeginPopupModal("Chose Base Shader")) {
+    if (open_popup) {
+        ImGui::OpenPopup("Chose Base Shader");
+        open_popup = false;
+    }
+
+    if (ImGui::BeginPopupModal("Chose Base Shader", NULL,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
         for (auto& sh : app.scene->sh_mg) {
             if (ImGui::Selectable(sh.getName().c_str())) {
                 auto sthl =
