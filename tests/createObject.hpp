@@ -15,6 +15,8 @@
 inline void drawCreateObject(AppData& app) {
     gbg::Scene& scene = *app.scene;
 
+    static std::filesystem::path chosen_path;
+
     if (ImGui::BeginMenu("Add")) {
         if (ImGui::MenuItem("Light")) {
             auto& l = scene.lh_mg.create("Light");
@@ -28,8 +30,21 @@ inline void drawCreateObject(AppData& app) {
             nfdopendialognargs_t args = {0};
             nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
             if (res == NFD_OKAY) {
-                auto sthl = gbg::objLoader(outpath, &scene, scene.root,
-                                           scene.defaults.material);
+                chosen_path = outpath;
+                NFD_FreePathU8(outpath);
+                ImGui::OpenPopup("Chose Base Shader");
+            }
+        }
+
+        ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginPopupModal("Chose Base Shader")) {
+        for (auto& sh : app.scene->sh_mg) {
+            if (ImGui::Selectable(sh.getName().c_str())) {
+                auto sthl =
+                    gbg::objLoader(chosen_path, &scene, scene.root,
+                                   sh.getHandle(), scene.defaults.material);
                 for (auto sth : sthl) {
                     auto& n = scene.st_mg.get(sth);
                     gbg::ModelHandle h =
@@ -39,10 +54,9 @@ inline void drawCreateObject(AppData& app) {
                         *app.dep_tree, scene.ms_mg.get(msh),
                         gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
                 }
-                NFD_FreePathU8(outpath);
+                ImGui::CloseCurrentPopup();
             }
         }
-
-        ImGui::EndMenu();
+        ImGui::EndPopup();
     }
 }

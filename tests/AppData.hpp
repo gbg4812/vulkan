@@ -113,6 +113,7 @@ struct AppData {
 
         if (argv.size() > 1) {
             auto res = gbg::objLoader(argv[1], scene.get(), scene->root,
+                                      scene->defaults.shader,
                                       scene->defaults.material);
             for (auto sth : res) {
                 auto& n = scene->st_mg.get(sth);

@@ -46,7 +46,7 @@ find_package(Vulkan REQUIRED)
 find_package(slang CONFIG HINTS "$ENV{VULKAN_SDK}/lib/cmake" REQUIRED)
 
 if(LOCAL_SEQ)
-  fetchcontent_declare(
+    fetchcontent_declare(
   sceneeq
   SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../SceneEquipament/)
 endif()
@@ -61,6 +61,7 @@ FetchContent_Declare(
     glm
     GIT_REPOSITORY	https://github.com/g-truc/glm.git
     GIT_TAG 8d1fd52e5ab5590e2c81768ace50c72bae28f2ed
+    GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(glm)
 
@@ -91,6 +92,7 @@ FetchContent_Declare(
   googletest
   GIT_REPOSITORY https://github.com/google/googletest.git
   GIT_TAG 52eb8108c5bdec04579160ae17225d66034bd723
+  GIT_PROGRESS TRUE
 )
 
 # For Windows: Prevent overriding the parent project's compiler/linker settings
@@ -110,6 +112,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nfd)
 
 add_executable(app tests/app.cpp)
+
+
+file(CREATE_LINK ${CMAKE_SOURCE_DIR}/tests/data ${CMAKE_BINARY_DIR}/data SYMBOLIC)
+
 
 target_link_libraries(app PRIVATE "${PROJECT_NAME};nfd")
 

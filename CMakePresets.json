@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "configurePresets": [
+    {
+      "name": "Debug LLDB",
+      "binaryDir": "build-debug",
+      "generator": "Unix Makefiles",
+      "environment": {
+        "C": "clang",
+        "CXX": "clang++"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "Debug LLDB (LOCAL_SEQ)",
+      "inherits": ["Debug LLDB"],
+      "cacheVariables": { "LOCAL_SEQ": "1" }
+    }
+  ]
+}

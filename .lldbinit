@@ -1,0 +1,3 @@
+command script import ./src/containers/Hive_print_provider.py
+
+type synth add --regex --python-class Hive_print_provider.HiveChildProvider "^Hive<.*>$"
