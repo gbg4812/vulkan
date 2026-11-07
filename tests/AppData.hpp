@@ -112,10 +112,27 @@ struct AppData {
                                   gbg::SObjFlags::NEW);
 
         if (argv.size() > 1) {
-            auto res = gbg::objLoader(argv[1], scene.get(), scene->root,
-                                      scene->defaults.shader,
-                                      scene->defaults.material);
-            for (auto sth : res) {
+            auto [mats, texs] = gbg::objLoadMaterials(
+                gbg::fsys::path(argv[1]).replace_extension("mtl"), *scene,
+                sh.getHandle());
+            for (auto [_, tx_h] : texs) {
+                auto& tx = scene->tx_mg.get(tx_h);
+                gbg::createRepresentative(*dep_tree, tx,
+                                          gbg::ResourceTypes::TEXTURE,
+                                          gbg::SObjFlags::NEW);
+            }
+            for (auto [_, mt_h] : mats) {
+                auto& mt = scene->mat_mg.get(mt_h);
+                gbg::createRepresentative(*dep_tree, mt,
+                                          gbg::ResourceTypes::MATERIAL,
+                                          gbg::SObjFlags::NEW);
+                gbg::setDependent(*dep_tree, mt.representative,
+                                  gbg::SObjFlags::CODE_M, sh.representative,
+                                  gbg::SObjFlags::PARAMETER_INTERFACE_M);
+            }
+            auto sthl =
+                gbg::objLoadMeshes(argv[1], scene.get(), scene->root, mats);
+            for (auto sth : sthl) {
                 auto& n = scene->st_mg.get(sth);
                 gbg::ModelHandle h =
                     std::get<gbg::ModelHandle>(n.getResourceH());

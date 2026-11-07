@@ -10,4 +10,4 @@ d 1.000000
 illum 2
 map_Kd textures/rock_wall_13_diff_1k.jpg
 map_Ns textures/rock_wall_13_rough_1k.exr
-map_Bump -bm 1.000000 textures/rock_wall_13_nor_gl_1k.exr
+map_Bump -bm 1.000000 textures/rock_wall_13_nor_gl_1k.png

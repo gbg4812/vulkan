@@ -47,8 +47,9 @@ inline void loadRendererResources(
     white_mt.setParameterValue<ParameterTypes::VEC3>(
         0, glm::vec3(1.0f, 1.0f, 1.0f));
 
-    if (objLoader(CONTENTS_DIR "models/RendererObjects.obj", sc.get(), sc->root,
-                  col_sh.getHandle(), white_mt.getHandle())
+    sc->defaults.material = white_mt.getHandle();
+    if (objLoadMeshes(CONTENTS_DIR "models/RendererObjects.obj", sc.get(),
+                      sc->root, {})
             .empty()) {
         throw std::runtime_error("Failed to load renderer objects");
     }

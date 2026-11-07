@@ -2,6 +2,7 @@
 #include <fcntl.h>
 
 #include <string>
+#include <variant>
 
 #include "AppData.hpp"
 #include "DependencyTreeFunctions.hpp"
@@ -9,6 +10,7 @@
 #include "Scene.hpp"
 #include "SceneRenderer.hpp"
 #include "SceneTree.hpp"
+#include "Texture.hpp"
 #include "imgui.h"
 #include "loaders/objLoader.hpp"
 #include "nfd.h"
@@ -51,9 +53,27 @@ inline void drawCreateObject(AppData& app) {
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         for (auto& sh : app.scene->sh_mg) {
             if (ImGui::Selectable(sh.getName().c_str())) {
+                auto mat_path = chosen_path;
+                mat_path.replace_extension("mtl");
+                auto [mats, texs] =
+                    gbg::objLoadMaterials(mat_path, scene, sh.getHandle());
+                for (auto [_, tx_h] : texs) {
+                    auto& tx = app.scene->tx_mg.get(tx_h);
+                    gbg::createRepresentative(*app.dep_tree, tx,
+                                              gbg::ResourceTypes::TEXTURE,
+                                              gbg::SObjFlags::NEW);
+                }
+                for (auto [_, mt_h] : mats) {
+                    auto& mt = app.scene->mat_mg.get(mt_h);
+                    gbg::createRepresentative(*app.dep_tree, mt,
+                                              gbg::ResourceTypes::MATERIAL,
+                                              gbg::SObjFlags::NEW);
+                    gbg::setDependent(*app.dep_tree, mt.representative,
+                                      gbg::SObjFlags::CODE_M, sh.representative,
+                                      gbg::SObjFlags::PARAMETER_INTERFACE_M);
+                }
                 auto sthl =
-                    gbg::objLoader(chosen_path, &scene, scene.root,
-                                   sh.getHandle(), scene.defaults.material);
+                    gbg::objLoadMeshes(chosen_path, &scene, scene.root, mats);
                 for (auto sth : sthl) {
                     auto& n = scene.st_mg.get(sth);
                     gbg::ModelHandle h =
