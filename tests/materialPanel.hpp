@@ -205,18 +205,14 @@ inline void drawShaderPannel(AppData& app) {
                                       gbg::SObjFlags::NEW);
 
             for (auto pt : paths) {
-                auto res = app.file_w.createFile(pt.native())
-                               .and_then([&](gbg::FileHandle file_h) {
-                                   sh.appendCodeFile(file_h);
-                                   gbg::setDependent(
-                                       *app.dep_tree, sh.representative,
-                                       gbg::SObjFlags::CODE_M,
-                                       app.file_m.get(file_h).representative,
-                                       FileFlags::FILE_M);
-                                   return gbg::compileShader(app.file_m, sh);
-                               });
+                auto res = app.file_w.createFile(pt.native());
                 if (res) {
-                    std::cout << res.value() << std::endl;
+                    sh.appendCodeFile(res.value());
+                    gbg::setDependent(
+                        *app.dep_tree, sh.representative,
+                        gbg::SObjFlags::CODE_M,
+                        app.file_m.get(res.value()).representative,
+                        FileFlags::FILE_M);
                 } else {
                     std::cout << res.error() << std::endl;
                 }

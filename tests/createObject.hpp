@@ -69,8 +69,8 @@ inline void drawCreateObject(AppData& app) {
                                               gbg::ResourceTypes::MATERIAL,
                                               gbg::SObjFlags::NEW);
                     gbg::setDependent(*app.dep_tree, mt.representative,
-                                      gbg::SObjFlags::CODE_M, sh.representative,
-                                      gbg::SObjFlags::PARAMETER_INTERFACE_M);
+                                      gbg::SObjFlags::PARAMETER_INTERFACE_M, sh.representative,
+                                      gbg::SObjFlags::CODE_M);
                 }
                 auto sthl =
                     gbg::objLoadMeshes(chosen_path, &scene, scene.root, mats);

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "configurePresets": [
     {
       "name": "Debug LLDB",
@@ -17,6 +17,13 @@
       "name": "Debug LLDB (LOCAL_SEQ)",
       "inherits": ["Debug LLDB"],
       "cacheVariables": { "LOCAL_SEQ": "1" }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "Debug Rebuild",
+      "configurePreset": "Debug LLDB (LOCAL_SEQ)",
+      "jobs": 0
     }
   ]
 }

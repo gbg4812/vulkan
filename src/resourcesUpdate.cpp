@@ -30,6 +30,7 @@ void cleanShaderVkResources(const vkDevice& device, srShader& sr_sh) {
     vkDestroyDescriptorSetLayout(device.ldevice, sr_sh.layout, nullptr);
     vkDestroyPipeline(device.ldevice, sr_sh.pipeline.pipeline, nullptr);
     vkDestroyPipelineLayout(device.ldevice, sr_sh.pipeline.layout, nullptr);
+    sr_sh.pipeline.pipeline = VK_NULL_HANDLE;
 }
 
 void createShaderVkResources(
@@ -146,6 +147,7 @@ void updateShader(
         scene_data.dep_tree->get(shader.representative).flags;
     if (flags & SObjFlags::NEW) scene_data.srsh_mg.create(sh_h);
     srShader& sr_sh = scene_data.srsh_mg.get(sh_h);
+    if (not shader.isValid()) return;
 
     VkPushConstantRange pushConstant{};
     pushConstant.offset = 0;
@@ -153,7 +155,10 @@ void updateShader(
     pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     if (flags & (SObjFlags::NEW | SObjFlags::CODE_M)) {
-        if (flags & SObjFlags::CODE_M and not(flags & SObjFlags::NEW)) {
+        // cannot check just if it is new because it may come from an invalid
+        // state
+        if (flags & SObjFlags::CODE_M and
+            sr_sh.pipeline.pipeline != VK_NULL_HANDLE) {
             // clean shader resources
             cleanShaderVkResources(device, sr_sh);
         }
@@ -275,10 +280,13 @@ void updateMaterial(vkDevice device, MaterialHandle math,
 
     if (flags & SObjFlags::NEW)
         scene_data.srmat_mg.create(math);
-    else if (flags & SObjFlags::PARAMETER_INTERFACE_M) {
+    if(not scene_data.scene->sh_mg.get(mat.getShaderHandle()).isValid()) return;
+    if (flags & SObjFlags::PARAMETER_INTERFACE_M and not( flags & SObjFlags::NEW)) {
         srMaterial& srmt = scene_data.srmat_mg.get(math);
         cleanMaterialVkResources(device, materialDescPool, srmt);
     }
+
+
 
     srMaterial& srmt = scene_data.srmat_mg.get(math);
 

@@ -1,7 +1,5 @@
 import lldb
 
-lldb.formatters.Logger._lldb_formatters_debug_level = 1
-
 
 class HiveChildProvider:
     def __init__(self, valobj: lldb.SBValue, internal_dict):

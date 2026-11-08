@@ -1155,6 +1155,11 @@ void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer,
     srShader& srsh = data.srsh_mg.get(mt.getShaderHandle());
     srMaterial& srmt = data.srmat_mg.get(math);
 
+    if (not sh.isValid()) {
+        bindMaterial(commandBuffer, data.scene->defaults.material, data);
+        return;
+    }
+
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                       srsh.pipeline.pipeline);
 
