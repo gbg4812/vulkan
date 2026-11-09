@@ -12,6 +12,7 @@
 #include "SceneRenderer.hpp"
 #include "SceneTree.hpp"
 #include "Shader.hpp"
+#include "extras/File.hpp"
 #include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
@@ -36,27 +37,58 @@ struct AppData {
         auto& sh_mg = scene->getShaderManager();
 
         // Shader Creation
-        auto& sh = sh_mg.create("DefaultShader");
-        scene->defaults.shader = sh.getHandle();
-        gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
-                                  gbg::SObjFlags::NEW);
+        {
+            auto& sh = sh_mg.create("DefaultShader");
+            scene->defaults.shader = sh.getHandle();
+            gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
+                                      gbg::SObjFlags::NEW);
 
-        auto watch_res =
-            file_w.createFile("./data/shaders/slang/default.slang");
-        if (watch_res) {
-            sh.appendCodeFile(watch_res.value());
-            auto compile_res = gbg::compileShader(file_m, sh);
-            if (not compile_res) {
-                throw std::runtime_error(compile_res.error());
+            auto res = file_w.createFile("./data/shaders/slang/default.slang")
+                           .and_then([&](gbg::FileHandle fh) {
+                               sh.appendCodeFile(fh);
+                               return gbg::compileShader(file_m, sh);
+                           })
+                           .transform([&](std::string diagnostics) {
+                               std::cout << diagnostics << std::endl;
+                               gbg::setDependent(
+                                   *dep_tree, sh.representative,
+                                   gbg::SObjFlags::CODE_M,
+                                   file_m.get(sh.getCodeFile(0)).representative,
+                                   FileFlags::FILE_M);
+                           })
+                           .transform_error([](std::string error) {
+                               std::cout << error << std::endl;
+                               return error;
+                           });
+
+            if (not res) {
+                throw std::runtime_error("Failed to load default shader");
             }
-            std::cout << compile_res.value() << std::endl;
+        }
 
-            gbg::setDependent(*dep_tree, sh.representative,
-                              gbg::SObjFlags::CODE_M,
-                              file_m.get(watch_res.value()).representative,
-                              FileFlags::FILE_M);
-        } else {
-            std::cout << watch_res.error() << std::endl;
+        {
+            auto& sh = sh_mg.create("ObjShader");
+            scene->defaults.shader = sh.getHandle();
+            gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
+                                      gbg::SObjFlags::NEW);
+            auto res =
+                file_w.createFile("./data/shaders/slang/obj_complient.slang")
+                    .and_then([&](gbg::FileHandle fh) {
+                        sh.appendCodeFile(fh);
+                        return gbg::compileShader(file_m, sh);
+                    })
+                    .transform([&](std::string diagnostics) {
+                        std::cout << diagnostics << std::endl;
+                        gbg::setDependent(
+                            *dep_tree, sh.representative,
+                            gbg::SObjFlags::CODE_M,
+                            file_m.get(sh.getCodeFile(0)).representative,
+                            FileFlags::FILE_M);
+                    })
+                    .transform_error([](std::string error) {
+                        std::cout << error << std::endl;
+                        return error;
+                    });
         }
 
         // Material Creation
@@ -70,9 +102,9 @@ struct AppData {
 
         mt.setShader(scene->defaults.shader);
 
-        gbg::setDependent(*dep_tree, mt.representative,
-                          gbg::SObjFlags::PARAMETER_INTERFACE_M,
-                          sh.representative, gbg::SObjFlags::CODE_M);
+        gbg::setDependent(
+            *dep_tree, mt.representative, gbg::SObjFlags::PARAMETER_INTERFACE_M,
+            scene->getDefaultShader().representative, gbg::SObjFlags::CODE_M);
         gbg::setDependent(
             *dep_tree, mt.representative,
             gbg::SObjFlags::TEXTURE_PARAMETER_VALUE_M,
@@ -114,7 +146,7 @@ struct AppData {
         if (argv.size() > 1) {
             auto [mats, texs] = gbg::objLoadMaterials(
                 gbg::fsys::path(argv[1]).replace_extension("mtl"), *scene,
-                sh.getHandle());
+                scene->sh_mg.getByName("ObjShader").getHandle());
             for (auto [_, tx_h] : texs) {
                 auto& tx = scene->tx_mg.get(tx_h);
                 gbg::createRepresentative(*dep_tree, tx,
@@ -126,9 +158,11 @@ struct AppData {
                 gbg::createRepresentative(*dep_tree, mt,
                                           gbg::ResourceTypes::MATERIAL,
                                           gbg::SObjFlags::NEW);
-                gbg::setDependent(*dep_tree, mt.representative,
-                                  gbg::SObjFlags::CODE_M, sh.representative,
-                                  gbg::SObjFlags::PARAMETER_INTERFACE_M);
+                gbg::setDependent(
+                    *dep_tree, mt.representative,
+                    gbg::SObjFlags::PARAMETER_INTERFACE_M,
+                    scene->sh_mg.getByName("ObjShader").representative,
+                    gbg::SObjFlags::CODE_M);
             }
             auto sthl =
                 gbg::objLoadMeshes(argv[1], scene.get(), scene->root, mats);
