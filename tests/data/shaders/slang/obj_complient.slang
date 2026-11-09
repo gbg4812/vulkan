@@ -22,6 +22,9 @@ struct MatParms {
     float3 ambient = { 0.2, 0.2, 0.2 };
     float3 specular = { 1, 1, 1 };
     float exponent = 64;
+    bool diffuse_map_b = false;
+    bool bump_map_b = false;
+    float opacity = 1.0f;
     Texture2D diffuse_map;
     Texture2D bump_map;
 };
@@ -55,32 +58,39 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {
 [shader("pixel")]
 float4 mainPixel(VSOut fs_in) : SV_Target0 {
 
-    float3 albedo = mat.diffuse_map.Sample(_sampler, fs_in.tex_coord).rgb;
-    float3 normal = mat.bump_map.Sample(_sampler, fs_in.tex_coord).xyz;
-    float3 lcolor =  mat.ambient * albedo;
-    normal = (normal * 2.) - 1.;
+    float3 albedo = float3(1.0f);
+    if(mat.diffuse_map_b) {
+        albedo = mat.diffuse_map.Sample(_sampler, fs_in.tex_coord).rgb;
+    }
+    float4 lcolor = float4(mat.ambient * albedo, mat.opacity);
+    float3 w_n = normalize(fs_in.w_n);
+    if(mat.bump_map_b) {
+        float3 normal = mat.bump_map.Sample(_sampler, fs_in.tex_coord).xyz;
+        normal = (normal * 2.) - 1.;
+        float3x3 tbn =
+            transpose(float3x3(normalize(fs_in.w_tangent),
+                               normalize(fs_in.w_bitangent), normalize(fs_in.w_n)));
+    
+        w_n = normalize(mul(tbn, normal));
+    }
 
-    float3x3 tbn =
-        transpose(float3x3(normalize(fs_in.w_tangent),
-                           normalize(fs_in.w_bitangent), normalize(fs_in.w_n)));
-
-    float3 w_n = normalize(mul(tbn, normal));
 
     for (int i = 0; i < ubo.nLights; i++) {
         Light light = lights[i];
         if (light.type == 0) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
-            lcolor += albedo * mat.diffuse * diffuse(w_l, w_n) *
-                      spotLight(light, fs_in.w_pos, w_n, 5);
+            lcolor += float4(albedo * mat.diffuse * diffuse(w_l, w_n) *
+                      spotLight(light, fs_in.w_pos, w_n, 5), 1.0f);
         } else if (light.type == 1) {
             float3 w_v = normalize(ubo.obs - fs_in.w_pos);
             //public float spec(float3 L, float3 N, float3 V, int exp) {
             float3 light_i = dirLight(light, i, fs_in.w_pos, w_n, 5);
-            lcolor += mat.diffuse * albedo * light_i * diffuse(normalize(-light.direction), w_n);
-            lcolor += mat.specular * spec(normalize(-light.direction), w_n, w_v, int(mat.exponent));
+            lcolor += float4(mat.diffuse * albedo * light_i * diffuse(normalize(-light.direction), w_n), mat.opacity);
+            float spec = spec(normalize(-light.direction), w_n, w_v, int(mat.exponent));
+            lcolor += float4(mat.specular * spec, spec);
             i += 3;
         }
     }
 
-    return float4(lcolor, 1.0f);
+    return lcolor;
 }

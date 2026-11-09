@@ -18,7 +18,10 @@ void fillParameterValues(Material& material, srMaterial& srmat) {
     const auto& values = material.getValues();
     // copy
     size_t addr_offset = 0;
-    for (auto& value : values) {
+    for (auto value : values) {
+        if(const bool* val = std::get_if<bool>(&value)) {
+            value = static_cast<int32_t>(*val);
+        }
         size_t val_size = std::visit<size_t>(
             overloads{[](TextureHandle handle) { return 0; },
                       [](auto&& val) { return sizeof(decltype(val)); }},
@@ -26,7 +29,7 @@ void fillParameterValues(Material& material, srMaterial& srmat) {
         size_t align = std::visit<size_t>(
             overloads{[](TextureHandle handle) { return 0; },
                       [](auto&& val) { return sizeof(decltype(val)); },
-                      [](const vec3_t& val) { return sizeof(float_t) * 4; }},
+                      [](vec3_t& val) { return sizeof(float_t) * 4; }},
             value);
         size_t padd = 0;
         if (val_size == 0) continue;
@@ -47,7 +50,10 @@ srParameterValues allocateParameterValues(Material& material) {
     // typedef std::variant<int32_t, float_t, vec2_t, vec3_t, TextureHandle>
     // parm_vt;
     srParameterValues parm_values{nullptr, 0};
-    for (auto& value : values) {
+    for (auto value : values ) {
+        if(const bool* val = std::get_if<bool>(&value)) {
+            value = static_cast<int32_t>(*val);
+        }
         size_t val_size = std::visit<size_t>(
             overloads{[](TextureHandle handle) { return 0; },
                       [](auto&& val) { return sizeof(decltype(val)); }},
@@ -55,12 +61,11 @@ srParameterValues allocateParameterValues(Material& material) {
         size_t align = std::visit<size_t>(
             overloads{[](TextureHandle handle) { return 0; },
                       [](auto&& val) { return sizeof(decltype(val)); },
-                      [](const vec3_t& val) { return sizeof(float_t) * 4; }},
+                      [](vec3_t& val) { return sizeof(float_t) * 4; }},
             value);
         size_t padd = 0;
         if (val_size == 0) continue;
-        if (parm_values.size % align)
-            padd = align - (parm_values.size % align);
+        if (parm_values.size % align) padd = align - (parm_values.size % align);
         parm_values.size += padd;
         parm_values.size += val_size;
     }

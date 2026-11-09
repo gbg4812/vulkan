@@ -1,8 +1,6 @@
 #pragma once
-#include <fcntl.h>
 
 #include <string>
-#include <variant>
 
 #include "AppData.hpp"
 #include "DependencyTreeFunctions.hpp"
@@ -15,6 +13,42 @@
 #include "loaders/objLoader.hpp"
 #include "nfd.h"
 #include "resourcesUpdate.hpp"
+
+inline void loadObject(AppData& app, const std::filesystem::path& path, const gbg::Shader& sh) {
+    auto mat_path = path;
+    mat_path.replace_extension("mtl");
+    auto res =
+        gbg::objLoadMaterials(mat_path, *app.scene, sh.getHandle());
+    for (auto [_, tx_h] : res->textures) {
+        auto& tx = app.scene->tx_mg.get(tx_h);
+        gbg::createRepresentative(*app.dep_tree, tx,
+                                  gbg::ResourceTypes::TEXTURE,
+                                  gbg::SObjFlags::NEW);
+    }
+    for (auto [_, mt_h] : res->materials) {
+        auto& mt = app.scene->mat_mg.get(mt_h);
+        gbg::createRepresentative(*app.dep_tree, mt,
+                                  gbg::ResourceTypes::MATERIAL,
+                                  gbg::SObjFlags::NEW);
+        gbg::setDependent(*app.dep_tree, mt.representative,
+                          gbg::SObjFlags::PARAMETER_INTERFACE_M, sh.representative,
+                          gbg::SObjFlags::CODE_M);
+    }
+    auto& object = app.scene->st_mg.create(mat_path.filename().replace_extension());
+    app.scene->st_mg.prependChild(app.scene->root, object.getHandle());
+    
+    auto sthl =
+        gbg::objLoadMeshes(path, app.scene.get(), object.getHandle(), res->materials);
+    for (auto sth : sthl) {
+        auto& n = app.scene->st_mg.get(sth);
+        gbg::ModelHandle h =
+            std::get<gbg::ModelHandle>(n.getResourceH());
+        auto msh = app.scene->md_mg.get(h).getMesh();
+        gbg::createRepresentative(
+            *app.dep_tree, app.scene->ms_mg.get(msh),
+            gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
+    }
+}
 
 inline void drawCreateObject(AppData& app) {
     gbg::Scene& scene = *app.scene;
@@ -53,36 +87,7 @@ inline void drawCreateObject(AppData& app) {
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         for (auto& sh : app.scene->sh_mg) {
             if (ImGui::Selectable(sh.getName().c_str())) {
-                auto mat_path = chosen_path;
-                mat_path.replace_extension("mtl");
-                auto [mats, texs] =
-                    gbg::objLoadMaterials(mat_path, scene, sh.getHandle());
-                for (auto [_, tx_h] : texs) {
-                    auto& tx = app.scene->tx_mg.get(tx_h);
-                    gbg::createRepresentative(*app.dep_tree, tx,
-                                              gbg::ResourceTypes::TEXTURE,
-                                              gbg::SObjFlags::NEW);
-                }
-                for (auto [_, mt_h] : mats) {
-                    auto& mt = app.scene->mat_mg.get(mt_h);
-                    gbg::createRepresentative(*app.dep_tree, mt,
-                                              gbg::ResourceTypes::MATERIAL,
-                                              gbg::SObjFlags::NEW);
-                    gbg::setDependent(*app.dep_tree, mt.representative,
-                                      gbg::SObjFlags::PARAMETER_INTERFACE_M, sh.representative,
-                                      gbg::SObjFlags::CODE_M);
-                }
-                auto sthl =
-                    gbg::objLoadMeshes(chosen_path, &scene, scene.root, mats);
-                for (auto sth : sthl) {
-                    auto& n = scene.st_mg.get(sth);
-                    gbg::ModelHandle h =
-                        std::get<gbg::ModelHandle>(n.getResourceH());
-                    auto msh = scene.md_mg.get(h).getMesh();
-                    gbg::createRepresentative(
-                        *app.dep_tree, scene.ms_mg.get(msh),
-                        gbg::ResourceTypes::MESH, gbg::SObjFlags::NEW);
-                }
+                loadObject(app, chosen_path, sh);
                 ImGui::CloseCurrentPopup();
             }
         }

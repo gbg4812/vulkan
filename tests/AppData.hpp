@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 #include "DependencyTree.hpp"
@@ -13,20 +14,21 @@
 #include "SceneTree.hpp"
 #include "Shader.hpp"
 #include "extras/File.hpp"
-#include "loaders/objLoader.hpp"
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderUtils.hpp"
 
 struct AppData {
-    AppData(const gbg::RendererContext& context, std::span<char*> argv)
+    AppData(const gbg::RendererContext& context)
         : renderer(context),
           scene(std::make_shared<gbg::Scene>()),
           dep_tree(std::make_shared<gbg::DependencyTreeManager>()),
           file_w(file_m, *dep_tree) {
         // default texture
         auto& def_tex = scene->tx_mg.create("DefaultTexture");
-        if (not loadTexture("./data/textures/DefaultTexture.png", def_tex)) {
+        auto res = loadTexture("./data/textures/DefaultTexture.png", def_tex); 
+        if(not res) {
+            std::cout << res.error();
             throw std::runtime_error("Failed to load default texture!");
         }
         scene->defaults.texture = def_tex.getHandle();
@@ -68,7 +70,6 @@ struct AppData {
 
         {
             auto& sh = sh_mg.create("ObjShader");
-            scene->defaults.shader = sh.getHandle();
             gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
                                       gbg::SObjFlags::NEW);
             auto res =
@@ -131,7 +132,7 @@ struct AppData {
         // Light
         auto& lh = scene->lh_mg.create("Light");
         scene->defaults.light = lh.getHandle();
-        lh.type = gbg::LightType::SPOT;
+        lh.type = gbg::LightType::DIRECTIONAL;
         lh.intensity = 1.0f;
         gbg::SceneTreeNode& lh_n = st_mg.create("DefaultLigth");
         lh_n.setResource(scene->defaults.light);
@@ -143,39 +144,6 @@ struct AppData {
                                   gbg::ResourceTypes::SCENE_TREE_NODE,
                                   gbg::SObjFlags::NEW);
 
-        if (argv.size() > 1) {
-            auto [mats, texs] = gbg::objLoadMaterials(
-                gbg::fsys::path(argv[1]).replace_extension("mtl"), *scene,
-                scene->sh_mg.getByName("ObjShader").getHandle());
-            for (auto [_, tx_h] : texs) {
-                auto& tx = scene->tx_mg.get(tx_h);
-                gbg::createRepresentative(*dep_tree, tx,
-                                          gbg::ResourceTypes::TEXTURE,
-                                          gbg::SObjFlags::NEW);
-            }
-            for (auto [_, mt_h] : mats) {
-                auto& mt = scene->mat_mg.get(mt_h);
-                gbg::createRepresentative(*dep_tree, mt,
-                                          gbg::ResourceTypes::MATERIAL,
-                                          gbg::SObjFlags::NEW);
-                gbg::setDependent(
-                    *dep_tree, mt.representative,
-                    gbg::SObjFlags::PARAMETER_INTERFACE_M,
-                    scene->sh_mg.getByName("ObjShader").representative,
-                    gbg::SObjFlags::CODE_M);
-            }
-            auto sthl =
-                gbg::objLoadMeshes(argv[1], scene.get(), scene->root, mats);
-            for (auto sth : sthl) {
-                auto& n = scene->st_mg.get(sth);
-                gbg::ModelHandle h =
-                    std::get<gbg::ModelHandle>(n.getResourceH());
-                auto msh = scene->md_mg.get(h).getMesh();
-                gbg::createRepresentative(*dep_tree, scene->ms_mg.get(msh),
-                                          gbg::ResourceTypes::MESH,
-                                          gbg::SObjFlags::NEW);
-            }
-        }
     }
     bool ui_mode = false;
     glm::vec<2, double> cursor_pos = {};

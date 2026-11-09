@@ -50,7 +50,10 @@ int main(int argc, char* argv[]) {
     init_watch();
     NFD_Init();
 
-    AppData app(context, std::span(argv, argc));
+    AppData app(context);
+    if (argc > 1) {
+        loadObject(app, argv[1], app.scene->sh_mg.getByName("ObjShader"));
+    }
 
     setupGlfwCallbacks(window, &app);
 

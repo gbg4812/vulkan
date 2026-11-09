@@ -82,6 +82,14 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
+
+            } else if (const bool* val = std::get_if<bool>(&value)) {
+                bool i = *val;
+                if (ImGui::Checkbox(name.c_str(), &i)) {
+                    mat.setParameterValue<gbg::ParameterTypes::BOOL>(num, i);
+                    app.dep_tree->propagateChange(
+                        mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
+                }
             }
             ImGui::PopID();
         }
@@ -123,7 +131,8 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                 gbg::createRepresentative(*app.dep_tree, new_tx,
                                           gbg::ResourceTypes::TEXTURE,
                                           gbg::SObjFlags::NEW);
-                loadTexture(buff, new_tx);
+                auto res = loadTexture(buff, new_tx);
+                if (not res) std::cout << res.error();
                 new_tx.raw = raw;
                 ImGui::CloseCurrentPopup();
             }

@@ -11,7 +11,6 @@ directory.
 ## Technologies
 
 - The toolkit uses Vulkan API as graphics API and glfw for the context and input.
-  It uses my other library
 - [SceneEquipament](https://github.com/gbg4812/SceneEquipament.git) scene input to
   render.
 - [Tracy](https://github.com/wolfpld/tracy) to profile performance
@@ -19,7 +18,7 @@ directory.
 
 ## Screenshots
 
-![image](LittleLightingSS.png)
+![image](PonyCartoon.png)
 
 ## Features
 
@@ -30,8 +29,8 @@ directory.
 - SPIR-V shaders with realtime updating
 - Shader inputs defined by materials including numeric types and Textures (with realtime updating too)
 - Perspective Camera (relatime updating)
-- Shadow Mapping (if the shader cooperates)
-- Multiple point lights (if the shader cooperates)
+- Shadow Mapping and CSM for directional lights
+- Multiple spot lights and directional lights
 
 And overall flexibility to extend and implement more visual effects.
 

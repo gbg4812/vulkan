@@ -7,12 +7,14 @@
 #include <expected>
 #include <print>
 #include <ranges>
+#include <type_traits>
 
 #include "Mesh.hpp"
 #include "Shader.hpp"
 #include "Texture.hpp"
 #include "build_constants.hpp"
 #include "extras/File.hpp"
+#include "traits/traits.hpp"
 #include "gbg_traits.hpp"
 
 static Slang::ComPtr<slang::IGlobalSession> globalSession;
@@ -77,37 +79,28 @@ void reflectParameters(Shader& shader,
                         matFieldLayout->getVariable()->getDefaultValueBlob(
                             &blob);
                         std::string name = matFieldLayout->getName();
+                        gbg::parm_vt def;
                         switch (matFieldTypeLayout->getKind()) {
                             case slang::TypeReflection::Kind::Vector: {
                                 switch (matFieldTypeLayout->getColumnCount()) {
-                                    case 2:
-                                        shader.addParameter(
-                                            *reinterpret_cast<const vec2_t*>(
-                                                blob->getBufferPointer()),
-                                            name);
-                                        break;
-                                    case 3:
-                                        shader.addParameter(
-                                            *reinterpret_cast<const vec3_t*>(
-                                                blob->getBufferPointer()),
-                                            name);
-                                        break;
+                                    case 2: {
+                                        def = vec2_t();
+                                    } break;
+                                    case 3: {
+                                        def = vec3_t();
+                                    } break;
                                 }
                             } break;
                             case slang::TypeReflection::Kind::Scalar: {
                                 switch (matFieldTypeLayout->getScalarType()) {
                                     case slang::TypeReflection::Int32: {
-                                        shader.addParameter(
-                                            *reinterpret_cast<const int*>(
-                                                blob->getBufferPointer()),
-                                            name);
+                                        def = 0;
                                     } break;
                                     case slang::TypeReflection::Float32: {
-                                        shader.addParameter(
-                                            *reinterpret_cast<const float*>(
-                                                blob->getBufferPointer()),
-                                            name);
-
+                                        def = 0.0f;
+                                    } break;
+                                    case slang::TypeReflection::Bool: {
+                                        def = true;
                                     } break;
                                 }
                             } break;
@@ -115,12 +108,19 @@ void reflectParameters(Shader& shader,
                                 if ((matFieldTypeLayout->getResourceShape() &
                                      SLANG_RESOURCE_BASE_SHAPE_MASK) ==
                                     SLANG_TEXTURE_2D) {
-                                    auto offset = matFieldLayout->getOffset(
-                                        matFieldLayout->getCategory());
-                                    shader.addParameter(TextureHandle(), name);
+                                    def = TextureHandle();
                                 }
                             } break;
                         }
+
+                        if(blob) {
+                            std::visit(overloads{
+                                [&](auto& val) {
+                                    val = *reinterpret_cast<const std::remove_reference_t<decltype(val)>*>(blob->getBufferPointer());
+                                }
+                            }, def);
+                        }
+                        shader.addParameter(def, name);
                     }
                 }
             }

@@ -56,13 +56,15 @@ float4 mainPixel(VSOut fs_in) : SV_Target0 {
     float3 albedo =
         mat.albedo.Sample(_sampler, fs_in.tex_coord * mat.tiling).rgb;
     float3 n = mat.normal.Sample(_sampler, fs_in.tex_coord * mat.tiling).xyz;
+    // gl flip y
+    //n.y = 1-n.y;
     n = (n * 2.) - 1.;
     float3 lcolor = albedo * mat.ambient_i;
 
     float3x3 tbn =
         transpose(float3x3(normalize(fs_in.w_tangent),
                            normalize(fs_in.w_bitangent), normalize(fs_in.w_n)));
-
+        
     float3 w_n = normalize(mul(tbn, n));
     // float3 w_n = normalize(fs_in.w_n);
 

@@ -2,7 +2,7 @@
     "rdocCaptureSettings": 1,
     "settings": {
         "autoStart": true,
-        "commandLine": "./data/models/EasyModels/scene.obj",
+        "commandLine": "",
         "environment": [
         ],
         "executable": "/home/guillem/Projects/vulkan/build-debug/app",
