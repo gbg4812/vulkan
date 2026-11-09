@@ -81,7 +81,7 @@ list(APPEND LIBS imgui SceneEquipament)
 # dev only
 list(APPEND DEV_LIBS TracyClient)
 
-target_link_libraries(${PROJECT_NAME} PUBLIC $<$<CONFIG:Debug>:${DEV_LIBS}> ${LIBS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${DEV_LIBS} ${LIBS})
 
 
 ###########
