@@ -34,7 +34,7 @@ inline void loadRendererResources(
 
     col_sh.topology = PrimitiveInterpretation::LINES;
     col_sh.appendCodeFile(col_sh_f.getHandle());
-    col_sh.shadow = false;
+    col_sh.casts_shadow = false;
 
     auto res = compileShader(*internal_resources.file_m, col_sh);
     if (not res) {

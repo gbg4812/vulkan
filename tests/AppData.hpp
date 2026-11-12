@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdlib>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 
 #include "DependencyTree.hpp"
@@ -17,6 +16,8 @@
 #include "loaders/texLoader.hpp"
 #include "resourcesUpdate.hpp"
 #include "shaderUtils.hpp"
+
+#define DATA_PATH  "./data/"
 
 struct AppData {
     AppData(const gbg::RendererContext& context)
@@ -45,7 +46,7 @@ struct AppData {
             gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
                                       gbg::SObjFlags::NEW);
 
-            auto res = file_w.createFile("./data/shaders/slang/default.slang")
+            auto res = file_w.createFile("./data/shaders/default.slang")
                            .and_then([&](gbg::FileHandle fh) {
                                sh.appendCodeFile(fh);
                                return gbg::compileShader(file_m, sh);
@@ -73,7 +74,7 @@ struct AppData {
             gbg::createRepresentative(*dep_tree, sh, gbg::ResourceTypes::SHADER,
                                       gbg::SObjFlags::NEW);
             auto res =
-                file_w.createFile("./data/shaders/slang/obj_complient.slang")
+                file_w.createFile("./data/shaders/obj_complient.slang")
                     .and_then([&](gbg::FileHandle fh) {
                         sh.appendCodeFile(fh);
                         return gbg::compileShader(file_m, sh);

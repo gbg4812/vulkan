@@ -67,7 +67,7 @@ vkPipeline createGraphicsPipeline(
     const std::vector<VkVertexInputAttributeDescription>& attrib_desc,
     const std::vector<VkPushConstantRange>& push_constants,
     VkSampleCountFlagBits msaaSamples, VkRenderPass renderPass,
-    VkPrimitiveTopology topology) {
+    VkPrimitiveTopology topology, bool blending, bool depth_writing) {
     vkPipeline pipeline{};
 
     std::vector<VkPipelineShaderStageCreateInfo> vk_shaderStages;
@@ -132,7 +132,7 @@ vkPipeline createGraphicsPipeline(
     depthStencil.sType =
         VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = depth_writing ? VK_TRUE : VK_FALSE;
     depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     // depthStencil.maxDepthBounds = 1.0f;
@@ -146,10 +146,10 @@ vkPipeline createGraphicsPipeline(
     colorBlendAttachment.colorWriteMask =
         VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_TRUE;
+    colorBlendAttachment.blendEnable = blending ? VK_TRUE : VK_FALSE;
     colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
     colorBlendAttachment.dstColorBlendFactor =
-        VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        VK_BLEND_FACTOR_SRC_COLOR;
     colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
     colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
     colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;

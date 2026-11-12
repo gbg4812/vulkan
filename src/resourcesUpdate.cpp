@@ -131,7 +131,8 @@ void createShaderVkResources(
     sr_sh.pipeline = createGraphicsPipeline(
         device, stages, rendererDescriptorSetLayouts, bindingDescriptions,
         attributeDescriptions, push_constant_ranges, renderPass.samples,
-        renderPass.renderPass, sr_sh.topology);
+        renderPass.renderPass, sr_sh.topology, shader.is_transmisive, 
+        not shader.is_transmisive);
 
     for (auto module : destroyModuleQueue) {
         vkDestroyShaderModule(device.ldevice, module, nullptr);

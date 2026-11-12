@@ -1,6 +1,12 @@
 module lighting_lib;
 import global_resources;
 
+public enum LightType {
+    SPOT,
+    DIRECTIONAL,
+    AMBIENT,
+};
+
 public struct Light {
     public float3 color;
     public float3 direction;
@@ -8,7 +14,7 @@ public struct Light {
     public float4x4 proj;
     public float intensity;
     public int shadow_map;
-    public int type;
+    public LightType type;
 };
 
 [vk_binding(2, 0)]
@@ -149,14 +155,18 @@ public float3 dirLight(Light light, int i, float3 w_pos, float3 w_n,
     return slight.color * bright;
 }
 
-public float diffuse(float3 L, float3 N) {
-    float diff = dot(L, normalize(N));
-    diff = max(0., diff);
-    return diff;
+public float3 ambient(Light light, float3 color) {
+    return light.color * light.intensity * color;
 }
 
-public float spec(float3 L, float3 N, float3 V, int exp) {
+public float3 diffuse(float3 L, float3 N, float3 color) {
+    float diff = dot(L, normalize(N));
+    diff = max(0., diff);
+    return diff * color;
+}
+
+public float4 spec(float3 L, float3 N, float3 V, int exp, float3 color) {
     float3 R = normalize(reflect(-L, N));
     float VdotR = max(0, dot(V, R));
-    return pow(VdotR, exp);
+    return pow(VdotR, exp)*float4(color, 1.0f);
 }

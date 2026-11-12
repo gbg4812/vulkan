@@ -18,11 +18,10 @@ public struct VSOut {
 }
 
 struct MatParms {
-    float ambient_i = 0.01;
-    int tiling = 1;
-    float specular = 0.0;
-    Texture2D albedo;
-    Texture2D normal;
+    float3 color = { 0.1, 0.4, 0.3 };
+    float3 spec = {1, 1, 1};
+    int exp = 64;
+    float opacity = 0.2;
 };
 
 // here you can add as many as you want
@@ -53,38 +52,25 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {
 
 [shader("pixel")]
 float4 mainPixel(VSOut fs_in) : SV_Target0 {
-    float3 albedo =
-        mat.albedo.Sample(_sampler, fs_in.tex_coord * mat.tiling).rgb;
-    float3 n = mat.normal.Sample(_sampler, fs_in.tex_coord * mat.tiling).xyz;
-    // gl flip y
-    //n.y = 1-n.y;
-    n = (n * 2.) - 1.;
-    float3 lcolor = albedo * mat.ambient_i;
+    float4 lcolor = float4(0.0f);
 
-    float3x3 tbn =
-        transpose(float3x3(normalize(fs_in.w_tangent),
-                           normalize(fs_in.w_bitangent), normalize(fs_in.w_n)));
-        
-    float3 w_n = normalize(mul(tbn, n));
-    // float3 w_n = normalize(fs_in.w_n);
+    float3 w_n = normalize(fs_in.w_n);
 
     for (int i = 0; i < ubo.nLights; i++) {
         Light light = lights[i];
-        float3 v = normalize(light.position - ubo.obs);
         if (light.type == 0) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
-            // public float spec(float3 L, float3 N, float3 V, int exp) {
-            lcolor += (albedo * diffuse(w_l, w_n) +
-                       float3(1.0f) * spec(w_l, w_n, v, 64)) *
-                      spotLight(light, fs_in.w_pos, w_n, 5);
+            lcolor += float4(diffuse(w_l, w_n, mat.color) *
+                      spotLight(light, fs_in.w_pos, w_n, 5), mat.opacity);
         } else if (light.type == 1) {
-            float3 w_l = normalize(-light.direction);
-            lcolor += (albedo * diffuse(w_l, w_n) +
-                       float3(1.0f) * spec(w_l, w_n, v, 64) * mat.specular) *
-                      dirLight(light, i, fs_in.w_pos, w_n, 5);
+            float3 w_v = normalize(ubo.obs - fs_in.w_pos);
+            float4 specular_light = spec(normalize(-light.direction), w_n, w_v, mat.exp, mat.spec);
+            float3 diffuse_light = mat.color *
+                                  dirLight(light, i, fs_in.w_pos, w_n, 5);
+            lcolor += float4(diffuse_light, specular_light.a) + specular_light;
             i += 3;
         }
     }
 
-    return float4(lcolor, 1.0f);
+    return lcolor;
 }

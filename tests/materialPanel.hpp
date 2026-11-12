@@ -90,8 +90,15 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
                     app.dep_tree->propagateChange(
                         mat.representative, gbg::SObjFlags::PARAMETER_VALUE_M);
                 }
-            }
+            } 
+
+            
             ImGui::PopID();
+        }
+        
+        if(ImGui::Checkbox("Is transmissive", &shader.is_transmisive)) {
+            app.dep_tree->propagateChange(
+                shader.representative, gbg::SObjFlags::CODE_M);
         }
 
         static bool raw = false;
@@ -104,7 +111,7 @@ inline void drawMaterialPanel(AppData& app, gbg::Material& mat) {
         if (ImGui::BeginPopupModal("New Texture", NULL,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
             // expand to multiples...
-            static char buff[1024] = "";
+            static char buff[1024] = DATA_PATH"textures/";
             static char name[64] = "";
             if (ImGui::Button("Search")) {
                 nfdu8char_t* outpath = nullptr;
@@ -162,6 +169,7 @@ inline void drawShaderPannel(AppData& app) {
 
     if (ImGui::Button("Import Shader")) {
         nfdopendialognargs_t args = {0};
+        args.defaultPath = DATA_PATH"shaders/";
         nfdresult_t res = NFD_OpenDialogU8_With(&outpath, &args);
         if (res == NFD_OKAY) {
             if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
@@ -172,13 +180,13 @@ inline void drawShaderPannel(AppData& app) {
 
     if (ImGui::Button("Create Shader")) {
         nfdsavedialogu8args_t args = {0};
-        args.defaultPath = "./data/shaders/slang/";
+        args.defaultPath = "./data/shaders/";
         nfdresult_t res = NFD_SaveDialogU8_With(&outpath, &args);
         if (res == NFD_OKAY) {
             if (strlen(outpath) < sizeof(buff)) strcpy(buff, outpath);
             NFD_FreePathU8(outpath);
             auto pt = std::filesystem::path(buff);
-            std::filesystem::copy("./data/shaders/slang/default.slang", pt);
+            std::filesystem::copy("./data/shaders/default.slang", pt);
         }
     }
 

@@ -1,4 +1,1 @@
-#!/bin/bash
-
-glslc shader.frag -o frag.spv
-glslc shader.vert -o vert.spv
+slangc --vk-use-named-main...

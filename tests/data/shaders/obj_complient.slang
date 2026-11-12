@@ -24,9 +24,9 @@ struct MatParms {
     float exponent = 64;
     bool diffuse_map_b = false;
     bool bump_map_b = false;
-    float opacity = 1.0f;
     Texture2D diffuse_map;
     Texture2D bump_map;
+    Texture2D env_map;
 };
 
 // here you can add as many as you want
@@ -58,11 +58,11 @@ VSOut mainVertex(VSIn vs_in, uniform float4x4 model) {
 [shader("pixel")]
 float4 mainPixel(VSOut fs_in) : SV_Target0 {
 
-    float3 albedo = float3(1.0f);
+    float3 albedo = float3(1.0f) * mat.diffuse;
     if(mat.diffuse_map_b) {
-        albedo = mat.diffuse_map.Sample(_sampler, fs_in.tex_coord).rgb;
+        albedo *= mat.diffuse_map.Sample(_sampler, fs_in.tex_coord).rgb;
     }
-    float4 lcolor = float4(mat.ambient * albedo, mat.opacity);
+    float4 lcolor = float4(0.f);
     float3 w_n = normalize(fs_in.w_n);
     if(mat.bump_map_b) {
         float3 normal = mat.bump_map.Sample(_sampler, fs_in.tex_coord).xyz;
@@ -73,22 +73,27 @@ float4 mainPixel(VSOut fs_in) : SV_Target0 {
     
         w_n = normalize(mul(tbn, normal));
     }
+    
+    float3 w_v = normalize(ubo.obs - fs_in.w_pos);
+    float3 ref_col = mat.env_map.Sample(_sampler, reflect(w_v, w_n).xy).rgb;
 
 
     for (int i = 0; i < ubo.nLights; i++) {
         Light light = lights[i];
-        if (light.type == 0) {
+        if (light.type == LightType::SPOT) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
-            lcolor += float4(albedo * mat.diffuse * diffuse(w_l, w_n) *
-                      spotLight(light, fs_in.w_pos, w_n, 5), 1.0f);
-        } else if (light.type == 1) {
-            float3 w_v = normalize(ubo.obs - fs_in.w_pos);
+            float3 diffuse_light = diffuse(w_l, w_n, albedo) *
+                                  spotLight(light, fs_in.w_pos, w_n, 5);
+            lcolor += float4(diffuse_light, 1.0f);
+        } else if (light.type == LightType::DIRECTIONAL) {
             //public float spec(float3 L, float3 N, float3 V, int exp) {
             float3 light_i = dirLight(light, i, fs_in.w_pos, w_n, 5);
-            lcolor += float4(mat.diffuse * albedo * light_i * diffuse(normalize(-light.direction), w_n), mat.opacity);
-            float spec = spec(normalize(-light.direction), w_n, w_v, int(mat.exponent));
-            lcolor += float4(mat.specular * spec, spec);
+            float3 diffuse_light = diffuse(normalize(-light.direction), w_n, albedo) + ref_col;
+            float3 spec_light = spec(normalize(-light.direction), w_n, w_v, int(mat.exponent), mat.specular).rbg;
+            lcolor += float4(diffuse_light + spec_light, 1.0f);
             i += 3;
+        } else if(light.type == LightType::AMBIENT) {
+            lcolor += float4(ambient(light, albedo), 1.0f);
         }
     }
 

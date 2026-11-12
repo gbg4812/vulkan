@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <expected>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -186,6 +187,12 @@ void SceneRenderer::fillLightBuffer(glm::mat4 cam_t) {
                     lightBuffer.push_back(lh);
                     lightShadowOrder.push_back({0, lightBuffer.size() - 1});
                 }
+            } else if (light.type == LightType::AMBIENT) {
+                vkLight vklight{};
+                vklight.color = light.color;
+                vklight.intensity = light.intensity;
+                vklight.type = to_underlying(light.type);
+                lightBuffer.push_back(vklight);
             }
         }
 
@@ -612,7 +619,7 @@ void SceneRenderer::createShadowResources() {
         exit(EXIT_FAILURE);
     }
 
-    shadowShader.shadow = false;
+    shadowShader.casts_shadow = false;
 
     auto& shadowMaterial =
         internal_resources.scene->mat_mg.create("ShadowMaterial");
@@ -1107,10 +1114,14 @@ void SceneRenderer::recordDraw3DOverlays(
     }
 }
 
-void SceneRenderer::recordDrawScene(
-    VkCommandBuffer commandBuffer, VkViewport viewport, VkRect2D scissor,
-    uint32_t imageIndex, SceneTreeHandle root,
-    MaterialHandle override = MaterialHandle()) {
+/**
+ * TODO: add a filter functionality
+ */
+void SceneRenderer::recordDrawScene(VkCommandBuffer commandBuffer,
+                                    VkViewport viewport, VkRect2D scissor,
+                                    uint32_t imageIndex, SceneTreeHandle root,
+                                    MaterialHandle override,
+                                    std::function<bool(Model&)> filter) {
     glm::mat4 accumulated_transform = glm::mat4(1.0f);
 
     std::queue<std::pair<SceneTreeHandle, glm::mat4>> Q;
@@ -1135,9 +1146,11 @@ void SceneRenderer::recordDrawScene(
         if (handle) {
             TracyVkZone(tracyCtx[currentFrame], commandBuffer, "DrawModel");
             auto& md = active_scene_data.scene->md_mg.get(handle.value());
-            recordDrawModel(commandBuffer, viewport, scissor,
-                            accumulated_transform, md, active_scene_data,
-                            override);
+            if (filter == nullptr or filter(md)) {
+                recordDrawModel(commandBuffer, viewport, scissor,
+                                accumulated_transform, md, active_scene_data,
+                                override);
+            }
         }
 
         SceneTreeHandle child = stn.childH;
@@ -1172,7 +1185,7 @@ void SceneRenderer::bindMaterial(VkCommandBuffer commandBuffer,
                                 &srmt.descriptor_set, 0, nullptr);
     }
 
-    if (sh.shadow) {
+    if (sh.casts_shadow) {
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 srsh.pipeline.layout, 2, 1,
                                 &shadowDescriptorSets[currentFrame], 0,
@@ -1276,8 +1289,18 @@ void SceneRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer,
     scissor.offset = {0, 0};
     scissor.extent = swapChain.swapChainImageExtent;
 
+    auto allow_transmissive =
+        [&](Model& mod) {
+            auto sh_h = active_scene_data.scene->mat_mg.get(mod.getMaterial())
+                            .getShaderHandle();
+            return active_scene_data.scene->sh_mg.get(sh_h).is_transmisive;
+        };
+
     recordDrawScene(commandBuffer, viewport, scissor, imageIndex,
-                    active_scene_data.scene->root);
+                    active_scene_data.scene->root, 0, std::not_fn(allow_transmissive));
+
+    recordDrawScene(commandBuffer, viewport, scissor, imageIndex,
+                    active_scene_data.scene->root, 0, allow_transmissive);
 
     recordDraw3DOverlays(commandBuffer, viewport, scissor, imageIndex,
                          active_scene_data.scene->root);

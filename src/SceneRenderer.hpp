@@ -221,7 +221,9 @@ class SceneRenderer {
 
     void recordDrawScene(VkCommandBuffer commandBuffer, VkViewport viewport,
                          VkRect2D scissor, uint32_t imageIndex,
-                         SceneTreeHandle root, MaterialHandle override);
+                         SceneTreeHandle root,
+                         MaterialHandle override = MaterialHandle(),
+                         std::function<bool(Model&)> filter = nullptr);
 
     void recordDrawModel(VkCommandBuffer commandBuffer, VkViewport viewport,
                          VkRect2D scissor, glm::mat4 accumulated_transform,

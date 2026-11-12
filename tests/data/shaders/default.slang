@@ -58,10 +58,10 @@ float4 mainPixel(VSOut fs_in) : SV_Target0 {
         Light light = lights[i];
         if (light.type == 0) {
             float3 w_l = normalize(light.position - fs_in.w_pos);
-            lcolor += mat.color * diffuse(w_l, w_n) *
+            lcolor +=  diffuse(w_l, w_n, mat.color) *
                       spotLight(light, fs_in.w_pos, w_n, 5);
         } else if (light.type == 1) {
-            lcolor += mat.color * diffuse(normalize(-light.direction), w_n) *
+            lcolor += diffuse(normalize(-light.direction), w_n, mat.color) *
                       dirLight(light, i, fs_in.w_pos, w_n, 5);
             i += 3;
         }

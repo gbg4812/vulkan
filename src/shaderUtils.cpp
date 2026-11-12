@@ -49,7 +49,7 @@ Slang::ComPtr<slang::ISession> createSession(const char* shader_dir) {
     desc.targets = &targetDesc;
     desc.targetCount = 1;
 
-    std::array<const char*, 2> searchPaths = {CONTENTS_DIR "shaders/slang/",
+    std::array<const char*, 2> searchPaths = {CONTENTS_DIR "shaders/",
                                               shader_dir};
     desc.searchPaths = searchPaths.data();
     desc.searchPathCount = searchPaths.size();
